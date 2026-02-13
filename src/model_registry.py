@@ -1,27 +1,92 @@
-from transformers import T5ForConditionalGeneration, AutoModelForSeq2SeqLM, AutoTokenizer
+import os
+from typing import Callable, Dict, Optional, Tuple
+
 import torch
+from transformers import (
+    AutoModelForSeq2SeqLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
+
 from config import Config
-from typing import Callable, Dict, Tuple
+
+Loader = Callable[[Config], Tuple[PreTrainedModel, PreTrainedTokenizerBase]]
+
+MODEL_REGISTRY: Dict[str, Loader] = {}
 
 
-Loader = Callable[[Config], Tuple[torch.nn.Module, object]]
+def _resolve_hf_token(cfg: Config) -> Optional[str]:
+    """Resolve Hugging Face token from config, env vars, or api_keys module."""
+    if cfg.hf_token:
+        return cfg.hf_token
 
-def load_flan_ul2(cfg: Config):
-    model = AutoModelForSeq2SeqLM.from_pretrained(
+    env_token = os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
+    if env_token:
+        return env_token
+
+    try:
+        from api_keys import hugging_face
+    except ImportError:
+        return None
+
+    if hugging_face:
+        return hugging_face
+    return None
+
+
+def _resolve_torch_dtype(dtype_name: Optional[str]) -> Optional[object]:
+    """Convert a config dtype string into a torch dtype accepted by transformers."""
+    if dtype_name in (None, "auto"):
+        return dtype_name
+
+    dtype_map = {
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "float32": torch.float32,
+    }
+    if dtype_name not in dtype_map:
+        raise ValueError(f"Unsupported torch_dtype '{dtype_name}'.")
+    return dtype_map[dtype_name]
+
+
+def _build_model_kwargs(cfg: Config, token: Optional[str]) -> Dict[str, object]:
+    """Build model loading kwargs with hardware-safe defaults."""
+    kwargs: Dict[str, object] = {
+        "trust_remote_code": cfg.trust_remote_code,
+        "torch_dtype": _resolve_torch_dtype(cfg.torch_dtype),
+    }
+
+    if cfg.device_map is not None:
+        kwargs["device_map"] = cfg.device_map
+
+    if token:
+        kwargs["token"] = token
+
+    if cfg.load_in_8bit and torch.cuda.is_available():
+        kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+
+    return kwargs
+
+
+def load_default_seq2seq(
+    cfg: Config,
+) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    """Load an AutoModelForSeq2SeqLM and tokenizer for any HF model id."""
+    token = _resolve_hf_token(cfg)
+    model_kwargs = _build_model_kwargs(cfg, token)
+    model = AutoModelForSeq2SeqLM.from_pretrained(cfg.hf_model, **model_kwargs)
+    tokenizer = AutoTokenizer.from_pretrained(
         cfg.hf_model,
-        device_map=cfg.device_map,
-        load_in_8bit=cfg.load_in_8bit,
-        torch_dtype=cfg.torch_dtype,
+        use_fast=True,
+        trust_remote_code=cfg.trust_remote_code,
+        token=token,
     )
-    tok = AutoTokenizer.from_pretrained(cfg.hf_model, use_fast=True)
-    return model, tok
+    return model, tokenizer
 
-MODEL_REGISTRY: Dict[str, Loader] = {
-    "google/flan-ul2": load_flan_ul2,
-}
 
-def load_base_model(cfg: Config):
-    if cfg.hf_model not in MODEL_REGISTRY:
-        raise ValueError(f"Model '{cfg.hf_model}' not registered.")
-    return MODEL_REGISTRY[cfg.hf_model](cfg)
-
+def load_base_model(cfg: Config) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    """Load a model using a registry override or the default seq2seq loader."""
+    loader = MODEL_REGISTRY.get(cfg.hf_model, load_default_seq2seq)
+    return loader(cfg)

@@ -10,3 +10,15 @@ dependencies = [
     "torch>=2.10.0",
     "transformers>=5.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that access external services or download model artifacts.",
+]
