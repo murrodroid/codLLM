@@ -17,8 +17,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "integration: tests that access external services or download model artifacts.",
 ]
+pythonpath = ["src"]
