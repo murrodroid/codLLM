@@ -34,7 +34,7 @@ codLLM/
 ├── pyproject.toml                  # Project metadata and dependencies
 ├── data/                           # Data directory (no raw data included)
 ├── dockerfiles/
-│   └── placeholder.dockerfile
+│   └── train.dockerfile
 ├── models/
 │   └── placeholder.pth
 ├── src/
@@ -55,6 +55,20 @@ codLLM/
 git clone https://github.com/your-org/historical-cod-llm
 cd historical-cod-llm
 uv sync
+```
+
+## Docker
+
+Build the training image:
+
+```bash
+docker build -f dockerfiles/train.dockerfile -t codllm-train:latest .
+```
+
+Run the container:
+
+```bash
+docker run --rm codllm-train:latest
 ```
 
 ## License
