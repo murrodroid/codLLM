@@ -18,22 +18,11 @@ MODEL_REGISTRY: Dict[str, Loader] = {}
 
 
 def _resolve_hf_token(cfg: Config) -> Optional[str]:
-    """Resolve Hugging Face token from config, env vars, or api_keys module."""
+    """Resolve Hugging Face token from config, then environment variables."""
     if cfg.hf_token:
         return cfg.hf_token
 
-    env_token = os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
-    if env_token:
-        return env_token
-
-    try:
-        from codllm.api_keys import hugging_face
-    except ImportError:
-        return None
-
-    if hugging_face:
-        return hugging_face
-    return None
+    return os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
 
 
 def _resolve_torch_dtype(dtype_name: Optional[str]) -> Optional[object]:
