@@ -54,5 +54,11 @@ class Config:
     load_in_8bit: bool = field(default_factory=torch.cuda.is_available)
     torch_dtype: Optional[str] = "auto"
 
+@dataclass
+class Data:
+    datasets = ['SOSA_EXTR_1920-1930 (belgium).xlsx']
+    
+    dataset1_X = ""
+    dataset1_y = ""
 
 config = Config()
