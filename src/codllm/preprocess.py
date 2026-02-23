@@ -1,6 +1,6 @@
 from typing import Any, Callable, Dict
 
-from config import Config
+from codllm.config import Config
 
 
 def build_preprocess_fn(

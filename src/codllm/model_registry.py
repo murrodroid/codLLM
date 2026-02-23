@@ -10,7 +10,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from config import Config
+from codllm.config import Config
 
 Loader = Callable[[Config], Tuple[PreTrainedModel, PreTrainedTokenizerBase]]
 
@@ -27,7 +27,7 @@ def _resolve_hf_token(cfg: Config) -> Optional[str]:
         return env_token
 
     try:
-        from api_keys import hugging_face
+        from codllm.api_keys import hugging_face
     except ImportError:
         return None
 

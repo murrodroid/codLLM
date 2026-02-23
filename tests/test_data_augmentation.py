@@ -1,6 +1,6 @@
 import random
 
-from data_augmentation import (
+from codllm.data_augmentation import (
     accent_random_vowel,
     delete_random_char,
     expand_special_digraphs,

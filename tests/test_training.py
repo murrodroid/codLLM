@@ -2,9 +2,9 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from config import Config
-from src.preprocess import build_preprocess_fn
-from src.train import build_training_args
+from codllm.config import Config
+from codllm.preprocess import build_preprocess_fn
+from codllm.train import build_training_args
 
 
 class DummyTokenizer:

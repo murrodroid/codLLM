@@ -30,7 +30,6 @@ The pipeline consists of:
 
 ```
 codLLM/
-├── config.py                       # Project configuration
 ├── main.py                         # Main entry point
 ├── pyproject.toml                  # Project metadata and dependencies
 ├── data/                           # Data directory (no raw data included)
@@ -39,10 +38,15 @@ codLLM/
 ├── models/
 │   └── placeholder.pth
 ├── src/
-│   ├── data_augmentation.py        # Data augmentation utilities
-│   └── train.py                    # Training scripts
+│   └── codllm/
+│       ├── config.py               # Project configuration
+│       ├── data_augmentation.py    # Data augmentation utilities
+│       ├── data_handler.py         # Dataset loading and mapping
+│       ├── model_registry.py       # Model loader registry
+│       ├── preprocess.py           # Tokenization preprocessing
+│       └── train.py                # Training scripts
 └── tests/
-    └── tests_training.py           # Training tests
+    └── test_training.py            # Training tests
 ```
 
 ## Installation

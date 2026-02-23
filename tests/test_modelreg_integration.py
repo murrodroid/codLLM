@@ -2,8 +2,8 @@ import os
 
 import pytest
 
-from config import Config
-from src.model_registry import load_base_model
+from codllm.config import Config
+from codllm.model_registry import load_base_model
 
 
 RUN_HF_SMOKE = os.getenv("RUN_HF_SMOKE", "").lower() in {"1", "true", "yes"}

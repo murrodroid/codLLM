@@ -7,9 +7,9 @@ from transformers import (
     Seq2SeqTrainer,
 )
 
-from config import Config
-from src.model_registry import load_base_model
-from src.preprocess import build_preprocess_fn
+from codllm.config import Config
+from codllm.model_registry import load_base_model
+from codllm.preprocess import build_preprocess_fn
 
 
 def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments:

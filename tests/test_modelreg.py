@@ -3,13 +3,13 @@ from typing import Any
 import pytest
 from transformers import BitsAndBytesConfig
 
-import src.model_registry as model_registry
-from config import Config
+import codllm.model_registry as model_registry
+from codllm.config import Config
 
 
 def test_resolve_hf_token_priority(monkeypatch: pytest.MonkeyPatch) -> None:
     """Config token should win over environment and api_keys values."""
-    import api_keys
+    from codllm import api_keys
 
     monkeypatch.setenv("HUGGINGFACE_HUB_TOKEN", "from_env")
     monkeypatch.setattr(api_keys, "hugging_face", "from_file")
@@ -19,7 +19,7 @@ def test_resolve_hf_token_priority(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_hf_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Environment token should be used when config token is unset."""
-    import api_keys
+    from codllm import api_keys
 
     monkeypatch.setenv("HF_TOKEN", "from_env")
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
@@ -30,7 +30,7 @@ def test_resolve_hf_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_hf_token_from_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """api_keys token should be used when config and environment are unset."""
-    import api_keys
+    from codllm import api_keys
 
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
