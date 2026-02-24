@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
+
+
+TrainingInput = Literal["cod", "age", "sex"]
 
 
 def _default_device() -> torch.device:
@@ -18,6 +21,38 @@ def _default_device_map() -> Optional[str]:
     if torch.cuda.is_available():
         return "auto"
     return None
+
+
+@dataclass
+class DataSourceConfig:
+    """Configuration for a single raw dataset source."""
+
+    source_id: str
+    path: str
+    mapping_id: str
+    enabled: bool = True
+    file_type: Optional[str] = None
+    sep: str = ","
+    header: int | None = 0
+    sheet_name: int | str = 0
+    skip_rows: list[int] = field(default_factory=list)
+
+
+def _default_data_sources() -> list[DataSourceConfig]:
+    """Return default data sources expected in the raw data directory."""
+    return [
+        DataSourceConfig(
+            source_id="belgium_1920_1930",
+            path="SOSA_EXTR_1920-1930 (belgium).xlsx",
+            mapping_id="belgium",
+        ),
+        DataSourceConfig(
+            source_id="amsterdam_1854_1926",
+            path="AMC_1854_1926_LM.csv",
+            mapping_id="amsterdam",
+            sep=";",
+        ),
+    ]
 
 
 @dataclass
@@ -54,5 +89,19 @@ class Config:
     load_in_8bit: bool = field(default_factory=torch.cuda.is_available)
     torch_dtype: Optional[str] = "auto"
 
+    data_raw_dir: str = "data/raw"
+    data_processed_dir: str = "data/processed"
+    processed_filename: str = "training.csv"
+    data_sources: list[DataSourceConfig] = field(default_factory=_default_data_sources)
+    training_input: list[TrainingInput] = field(
+        default_factory=lambda: ["cod", "age", "sex"]
+    )
+    max_label_count: int = 1
+
+    train_size: float = 0.8
+    val_size: float = 0.1
+    test_size: float = 0.1
+
+    dataset_size: float = 0.5
 
 config = Config()

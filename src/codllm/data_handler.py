@@ -1,109 +1,494 @@
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Mapping, Sequence, cast
 
 import pandas as pd
+from sklearn.model_selection import train_test_split
+
+from codllm.config import Config, DataSourceConfig, TrainingInput
+
+UNKNOWN_VALUE = "unknown"
+SUPPORTED_TRAINING_INPUTS: tuple[TrainingInput, ...] = ("cod", "age", "sex")
+PROCESSED_COLUMNS = [
+    "source_id",
+    "record_id",
+    "source_path",
+    "text",
+    "y_codes",
+    "label",
+]
 
 
 @dataclass
 class DatasetMapping:
-    """Describes how to map columns from a specific dataset source into the unified X/y format.
-
-    All column references are integer indices (0-based) so they work regardless of header names.
-    """
+    """Describe how to map one source dataset into the canonical training schema."""
 
     text_col: int
     single_code_col: int
     multi_code_cols: list[int] = field(default_factory=list)
-    gender_col: int | None = None
-    gender_map: dict[str, str] = field(default_factory=dict)
-    year_col: int | None = None
+    sex_col: int | None = None
+    sex_map: dict[str, str] = field(default_factory=dict)
     age_col: int | None = None
+    record_id_col: int | None = None
     skip_rows: list[int] = field(default_factory=list)
 
 
+@dataclass
+class DataSplits:
+    """Container for train, validation, and test dataframe splits."""
+
+    train: pd.DataFrame
+    val: pd.DataFrame
+    test: pd.DataFrame
+
+
 BELGIUM_MAPPING = DatasetMapping(
-    text_col=4,
+    text_col=5,
     single_code_col=11,
     multi_code_cols=[12, 13, 14, 15, 16],
-    gender_col=2,
-    gender_map={"1": "male", "2": "female"},
-    year_col=1,
+    sex_col=2,
+    sex_map={"1": "male", "2": "female"},
     age_col=3,
+    record_id_col=0,
     skip_rows=[0],
 )
 
+AMSTERDAM_MAPPING = DatasetMapping(
+    text_col=5,
+    single_code_col=7,
+    multi_code_cols=[7, 9, 11, 13, 15, 17],
+    sex_col=2,
+    sex_map={
+        "man": "male",
+        "vrouw": "female",
+        "m": "male",
+        "v": "female",
+        "1": "male",
+        "2": "female",
+    },
+    age_col=3,
+    record_id_col=0,
+)
+
+MAPPING_REGISTRY: dict[str, DatasetMapping] = {
+    "belgium": BELGIUM_MAPPING,
+    "amsterdam": AMSTERDAM_MAPPING,
+}
+
+
+class DataHandler:
+    """Handle processed-data lifecycle and train/val/test splitting."""
+
+    def __init__(
+        self,
+        cfg: Config,
+        mapping_registry: Mapping[str, DatasetMapping] | None = None,
+    ) -> None:
+        self.cfg = cfg
+        self.mapping_registry = dict(MAPPING_REGISTRY)
+        if mapping_registry is not None:
+            self.mapping_registry.update(mapping_registry)
+
+    @property
+    def processed_path(self) -> Path:
+        """Return the configured processed-data output path."""
+        return Path(self.cfg.data_processed_dir) / self.cfg.processed_filename
+
+    def processed_exists(self) -> bool:
+        """Return True when the configured processed file already exists."""
+        return self.processed_path.exists()
+
+    def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
+        """Load processed data, or build and save it when missing."""
+        if force_reprocess or not self.processed_exists():
+            processed_df = build_processed_dataset(
+                cfg=self.cfg, mapping_registry=self.mapping_registry
+            )
+            save_processed_dataset(processed_df, str(self.processed_path))
+            return processed_df
+        return self._load_processed_dataset()
+
+    def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+        """Return train/validation/test splits from processed data."""
+        processed_df = self.ensure_processed(force_reprocess=force_reprocess)
+        sampled_df = self._apply_dataset_size(processed_df)
+        return self.split_dataframe(sampled_df)
+
+    def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
+        """Split a dataframe into train, validation, and test sets."""
+        self._validate_split_sizes()
+        self._validate_required_columns(df)
+
+        if df.empty:
+            raise ValueError("Cannot split an empty dataframe.")
+
+        holdout_size = round(self.cfg.val_size + self.cfg.test_size, 10)
+        empty_df = df.iloc[0:0].copy()
+
+        if holdout_size == 0:
+            shuffled = df.sample(frac=1.0, random_state=self.cfg.seed).reset_index(
+                drop=True
+            )
+            return DataSplits(train=shuffled, val=empty_df.copy(), test=empty_df.copy())
+
+        try:
+            train_df, holdout_df = train_test_split(
+                df,
+                test_size=holdout_size,
+                random_state=self.cfg.seed,
+                shuffle=True,
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "Unable to split data with the configured train/val/test sizes."
+            ) from exc
+
+        if self.cfg.val_size == 0:
+            val_df = empty_df.copy()
+            test_df = holdout_df
+        elif self.cfg.test_size == 0:
+            val_df = holdout_df
+            test_df = empty_df.copy()
+        else:
+            test_ratio = self.cfg.test_size / holdout_size
+            try:
+                val_df, test_df = train_test_split(
+                    holdout_df,
+                    test_size=test_ratio,
+                    random_state=self.cfg.seed,
+                    shuffle=True,
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "Unable to split holdout data into validation and test sets."
+                ) from exc
+
+        return DataSplits(
+            train=train_df.reset_index(drop=True),
+            val=val_df.reset_index(drop=True),
+            test=test_df.reset_index(drop=True),
+        )
+
+    def _load_processed_dataset(self) -> pd.DataFrame:
+        """Load processed data from CSV or Parquet."""
+        path = self.processed_path
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            df = pd.read_csv(path)
+        elif suffix == ".parquet":
+            df = pd.read_parquet(path)
+        else:
+            raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
+        self._validate_required_columns(df)
+        return df
+
+    def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Subsample dataframe for pilot runs according to cfg.dataset_size."""
+        size = self.cfg.dataset_size
+        if size <= 0 or size > 1:
+            raise ValueError("dataset_size must be in the interval (0, 1].")
+        if size == 1:
+            return df.reset_index(drop=True)
+
+        sample_count = max(1, int(round(len(df) * size)))
+        if sample_count >= len(df):
+            return df.reset_index(drop=True)
+
+        return df.sample(
+            n=sample_count, random_state=self.cfg.seed, replace=False
+        ).reset_index(drop=True)
+
+    def _validate_required_columns(self, df: pd.DataFrame) -> None:
+        """Ensure configured text/label columns exist in the dataframe."""
+        required = {self.cfg.dataset_text_column, self.cfg.dataset_label_column}
+        missing = required.difference(df.columns)
+        if missing:
+            missing_columns = ", ".join(sorted(missing))
+            raise KeyError(
+                f"Processed data is missing required columns: {missing_columns}."
+            )
+
+    def _validate_split_sizes(self) -> None:
+        """Validate train, validation, and test split percentages."""
+        split_sizes = {
+            "train_size": self.cfg.train_size,
+            "val_size": self.cfg.val_size,
+            "test_size": self.cfg.test_size,
+        }
+        for name, size in split_sizes.items():
+            if size < 0 or size > 1:
+                raise ValueError(f"{name} must be between 0 and 1.")
+        if self.cfg.train_size <= 0:
+            raise ValueError("train_size must be greater than 0.")
+
+        total = self.cfg.train_size + self.cfg.val_size + self.cfg.test_size
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError("train_size, val_size, and test_size must sum to 1.0.")
+
+
+def _resolve_source_path(source: DataSourceConfig, data_raw_dir: str) -> Path:
+    """Resolve a source path relative to the raw data directory when needed."""
+    source_path = Path(source.path)
+    if source_path.is_absolute() or source_path.exists():
+        return source_path
+    if not data_raw_dir:
+        return source_path
+    return Path(data_raw_dir) / source_path
+
+
+def _normalize_training_input(training_input: Sequence[str]) -> list[TrainingInput]:
+    """Validate and normalize requested training input fields."""
+    normalized: list[TrainingInput] = []
+    for feature in training_input:
+        cleaned = feature.strip().lower()
+        if cleaned not in SUPPORTED_TRAINING_INPUTS:
+            supported = ", ".join(SUPPORTED_TRAINING_INPUTS)
+            raise ValueError(
+                f"Unsupported training input '{feature}'. Supported values are: {supported}."
+            )
+        normalized_feature = cast(TrainingInput, cleaned)
+        if normalized_feature not in normalized:
+            normalized.append(normalized_feature)
+    if not normalized:
+        raise ValueError("training_input must contain at least one field.")
+    return normalized
+
 
 def _get(row: pd.Series, col: int) -> str | None:
-    """Get a value from a row by positional index, returning None for missing/empty values."""
-    val = row.iloc[col]
-    if pd.notna(val) and str(val).strip():
-        return str(val).strip()
-    return None
+    """Get a value from a row by positional index."""
+    if col < 0 or col >= len(row):
+        return None
+    value = row.iloc[col]
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text
 
 
-def _build_x(row: pd.Series, mapping: DatasetMapping) -> str:
-    """Build the X input string from metadata and original cause-of-death text."""
-    parts = []
+def _format_age(raw_age: str | None) -> str:
+    """Normalize age into a compact numeric string."""
+    if raw_age is None:
+        return UNKNOWN_VALUE
+    try:
+        numeric_age = round(float(raw_age), 2)
+    except ValueError:
+        return UNKNOWN_VALUE
+    if numeric_age.is_integer():
+        return str(int(numeric_age))
+    return f"{numeric_age:.2f}".rstrip("0").rstrip(".")
 
-    if mapping.gender_col is not None:
-        raw = _get(row, mapping.gender_col)
-        parts.append(f"gender: {mapping.gender_map.get(raw, 'unknown') if raw else 'unknown'}")
-    else:
-        parts.append("gender: unknown")
 
-    if mapping.year_col is not None:
-        raw = _get(row, mapping.year_col)
-        parts.append(f"year: {int(float(raw)) if raw else 'unknown'}")
-    else:
-        parts.append("year: unknown")
+def _format_sex(raw_sex: str | None, sex_map: Mapping[str, str]) -> str:
+    """Map raw sex values into canonical values."""
+    if raw_sex is None:
+        return UNKNOWN_VALUE
+    raw = raw_sex.strip()
+    normalized_raw = raw.lower()
+    if raw in sex_map:
+        return sex_map[raw]
+    if normalized_raw in sex_map:
+        return sex_map[normalized_raw]
+    return UNKNOWN_VALUE
 
-    if mapping.age_col is not None:
-        raw = _get(row, mapping.age_col)
-        parts.append(f"age: {round(float(raw), 2) if raw else 'unknown'}")
-    else:
-        parts.append("age: unknown")
 
-    text = _get(row, mapping.text_col)
-    parts.append(f"text: {text if text else 'unknown'}")
-
+def _build_text(
+    row: pd.Series, mapping: DatasetMapping, training_input: Sequence[str]
+) -> str:
+    """Build text input from configured training input fields."""
+    normalized_training_input = _normalize_training_input(training_input)
+    parts: list[str] = []
+    for feature in normalized_training_input:
+        if feature == "cod":
+            cod_text = _get(row, mapping.text_col) or UNKNOWN_VALUE
+            parts.append(f"cod: {cod_text}")
+        elif feature == "age":
+            raw_age = (
+                _get(row, mapping.age_col) if mapping.age_col is not None else None
+            )
+            parts.append(f"age: {_format_age(raw_age)}")
+        else:
+            raw_sex = (
+                _get(row, mapping.sex_col) if mapping.sex_col is not None else None
+            )
+            parts.append(f"sex: {_format_sex(raw_sex, mapping.sex_map)}")
     return " | ".join(parts)
 
 
-def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
-    """Collect ICD codes from multi-cause columns, falling back to the single-cause column."""
-    codes = []
+def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
+    """Collect code values from multi-code columns first, then single-code fallback."""
+    codes: list[str] = []
+    seen_codes: set[str] = set()
     for col in mapping.multi_code_cols:
-        val = _get(row, col)
-        if val:
-            codes.append(val)
-
+        code = _get(row, col)
+        if code and code not in seen_codes:
+            codes.append(code)
+            seen_codes.add(code)
     if not codes:
-        val = _get(row, mapping.single_code_col)
-        if val:
-            codes.append(val)
-
+        single_code = _get(row, mapping.single_code_col)
+        if single_code:
+            codes.append(single_code)
     return codes
 
 
-def load_dataset(path: str, mapping: DatasetMapping) -> pd.DataFrame:
-    """Load a dataset file and return a DataFrame with columns 'X' and 'y'.
+def _build_y(row: pd.Series, mapping: DatasetMapping, max_labels: int = 1) -> list[str]:
+    """Build target code list, truncated to the configured maximum number of labels."""
+    if max_labels < 1:
+        raise ValueError("max_labels must be at least 1.")
+    codes = _collect_codes(row, mapping)
+    return codes[:max_labels]
 
-    Args:
-        path: Path to the dataset file (.xlsx or .csv).
-        mapping: A DatasetMapping describing the column layout of this source.
 
-    Returns:
-        A DataFrame with 'X' (str) and 'y' (list[str]) columns.
-    """
-    if path.endswith(".csv"):
-        df = pd.read_csv(path, header=0, dtype=str)
-    else:
-        df = pd.read_excel(path, header=0, dtype=str)
+def _build_label(codes: list[str]) -> str:
+    """Convert code labels into a single seq2seq target string."""
+    return " | ".join(codes)
 
-    if mapping.skip_rows:
-        df = df.drop(index=mapping.skip_rows).reset_index(drop=True)
+
+def _detect_file_type(path: Path, source: DataSourceConfig) -> str:
+    """Determine file type from source config or file extension."""
+    if source.file_type is not None:
+        return source.file_type.lower().lstrip(".")
+    return path.suffix.lower().lstrip(".")
+
+
+def _read_raw_dataframe(path: Path, source: DataSourceConfig) -> pd.DataFrame:
+    """Read one raw source file into a dataframe."""
+    file_type = _detect_file_type(path, source)
+    if file_type == "csv":
+        return pd.read_csv(path, header=source.header, dtype=str, sep=source.sep)
+    if file_type in {"xlsx", "xls"}:
+        return pd.read_excel(
+            path, header=source.header, dtype=str, sheet_name=source.sheet_name
+        )
+    raise ValueError(
+        f"Unsupported file type '{file_type}' for source '{source.source_id}'."
+    )
+
+
+def load_source_dataset(
+    source: DataSourceConfig,
+    mapping: DatasetMapping,
+    training_input: Sequence[str],
+    max_labels: int = 1,
+    data_raw_dir: str = "data/raw",
+    drop_missing_label: bool = True,
+) -> pd.DataFrame:
+    """Load and process one source dataset into the canonical schema."""
+    normalized_training_input = _normalize_training_input(training_input)
+    source_path = _resolve_source_path(source, data_raw_dir)
+    raw_df = _read_raw_dataframe(source_path, source)
+    combined_skip_rows = sorted(set(mapping.skip_rows + source.skip_rows))
+    if combined_skip_rows:
+        raw_df = raw_df.drop(index=combined_skip_rows, errors="ignore").reset_index(
+            drop=True
+        )
 
     result = pd.DataFrame()
-    result["X"] = df.apply(lambda row: _build_x(row, mapping), axis=1)
-    result["y"] = df.apply(lambda row: _build_y(row, mapping), axis=1)
-
+    result["source_id"] = [source.source_id] * len(raw_df)
+    if mapping.record_id_col is None:
+        result["record_id"] = [
+            f"{source.source_id}:{idx}" for idx in range(len(raw_df))
+        ]
+    else:
+        extracted_ids = raw_df.apply(
+            lambda row: _get(row, mapping.record_id_col), axis=1
+        )
+        result["record_id"] = [
+            record_id if record_id is not None else f"{source.source_id}:{idx}"
+            for idx, record_id in enumerate(extracted_ids.tolist())
+        ]
+    result["source_path"] = [str(source_path)] * len(raw_df)
+    result["text"] = raw_df.apply(
+        lambda row: _build_text(row, mapping, normalized_training_input), axis=1
+    )
+    result["y_codes"] = raw_df.apply(
+        lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
+    )
+    result["label"] = result["y_codes"].apply(_build_label)
+    if drop_missing_label:
+        result = result[result["label"] != ""].reset_index(drop=True)
     return result
+
+
+def build_processed_dataset(
+    cfg: Config,
+    mapping_registry: Mapping[str, DatasetMapping] | None = None,
+) -> pd.DataFrame:
+    """Build one processed dataframe from all configured raw data sources."""
+    registry = dict(MAPPING_REGISTRY)
+    if mapping_registry is not None:
+        registry.update(mapping_registry)
+
+    processed_frames: list[pd.DataFrame] = []
+    for source in cfg.data_sources:
+        if not source.enabled:
+            continue
+        if source.mapping_id not in registry:
+            raise KeyError(
+                f"Unknown mapping_id '{source.mapping_id}' for source '{source.source_id}'."
+            )
+        mapping = registry[source.mapping_id]
+        processed_frames.append(
+            load_source_dataset(
+                source=source,
+                mapping=mapping,
+                training_input=cfg.training_input,
+                max_labels=cfg.max_label_count,
+                data_raw_dir=cfg.data_raw_dir,
+            )
+        )
+
+    if not processed_frames:
+        return pd.DataFrame(columns=PROCESSED_COLUMNS)
+    return pd.concat(processed_frames, ignore_index=True)
+
+
+def save_processed_dataset(df: pd.DataFrame, output_path: str) -> None:
+    """Persist processed data as CSV or Parquet based on file extension."""
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    suffix = output.suffix.lower()
+    if suffix == ".csv":
+        df.to_csv(output, index=False)
+        return
+    if suffix == ".parquet":
+        df.to_parquet(output, index=False)
+        return
+    raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
+
+
+def build_and_save_processed_dataset(
+    cfg: Config,
+    mapping_registry: Mapping[str, DatasetMapping] | None = None,
+) -> pd.DataFrame:
+    """Build and persist processed data using config output settings."""
+    processed_df = build_processed_dataset(cfg, mapping_registry=mapping_registry)
+    output_path = str(Path(cfg.data_processed_dir) / cfg.processed_filename)
+    save_processed_dataset(processed_df, output_path)
+    return processed_df
+
+
+def load_dataset(
+    path: str,
+    mapping: DatasetMapping,
+    training_input: Sequence[str] | None = None,
+    max_labels: int = 1,
+    sep: str = ",",
+) -> pd.DataFrame:
+    """Load one dataset into legacy text/y output format."""
+    source = DataSourceConfig(
+        source_id="inline_source",
+        path=path,
+        mapping_id="inline_mapping",
+        sep=sep,
+    )
+    processed = load_source_dataset(
+        source=source,
+        mapping=mapping,
+        training_input=training_input or ["cod", "age", "sex"],
+        max_labels=max_labels,
+        data_raw_dir="",
+        drop_missing_label=False,
+    )
+    return pd.DataFrame({"text": processed["text"], "y": processed["y_codes"]})
