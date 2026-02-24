@@ -59,7 +59,7 @@ def _default_data_sources() -> list[DataSourceConfig]:
 class Config:
     """Configuration for Hugging Face seq2seq training experiments."""
 
-    hf_model: str = "google/flan-ul2"
+    hf_model: str = "google/flan-t5-small" # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
     trust_remote_code: bool = False
 
@@ -104,7 +104,7 @@ class Config:
     val_size: float = 0.1
     test_size: float = 0.1
 
-    dataset_size: float = 0.5
+    dataset_size: float = 0.2
 
 
 config = Config()
