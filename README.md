@@ -68,8 +68,10 @@ docker build -f dockerfiles/train.dockerfile -t codllm-train:latest .
 Run the container:
 
 ```bash
-docker run --rm codllm-train:latest
+docker run --rm -e HUGGINGFACE_HUB_TOKEN -e WANDB_API_KEY codllm-train:latest
 ```
+
+`WANDB_API_KEY` is optional. When omitted, training runs without Weights & Biases logging in unauthenticated containers.
 
 ## License
 

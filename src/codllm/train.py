@@ -1,5 +1,9 @@
 import argparse
+import netrc
+import os
+from pathlib import Path
 from typing import Any, Optional, Tuple
+import warnings
 
 import pandas as pd
 import torch
@@ -86,12 +90,61 @@ def _prepare_dataset(cfg: Config, tokenizer: Any, dataset: Any) -> Any:
     )
 
 
+def _has_wandb_credentials() -> bool:
+    """Return True when W&B credentials are available via env or netrc."""
+    if os.getenv("WANDB_API_KEY"):
+        return True
+
+    for filename in (".netrc", "_netrc"):
+        netrc_path = Path.home() / filename
+        if not netrc_path.exists():
+            continue
+        try:
+            auth = netrc.netrc(str(netrc_path)).authenticators("api.wandb.ai")
+        except (OSError, netrc.NetrcParseError):
+            continue
+        if auth and auth[2]:
+            return True
+    return False
+
+
+def _resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], Optional[str]]:
+    """Resolve Trainer reporting settings and runtime environment for W&B."""
+    wandb_cfg = cfg.wandb
+
+    if not wandb_cfg.enabled or wandb_cfg.mode == "disabled":
+        os.environ["WANDB_MODE"] = "disabled"
+        return "none", None
+
+    os.environ.setdefault("WANDB_PROJECT", wandb_cfg.project)
+    if wandb_cfg.entity:
+        os.environ["WANDB_ENTITY"] = wandb_cfg.entity
+
+    if wandb_cfg.mode in ("online", "offline"):
+        os.environ["WANDB_MODE"] = wandb_cfg.mode
+        return ["wandb"], wandb_cfg.run_name
+
+    if _has_wandb_credentials():
+        return ["wandb"], wandb_cfg.run_name
+
+    os.environ["WANDB_MODE"] = "disabled"
+    warnings.warn(
+        (
+            "W&B is enabled but no WANDB_API_KEY or ~/.netrc credentials were found. "
+            "Falling back to report_to='none'."
+        ),
+        stacklevel=2,
+    )
+    return "none", None
+
+
 def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
     fp16 = torch.cuda.is_available() and cfg.torch_dtype in (None, "auto", "float16")
     bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
+    report_to, run_name = _resolve_wandb_reporting(cfg)
     training_kwargs = {
         "output_dir": cfg.output_dir,
         "learning_rate": cfg.lr,
@@ -110,7 +163,8 @@ def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments
         "generation_max_length": cfg.max_target_length,
         "fp16": fp16,
         "bf16": bf16,
-        "report_to": "none",
+        "report_to": report_to,
+        "run_name": run_name,
         "seed": cfg.seed,
     }
     if cfg.warmup_ratio is not None:

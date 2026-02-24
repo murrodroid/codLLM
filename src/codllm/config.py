@@ -5,6 +5,7 @@ import torch
 
 
 TrainingInput = Literal["cod", "age", "sex"]
+WandbMode = Literal["auto", "online", "offline", "disabled"]
 
 
 def _default_device() -> torch.device:
@@ -38,6 +39,17 @@ class DataSourceConfig:
     skip_rows: list[int] = field(default_factory=list)
 
 
+@dataclass
+class WandbConfig:
+    """Configuration for Weights & Biases experiment tracking."""
+
+    enabled: bool = True
+    project: str = "codllm"
+    entity: Optional[str] = None
+    run_name: Optional[str] = None
+    mode: WandbMode = "auto"
+
+
 def _default_data_sources() -> list[DataSourceConfig]:
     """Return default data sources expected in the raw data directory."""
     return [
@@ -59,7 +71,7 @@ def _default_data_sources() -> list[DataSourceConfig]:
 class Config:
     """Configuration for Hugging Face seq2seq training experiments."""
 
-    hf_model: str = "google/flan-t5-small" # google/flan-ul2, google/flan-t5-small
+    hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
     trust_remote_code: bool = False
 
@@ -104,7 +116,8 @@ class Config:
     val_size: float = 0.1
     test_size: float = 0.1
 
-    dataset_size: float = 0.2
+    dataset_size: float = 0.05
+    wandb: WandbConfig = field(default_factory=WandbConfig)
 
 
 config = Config()
