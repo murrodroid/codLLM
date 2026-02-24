@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import pytest
 
-from codllm.config import Config
+from codllm.config import Config, WandbConfig
 from codllm.data_handler import DataSplits
 from codllm.preprocess import build_preprocess_fn
 import codllm.train as train_module
@@ -47,8 +47,13 @@ def test_preprocess_raises_when_column_missing() -> None:
         preprocess({"prompt": ["hello"]})
 
 
-def test_build_training_args_v5_compatible() -> None:
+def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> None:
     """Training args should use eval_strategy and disable eval when absent."""
+    monkeypatch.setattr(
+        train_module,
+        "_resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
     cfg = Config(eval_strategy="steps", save_strategy="steps")
     with_eval = build_training_args(cfg, has_eval=True)
     without_eval = build_training_args(cfg, has_eval=False)
@@ -56,6 +61,61 @@ def test_build_training_args_v5_compatible() -> None:
     assert with_eval.eval_steps == cfg.eval_steps
     assert without_eval.eval_strategy.value == "no"
     assert without_eval.eval_steps is None
+
+
+def test_resolve_wandb_reporting_uses_wandb_with_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto mode should enable W&B when credentials are available."""
+    monkeypatch.delenv("WANDB_PROJECT", raising=False)
+    monkeypatch.delenv("WANDB_ENTITY", raising=False)
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.setattr(train_module, "_has_wandb_credentials", lambda: True)
+
+    cfg = Config(
+        wandb=WandbConfig(
+            enabled=True,
+            project="unit-project",
+            entity="unit-entity",
+            run_name="unit-run",
+            mode="auto",
+        )
+    )
+    report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+
+    assert report_to == ["wandb"]
+    assert run_name == "unit-run"
+    assert train_module.os.environ["WANDB_PROJECT"] == "unit-project"
+    assert train_module.os.environ["WANDB_ENTITY"] == "unit-entity"
+
+
+def test_resolve_wandb_reporting_disables_without_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto mode should gracefully disable W&B when credentials are unavailable."""
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.setattr(train_module, "_has_wandb_credentials", lambda: False)
+    cfg = Config(wandb=WandbConfig(enabled=True, mode="auto"))
+
+    with pytest.warns(UserWarning):
+        report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+
+    assert report_to == "none"
+    assert run_name is None
+    assert train_module.os.environ["WANDB_MODE"] == "disabled"
+
+
+def test_resolve_wandb_reporting_online_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Online mode should always report to W&B and set WANDB_MODE accordingly."""
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    cfg = Config(wandb=WandbConfig(enabled=True, mode="online", run_name="online-run"))
+    report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+
+    assert report_to == ["wandb"]
+    assert run_name == "online-run"
+    assert train_module.os.environ["WANDB_MODE"] == "online"
 
 
 def test_train_with_data_handler_uses_validation_split(
