@@ -1,3 +1,5 @@
+import sys
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -7,9 +9,20 @@ import codllm.model_registry as model_registry
 from codllm.config import Config
 
 
+def _mock_api_keys_module(
+    monkeypatch: pytest.MonkeyPatch,
+    hugging_face: str,
+) -> None:
+    """Inject a temporary codllm.api_keys module for token resolution tests."""
+    api_keys_module = ModuleType("codllm.api_keys")
+    api_keys_module.hugging_face = hugging_face
+    monkeypatch.setitem(sys.modules, "codllm.api_keys", api_keys_module)
+
+
 def test_resolve_hf_token_priority(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Config token should win over environment variables."""
+    """Config token should win over environment and api_keys values."""
     monkeypatch.setenv("HUGGINGFACE_HUB_TOKEN", "from_env")
+    _mock_api_keys_module(monkeypatch, hugging_face="from_file")
     cfg = Config(hf_token="from_config")
     assert model_registry._resolve_hf_token(cfg) == "from_config"
 
@@ -18,16 +31,16 @@ def test_resolve_hf_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Environment token should be used when config token is unset."""
     monkeypatch.setenv("HF_TOKEN", "from_env")
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+    _mock_api_keys_module(monkeypatch, hugging_face="")
     cfg = Config(hf_token=None)
     assert model_registry._resolve_hf_token(cfg) == "from_env"
 
 
-def test_resolve_hf_token_returns_none_without_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No token should resolve when config and environment are unset."""
+def test_resolve_hf_token_from_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """api_keys token should be used when config and environment are unset."""
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+    _mock_api_keys_module(monkeypatch, hugging_face="from_file")
     cfg = Config(hf_token=None)
     assert model_registry._resolve_hf_token(cfg) is None
 
