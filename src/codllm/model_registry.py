@@ -17,6 +17,12 @@ Loader = Callable[[Config], Tuple[PreTrainedModel, PreTrainedTokenizerBase]]
 MODEL_REGISTRY: Dict[str, Loader] = {}
 
 
+def _apply_hf_runtime_env(cfg: Config) -> None:
+    """Set Hugging Face runtime flags required for stable model loading."""
+    if cfg.disable_safetensors_conversion:
+        os.environ["DISABLE_SAFETENSORS_CONVERSION"] = "1"
+
+
 def _resolve_hf_token(cfg: Config) -> Optional[str]:
     """Resolve Hugging Face token from config, then environment variables."""
     if cfg.hf_token:
@@ -44,6 +50,7 @@ def _build_model_kwargs(cfg: Config, token: Optional[str]) -> Dict[str, object]:
     """Build model loading kwargs with hardware-safe defaults."""
     kwargs: Dict[str, object] = {
         "trust_remote_code": cfg.trust_remote_code,
+        "use_safetensors": cfg.use_safetensors,
         "torch_dtype": _resolve_torch_dtype(cfg.torch_dtype),
     }
 
@@ -63,6 +70,7 @@ def load_default_seq2seq(
     cfg: Config,
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
     """Load an AutoModelForSeq2SeqLM and tokenizer for any HF model id."""
+    _apply_hf_runtime_env(cfg)
     token = _resolve_hf_token(cfg)
     model_kwargs = _build_model_kwargs(cfg, token)
     model = AutoModelForSeq2SeqLM.from_pretrained(cfg.hf_model, **model_kwargs)

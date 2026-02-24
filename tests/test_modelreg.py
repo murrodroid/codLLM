@@ -77,6 +77,7 @@ def test_build_model_kwargs_with_cuda_quantization(
     assert kwargs["token"] == "token"
     assert kwargs["device_map"] == "auto"
     assert kwargs["trust_remote_code"] is True
+    assert kwargs["use_safetensors"] is False
     assert isinstance(kwargs["quantization_config"], BitsAndBytesConfig)
 
 
@@ -96,6 +97,7 @@ def test_build_model_kwargs_without_cuda_quantization(
     kwargs = model_registry._build_model_kwargs(cfg, token="token")
     assert kwargs["token"] == "token"
     assert kwargs["trust_remote_code"] is False
+    assert kwargs["use_safetensors"] is False
     assert "device_map" not in kwargs
     assert "quantization_config" not in kwargs
 
@@ -120,3 +122,28 @@ def test_load_base_model_uses_registry_override(
     model, tokenizer = model_registry.load_base_model(cfg)
     assert isinstance(model, DummyModel)
     assert isinstance(tokenizer, DummyTokenizer)
+
+
+def test_apply_hf_runtime_env_disables_safetensors_conversion() -> None:
+    """Runtime env should disable safetensors auto-conversion when configured."""
+    cfg = Config(disable_safetensors_conversion=True)
+    model_registry._apply_hf_runtime_env(cfg)
+    assert model_registry.os.environ["DISABLE_SAFETENSORS_CONVERSION"] == "1"
+
+
+def test_flan_t5_small_uses_default_seq2seq_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """flan-t5-small should load through the default seq2seq path."""
+    cfg = Config(hf_model="google/flan-t5-small", use_safetensors=False)
+    captured: dict[str, bool] = {}
+
+    def fake_default_seq2seq(loader_cfg: Config) -> tuple[Any, Any]:
+        captured["use_safetensors"] = loader_cfg.use_safetensors
+        return object(), object()
+
+    monkeypatch.delitem(model_registry.MODEL_REGISTRY, cfg.hf_model, raising=False)
+    monkeypatch.setattr(model_registry, "load_default_seq2seq", fake_default_seq2seq)
+    model_registry.load_base_model(cfg)
+
+    assert captured["use_safetensors"] is False
