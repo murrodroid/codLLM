@@ -87,11 +87,13 @@ class Config:
     device: torch.device = field(default_factory=_default_device)
     device_map: Optional[str] = field(default_factory=_default_device_map)
     load_in_8bit: bool = field(default_factory=torch.cuda.is_available)
+    use_safetensors: bool = False
+    disable_safetensors_conversion: bool = True
     torch_dtype: Optional[str] = "auto"
 
     data_raw_dir: str = "data/raw"
     data_processed_dir: str = "data/processed"
-    processed_filename: str = "training.csv"
+    processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=_default_data_sources)
     training_input: list[TrainingInput] = field(
         default_factory=lambda: ["cod", "age", "sex"]
@@ -103,5 +105,6 @@ class Config:
     test_size: float = 0.1
 
     dataset_size: float = 0.5
+
 
 config = Config()
