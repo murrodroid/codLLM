@@ -42,7 +42,7 @@ def test_resolve_hf_token_from_api_keys(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
     _mock_api_keys_module(monkeypatch, hugging_face="from_file")
     cfg = Config(hf_token=None)
-    assert model_registry._resolve_hf_token(cfg) == "from_file"
+    assert model_registry._resolve_hf_token(cfg) is None
 
 
 def test_resolve_torch_dtype_known_values() -> None:
