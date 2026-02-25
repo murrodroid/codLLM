@@ -111,12 +111,12 @@ class Config:
         default_factory=lambda: ["cod", "age", "sex"]
     )
     max_label_count: int = 1
-
+    
+    dataset_size: float = 0.05
     train_size: float = 0.8
     val_size: float = 0.1
     test_size: float = 0.1
 
-    dataset_size: float = 0.05
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
 
