@@ -52,9 +52,29 @@ codLLM/
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/historical-cod-llm
-cd historical-cod-llm
+git clone https://github.com/murrodroid/codllm
+cd codllm
+pip install uv
 uv sync
+```
+
+## Environment Variables
+
+You will need to define environment variables for HuggingFace and WandB (Note: HuggingFace is optional by strongly recommended).
+
+You can do this easily by using the following terminal commands:
+
+```bash
+echo 'export WANDB_API_KEY="YOUR_WANDB_KEY"' >> ~/.zshrc
+echo 'export HUGGINGFACE_HUB_TOKEN="YOUR_HF_KEY"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+And check that it worked by launching a new terminal and running the following:
+
+```bash
+echo "${WANDB_API_KEY:0:8}..."
+echo "${HUGGINGFACE_HUB_TOKEN:0:8}..."
 ```
 
 ## Docker
@@ -71,7 +91,7 @@ Run the container:
 docker run --rm -e HUGGINGFACE_HUB_TOKEN -e WANDB_API_KEY codllm-train:latest
 ```
 
-`WANDB_API_KEY` is optional. When omitted, training runs without Weights & Biases logging in unauthenticated containers.
+`WANDB_API_KEY` is optional. When not used, training runs without Weights & Biases logging in unauthenticated containers.
 
 ## License
 
