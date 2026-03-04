@@ -73,7 +73,7 @@ def _default_data_sources() -> list[DataSourceConfig]:
 class Config:
     """Configuration for Hugging Face seq2seq training experiments."""
 
-    hf_model: str = "google/flan-t5-large"  # google/flan-ul2, google/flan-t5-small
+    hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
     trust_remote_code: bool = False
 
