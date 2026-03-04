@@ -67,7 +67,7 @@ uv sync
 
 Environment variables are supported, but only if they are explicitly read by the scripts.
 
-- `jobs/train.sh` reads a fixed set of variables (listed below) and passes some into Docker.
+- `jobs/train.sh` reads a fixed set of variables and runs on HPC.
 - The Python training code reads `HUGGINGFACE_HUB_TOKEN` (or `HF_TOKEN`) and `WANDB_API_KEY`.
 - Reproducibility controls are read from `CODLLM_*` env vars (listed below).
 - Arbitrary env vars are ignored unless the code references them.
@@ -126,9 +126,11 @@ docker run --rm \
 `WANDB_API_KEY` is optional. Without it, training runs with W&B disabled.
 Model outputs and processed data persist in the named Docker volumes.
 
-## HPC Usage (LSF + Docker)
+## HPC Usage (LSF, No Docker)
 
-This repo already includes an HPC launcher: `jobs/train.sh`.
+Use this path when your cluster does not allow Docker.
+
+Script: `jobs/train.sh`
 
 ### 1) Edit scheduler directives in `jobs/train.sh`
 
@@ -141,91 +143,48 @@ Update the `#BSUB` lines for your cluster before first run:
 - email (`-u`)
 - output log path (`-oo`)
 
-### 2) Prepare job environment
+### 2) Prepare environment and submit
 
 From repo root:
 
 ```bash
 mkdir -p logs
 
-export STORAGE_FOLDER="/work3/$USER"               # set this to your own HPC storage
-export HUGGINGFACE_HUB_TOKEN="YOUR_HF_KEY"         # optional, but recommended
-export WANDB_API_KEY="YOUR_WANDB_KEY"              # optional
+export STORAGE_FOLDER="/work3/$USER"
+export HUGGINGFACE_HUB_TOKEN="YOUR_HF_KEY"   # optional, but recommended
+export WANDB_API_KEY="YOUR_WANDB_KEY"        # optional
 export CODLLM_SEED=42
 export CODLLM_DATA_SEED=42
 
-# First run on a node without image:
-export BUILD_IMAGE=1
-# Later runs:
-export BUILD_IMAGE=0
-```
-
-`TRAIN_DATA_RAW_DIR` defaults to `data/raw`. Make sure the expected raw files are present there
-(or override the path):
-
-- `SOSA_EXTR_1920-1930 (belgium).xlsx`
-- `AMC_1854_1926_LM.csv`
-
-### 3) Submit
-
-```bash
 bsub < jobs/train.sh
 ```
 
-### 4) Monitor
+LSF inherits exported environment variables from the submitting shell, so set them before
+`bsub`.
+
+### 3) Monitor
 
 ```bash
 bjobs
 tail -f logs/<job_id>.out
 ```
 
-### 5) Outputs
-
-By default, results and caches are written under:
-
-- `${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}/runs` (training outputs)
-- `${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}/data/processed` (processed data)
-- `${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}/cache/*` (HF/Torch/W&B caches)
-
-Processed-data caching is setup-aware:
-
-- The pipeline writes a sidecar metadata file (`<processed-file>.meta.json`).
-- On the next run, processed data is reused only if metadata still matches the current
-  data setup (sources, mappings, and relevant preprocessing config).
-- If anything changes, processed data is rebuilt automatically.
-
-### HPC env vars supported by `jobs/train.sh`
+### Native HPC env vars supported by `jobs/train.sh`
 
 - `STORAGE_FOLDER` (default: `/work3/s234805`)
 - `RUN_STORAGE_DIR` (default: `$STORAGE_FOLDER/codllm`)
-- `IMAGE_TAG` (default: `codllm-train:latest`)
-- `DOCKERFILE_PATH` (default: `dockerfiles/train.dockerfile`)
-- `BUILD_IMAGE` (`1` to build in job, default `0`)
-- `PULL_IMAGE` (`1` to pull image if missing, default `0`)
 - `TRAIN_DATA_RAW_DIR` (default: `$PROJECT_DIR/data/raw`)
 - `TRAIN_DATA_PROCESSED_DIR` (default: `$RUN_STORAGE_DIR/data/processed`)
 - `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
-- `HUGGINGFACE_HUB_TOKEN` (forwarded to container if set)
-- `WANDB_API_KEY` (forwarded to container if set)
-- `WANDB_MODE` (forwarded to container if set)
-- `CODLLM_SEED` (default: `42`)
-- `CODLLM_DATA_SEED` (defaults to `CODLLM_SEED` when unset)
-- `CODLLM_DATALOADER_NUM_WORKERS` (default: `0`)
-- `CODLLM_DETERMINISTIC_ALGORITHMS` (optional override)
-- `CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY` (optional override)
-- `CODLLM_CUDNN_DETERMINISTIC` (optional override)
-- `CODLLM_CUDNN_BENCHMARK` (optional override)
-- `CODLLM_DATASET_SIZE` (optional override)
-- `CODLLM_MAX_LABEL_COUNT` (optional override)
-- `CODLLM_MAX_TARGET_LENGTH` (optional override)
-- `CODLLM_LABEL_CODE_LENGTH` (optional override, default `7`)
-- `CODLLM_LABEL_SEPARATOR` (optional override, default `" | "`)
-- `CODLLM_MAX_TARGET_LENGTH_BUFFER` (optional override, default `4`)
-- `PYTHONHASHSEED` (default: `CODLLM_SEED`)
-- `CUBLAS_WORKSPACE_CONFIG` (default: `:4096:8`)
-- `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `TOKENIZERS_PARALLELISM` (job defaults set)
-- `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`,
-  `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR` (optional cache overrides)
+- `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
+- `SYNC_ENV` (`1` to run `uv sync`, default `1`)
+- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `0`)
+- `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
+- `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
+- `CODLLM_*` training/reproducibility settings from the section above
+- `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
+- `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
+
 
 ## License
 
