@@ -189,12 +189,23 @@ def build_training_args(
     return Seq2SeqTrainingArguments(**training_kwargs)
 
 
+def _validate_trainable_model(model: Any) -> None:
+    """Ensure current pipeline is not asked to full-finetune a quantized base model."""
+    if getattr(model, "is_quantized", False):
+        raise ValueError(
+            "Quantized model detected for fine-tuning. "
+            "Set CODLLM_LOAD_IN_8BIT=0 (or cfg.load_in_8bit=False) "
+            "or attach PEFT adapters before training."
+        )
+
+
 def train(
     cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
 ) -> Tuple[Seq2SeqTrainer, Any]:
     """Preprocess datasets and run a seq2seq fine-tuning job."""
     configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
+    _validate_trainable_model(model)
     target_max_length = cfg.resolved_max_target_length()
 
     processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds, target_max_length)

@@ -109,7 +109,7 @@ class Config:
 
     device: torch.device = field(default_factory=_default_device)
     device_map: Optional[str] = field(default_factory=_default_device_map)
-    load_in_8bit: bool = field(default_factory=torch.cuda.is_available)
+    load_in_8bit: bool = False
     use_safetensors: bool = False
     disable_safetensors_conversion: bool = True
     torch_dtype: Optional[str] = "float16"
@@ -244,6 +244,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     cudnn_benchmark = _parse_env_bool("CODLLM_CUDNN_BENCHMARK")
     if cudnn_benchmark is not None:
         cfg.cudnn_benchmark = cudnn_benchmark
+
+    load_in_8bit = _parse_env_bool("CODLLM_LOAD_IN_8BIT")
+    if load_in_8bit is not None:
+        cfg.load_in_8bit = load_in_8bit
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:

@@ -92,6 +92,7 @@ export CODLLM_DATALOADER_NUM_WORKERS=0
 export CODLLM_DETERMINISTIC_ALGORITHMS=true
 export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
+export CODLLM_LOAD_IN_8BIT=0
 export CODLLM_MAX_LABEL_COUNT=2
 export CODLLM_MAX_TARGET_LENGTH=16
 export CODLLM_LABEL_CODE_LENGTH=7
@@ -182,6 +183,7 @@ tail -f logs/<job_id>.out
 - `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
+- `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 

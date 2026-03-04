@@ -16,6 +16,7 @@ ENV_KEYS = [
     "CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY",
     "CODLLM_CUDNN_DETERMINISTIC",
     "CODLLM_CUDNN_BENCHMARK",
+    "CODLLM_LOAD_IN_8BIT",
     "CODLLM_DATASET_SIZE",
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
@@ -49,6 +50,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY", "false")
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
     monkeypatch.setenv("CODLLM_CUDNN_BENCHMARK", "true")
+    monkeypatch.setenv("CODLLM_LOAD_IN_8BIT", "true")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
@@ -57,7 +59,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
 
-    base = Config(seed=42, data_seed=None, output_dir="./runs")
+    base = Config(seed=42, data_seed=None, output_dir="./runs", load_in_8bit=False)
     cfg = config_from_env(base)
 
     assert cfg.seed == 101
@@ -72,6 +74,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.deterministic_algorithms_warn_only is False
     assert cfg.cudnn_deterministic is False
     assert cfg.cudnn_benchmark is True
+    assert cfg.load_in_8bit is True
     assert cfg.dataset_size == 0.75
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2

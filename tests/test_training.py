@@ -104,6 +104,29 @@ def test_build_training_args_honors_explicit_generation_max_length(
     assert args.generation_max_length == 19
 
 
+def test_validate_trainable_model_rejects_quantized_model() -> None:
+    """Quantized base models should fail with an actionable error."""
+
+    class QuantizedModel:
+        """Model stub that mimics quantized loading."""
+
+        is_quantized = True
+
+    with pytest.raises(ValueError, match="CODLLM_LOAD_IN_8BIT"):
+        train_module._validate_trainable_model(QuantizedModel())
+
+
+def test_validate_trainable_model_accepts_non_quantized_model() -> None:
+    """Non-quantized models should pass validation."""
+
+    class TrainableModel:
+        """Model stub that mimics regular dense loading."""
+
+        is_quantized = False
+
+    train_module._validate_trainable_model(TrainableModel())
+
+
 def test_resolve_wandb_reporting_uses_wandb_with_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
