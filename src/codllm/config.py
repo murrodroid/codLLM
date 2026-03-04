@@ -91,8 +91,7 @@ class Config:
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 8
-    warmup_steps: int = 0
-    warmup_ratio: Optional[float] = 0.03
+    warmup_steps: int = 1
     dataloader_num_workers: int = 4
     logging_steps: int = 25
     eval_steps: int = 200

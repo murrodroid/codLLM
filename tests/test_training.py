@@ -104,6 +104,34 @@ def test_build_training_args_honors_explicit_generation_max_length(
     assert args.generation_max_length == 19
 
 
+def test_build_training_args_disables_fp16_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit disable flag should force fp16 AMP off."""
+    monkeypatch.setattr(
+        train_module,
+        "_resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(torch_dtype="float16")
+    args = build_training_args(cfg, has_eval=True, disable_fp16=True)
+    assert args.fp16 is False
+
+
+def test_model_uses_trainable_fp16_params_detects_half_weights() -> None:
+    """Model inspection should detect trainable float16 parameters."""
+    model = train_module.torch.nn.Linear(4, 2).half()
+    assert train_module._model_uses_trainable_fp16_params(model) is True
+
+
+def test_model_uses_trainable_fp16_params_ignores_frozen_weights() -> None:
+    """Frozen float16 parameters should not trigger fp16 AMP disablement."""
+    model = train_module.torch.nn.Linear(4, 2).half()
+    for parameter in model.parameters():
+        parameter.requires_grad = False
+    assert train_module._model_uses_trainable_fp16_params(model) is False
+
+
 def test_validate_trainable_model_rejects_quantized_model() -> None:
     """Quantized base models should fail with an actionable error."""
 

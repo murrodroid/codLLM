@@ -146,12 +146,19 @@ def _resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], Optional[str
 
 
 def build_training_args(
-    cfg: Config, has_eval: bool, generation_max_length: Optional[int] = None
+    cfg: Config,
+    has_eval: bool,
+    generation_max_length: Optional[int] = None,
+    disable_fp16: bool = False,
 ) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
-    fp16 = torch.cuda.is_available() and cfg.torch_dtype in (None, "auto", "float16")
+    fp16 = (
+        torch.cuda.is_available()
+        and cfg.torch_dtype in (None, "auto", "float16")
+        and not disable_fp16
+    )
     bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
     report_to, run_name = _resolve_wandb_reporting(cfg)
     data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
@@ -184,8 +191,8 @@ def build_training_args(
         "data_seed": data_seed,
         "dataloader_num_workers": cfg.dataloader_num_workers,
     }
-    if cfg.warmup_ratio is not None:
-        training_kwargs["warmup_ratio"] = cfg.warmup_ratio
+    if cfg.warmup_steps is not None:
+        training_kwargs["warmup_steps"] = cfg.warmup_steps
     return Seq2SeqTrainingArguments(**training_kwargs)
 
 
@@ -199,6 +206,18 @@ def _validate_trainable_model(model: Any) -> None:
         )
 
 
+def _model_uses_trainable_fp16_params(model: Any) -> bool:
+    """Return True when any trainable floating-point parameter is already float16."""
+    if not hasattr(model, "parameters"):
+        return False
+    for parameter in model.parameters():
+        if not parameter.requires_grad:
+            continue
+        if torch.is_floating_point(parameter) and parameter.dtype == torch.float16:
+            return True
+    return False
+
+
 def train(
     cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
 ) -> Tuple[Seq2SeqTrainer, Any]:
@@ -206,6 +225,15 @@ def train(
     configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
     _validate_trainable_model(model)
+    disable_fp16 = _model_uses_trainable_fp16_params(model)
+    if disable_fp16:
+        warnings.warn(
+            (
+                "Trainable model parameters are already float16. "
+                "Disabling Trainer fp16 AMP to avoid grad unscale errors."
+            ),
+            stacklevel=2,
+        )
     target_max_length = cfg.resolved_max_target_length()
 
     processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds, target_max_length)
@@ -218,6 +246,7 @@ def train(
         cfg,
         has_eval=processed_eval_ds is not None,
         generation_max_length=target_max_length,
+        disable_fp16=disable_fp16,
     )
 
     trainer = Seq2SeqTrainer(

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
 #BSUB -q gpuv100
@@ -113,7 +112,7 @@ if [ -n "${TRAIN_EXTRA_ARGS:-}" ]; then
   train_cmd+=("${extra_args[@]}")
 fi
 
-echo "Starting native training on host with command: ${train_cmd[*]}"
+echo "Starting training on host with command: ${train_cmd[*]}"
 "${train_cmd[@]}"
 
 echo "Training finished successfully."
