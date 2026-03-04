@@ -282,6 +282,7 @@ class TestDataHandler:
         handler = DataHandler(cfg, mapping_registry={"test_mapping": _make_mapping()})
         splits = handler.get_splits()
         assert handler.processed_path.exists()
+        assert handler.processed_metadata_path.exists()
         assert len(splits.train) == 10
         assert len(splits.val) == 5
         assert len(splits.test) == 5
@@ -300,12 +301,108 @@ class TestDataHandler:
             val_size=0.2,
             test_size=0.1,
             dataset_size=1.0,
+            data_sources=[],
         )
         handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
         splits = handler.get_splits()
         assert len(splits.train) == 14
         assert len(splits.val) == 4
         assert len(splits.test) == 2
+
+    def test_get_splits_reprocesses_when_metadata_missing(self, tmp_path: Path) -> None:
+        """Missing metadata should trigger a processed rebuild."""
+        raw_df = pd.DataFrame(
+            [["cholera", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"]]
+        )
+        raw_path = tmp_path / "raw.csv"
+        raw_df.to_csv(raw_path, index=False)
+
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        pd.DataFrame(
+            {
+                "source_id": ["stale"],
+                "record_id": ["old"],
+                "source_path": ["old.csv"],
+                "text": ["cod: stale | age: 99 | sex: male"],
+                "y_codes": [["A99.999"]],
+                "label": ["A99.999"],
+            }
+        ).to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="raw.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=2,
+            label_separator=",",
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+        )
+        handler = DataHandler(
+            cfg,
+            mapping_registry={"test_mapping": _make_mapping(multi_code_cols=[2, 6])},
+        )
+        _ = handler.get_splits()
+
+        refreshed = pd.read_csv(processed_path)
+        assert refreshed.iloc[0]["source_id"] == "csv_source"
+        assert refreshed.iloc[0]["label"] == "J18.100,R99.900"
+        assert handler.processed_metadata_path.exists()
+
+    def test_get_splits_reprocesses_when_source_file_changes(
+        self, tmp_path: Path
+    ) -> None:
+        """Source-file signature changes should invalidate processed cache."""
+        raw_path = tmp_path / "raw.csv"
+        pd.DataFrame(
+            [["cholera", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"]]
+        ).to_csv(raw_path, index=False)
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_processed_dir=str(tmp_path / "processed"),
+            processed_filename="training.csv",
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="raw.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+        )
+        handler = DataHandler(
+            cfg,
+            mapping_registry={"test_mapping": _make_mapping(multi_code_cols=[2, 6])},
+        )
+        _ = handler.get_splits()
+        first_processed = pd.read_csv(handler.processed_path)
+        assert first_processed.iloc[0]["label"] == "J18.100"
+
+        pd.DataFrame(
+            [["cholera", "A00.000", "B01.001", "1", "20", "RID-001", "R99.900"]]
+        ).to_csv(raw_path, index=False)
+        _ = handler.get_splits()
+        second_processed = pd.read_csv(handler.processed_path)
+        assert second_processed.iloc[0]["label"] == "B01.001"
 
     def test_get_splits_applies_dataset_size_sampling(self, tmp_path: Path) -> None:
         """dataset_size should downsample data before split."""
@@ -321,8 +418,10 @@ class TestDataHandler:
             val_size=0.1,
             test_size=0.1,
             dataset_size=0.5,
+            data_sources=[],
         )
         handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
         splits = handler.get_splits()
         assert len(splits.train) == 8
         assert len(splits.val) == 1

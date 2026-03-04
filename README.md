@@ -181,6 +181,13 @@ By default, results and caches are written under:
 - `${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}/data/processed` (processed data)
 - `${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}/cache/*` (HF/Torch/W&B caches)
 
+Processed-data caching is setup-aware:
+
+- The pipeline writes a sidecar metadata file (`<processed-file>.meta.json`).
+- On the next run, processed data is reused only if metadata still matches the current
+  data setup (sources, mappings, and relevant preprocessing config).
+- If anything changes, processed data is rebuilt automatically.
+
 ### HPC env vars supported by `jobs/train.sh`
 
 - `STORAGE_FOLDER` (default: `/work3/s234805`)

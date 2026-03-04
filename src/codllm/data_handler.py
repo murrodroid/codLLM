@@ -1,6 +1,7 @@
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, cast
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -17,6 +18,7 @@ PROCESSED_COLUMNS = [
     "y_codes",
     "label",
 ]
+PROCESSING_METADATA_VERSION = 1
 
 
 @dataclass
@@ -94,17 +96,93 @@ class DataHandler:
         """Return the configured processed-data output path."""
         return Path(self.cfg.data_processed_dir) / self.cfg.processed_filename
 
+    @property
+    def processed_metadata_path(self) -> Path:
+        """Return the sidecar metadata path used for processed-data validation."""
+        suffix = self.processed_path.suffix
+        return self.processed_path.with_suffix(f"{suffix}.meta.json")
+
     def processed_exists(self) -> bool:
         """Return True when the configured processed file already exists."""
         return self.processed_path.exists()
 
+    def _source_file_signature(self, path: Path) -> dict[str, Any]:
+        """Return a lightweight file signature for cache invalidation checks."""
+        resolved_path = path.resolve()
+        signature: dict[str, Any] = {
+            "path": str(resolved_path),
+            "exists": path.exists(),
+        }
+        if path.exists():
+            stats = path.stat()
+            signature["size_bytes"] = stats.st_size
+            signature["mtime_ns"] = stats.st_mtime_ns
+        return signature
+
+    def _build_processing_metadata(self) -> dict[str, Any]:
+        """Build metadata that defines whether a processed file is still reusable."""
+        source_metadata: list[dict[str, Any]] = []
+        for source in self.cfg.data_sources:
+            if not source.enabled:
+                continue
+            if source.mapping_id not in self.mapping_registry:
+                raise KeyError(
+                    f"Unknown mapping_id '{source.mapping_id}' for source '{source.source_id}'."
+                )
+            mapping = self.mapping_registry[source.mapping_id]
+            source_path = _resolve_source_path(source, self.cfg.data_raw_dir)
+            source_metadata.append(
+                {
+                    "source": asdict(source),
+                    "mapping": asdict(mapping),
+                    "file": self._source_file_signature(source_path),
+                }
+            )
+
+        return {
+            "version": PROCESSING_METADATA_VERSION,
+            "data_raw_dir": str(Path(self.cfg.data_raw_dir).resolve()),
+            "training_input": list(self.cfg.training_input),
+            "max_label_count": self.cfg.max_label_count,
+            "label_separator": self.cfg.label_separator,
+            "sources": source_metadata,
+        }
+
+    def _load_saved_processing_metadata(self) -> dict[str, Any] | None:
+        """Load saved processed metadata when available and parseable."""
+        if not self.processed_metadata_path.exists():
+            return None
+        try:
+            return json.loads(self.processed_metadata_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _write_processing_metadata(self, metadata: dict[str, Any]) -> None:
+        """Persist processed-data metadata next to the processed file."""
+        self.processed_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(metadata, sort_keys=True, indent=2)
+        self.processed_metadata_path.write_text(f"{payload}\n")
+
+    def _processed_cache_is_valid(self) -> bool:
+        """Return True when the current setup matches saved processed metadata."""
+        saved = self._load_saved_processing_metadata()
+        if saved is None:
+            return False
+        current = self._build_processing_metadata()
+        return saved == current
+
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
         """Load processed data, or build and save it when missing."""
-        if force_reprocess or not self.processed_exists():
+        should_reprocess = force_reprocess or not self.processed_exists()
+        if not should_reprocess:
+            should_reprocess = not self._processed_cache_is_valid()
+
+        if should_reprocess:
             processed_df = build_processed_dataset(
                 cfg=self.cfg, mapping_registry=self.mapping_registry
             )
             save_processed_dataset(processed_df, str(self.processed_path))
+            self._write_processing_metadata(self._build_processing_metadata())
             return processed_df
         return self._load_processed_dataset()
 
