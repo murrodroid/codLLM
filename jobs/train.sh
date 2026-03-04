@@ -156,6 +156,21 @@ fi
 if [ -n "${CODLLM_DATASET_SIZE:-}" ]; then
   docker_env_flags+=(--env CODLLM_DATASET_SIZE)
 fi
+if [ -n "${CODLLM_MAX_LABEL_COUNT:-}" ]; then
+  docker_env_flags+=(--env CODLLM_MAX_LABEL_COUNT)
+fi
+if [ -n "${CODLLM_MAX_TARGET_LENGTH:-}" ]; then
+  docker_env_flags+=(--env CODLLM_MAX_TARGET_LENGTH)
+fi
+if [ -n "${CODLLM_LABEL_CODE_LENGTH:-}" ]; then
+  docker_env_flags+=(--env CODLLM_LABEL_CODE_LENGTH)
+fi
+if [ -n "${CODLLM_MAX_TARGET_LENGTH_BUFFER:-}" ]; then
+  docker_env_flags+=(--env CODLLM_MAX_TARGET_LENGTH_BUFFER)
+fi
+if [ -n "${CODLLM_LABEL_SEPARATOR:-}" ]; then
+  docker_env_flags+=(--env CODLLM_LABEL_SEPARATOR)
+fi
 
 echo "Starting training container '$CONTAINER_NAME' from image '$IMAGE_TAG'."
 docker run \

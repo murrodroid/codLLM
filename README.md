@@ -74,13 +74,14 @@ Environment variables are supported, but only if they are explicitly read by the
 
 ## Reproducibility Defaults
 
-The training runtime now uses config-driven reproducibility defaults:
+The training runtime uses config-driven reproducibility defaults:
 
 - global seed (`seed`)
 - data split/sampler seed (`data_seed`, defaults to `seed`)
 - deterministic torch algorithms
 - deterministic CuDNN mode
 - fixed dataloader worker count (`0` by default)
+- dynamic target-length floor for labels
 
 You can override these at runtime without editing code:
 
@@ -91,6 +92,11 @@ export CODLLM_DATALOADER_NUM_WORKERS=0
 export CODLLM_DETERMINISTIC_ALGORITHMS=true
 export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
+export CODLLM_MAX_LABEL_COUNT=2
+export CODLLM_MAX_TARGET_LENGTH=16
+export CODLLM_LABEL_CODE_LENGTH=7
+export CODLLM_LABEL_SEPARATOR=" | "
+export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
 ```
 
 ## Docker (Local)
@@ -197,6 +203,11 @@ By default, results and caches are written under:
 - `CODLLM_CUDNN_DETERMINISTIC` (optional override)
 - `CODLLM_CUDNN_BENCHMARK` (optional override)
 - `CODLLM_DATASET_SIZE` (optional override)
+- `CODLLM_MAX_LABEL_COUNT` (optional override)
+- `CODLLM_MAX_TARGET_LENGTH` (optional override)
+- `CODLLM_LABEL_CODE_LENGTH` (optional override, default `7`)
+- `CODLLM_LABEL_SEPARATOR` (optional override, default `" | "`)
+- `CODLLM_MAX_TARGET_LENGTH_BUFFER` (optional override, default `4`)
 - `PYTHONHASHSEED` (default: `CODLLM_SEED`)
 - `CUBLAS_WORKSPACE_CONFIG` (default: `:4096:8`)
 - `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `TOKENIZERS_PARALLELISM` (job defaults set)

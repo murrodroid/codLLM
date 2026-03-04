@@ -1,12 +1,17 @@
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from codllm.config import Config
 
 
 def build_preprocess_fn(
-    cfg: Config, tokenizer: Any
+    cfg: Config, tokenizer: Any, max_target_length: Optional[int] = None
 ) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     """Create a dataset preprocessing function for seq2seq training."""
+    target_max_length = (
+        cfg.resolved_max_target_length()
+        if max_target_length is None
+        else max_target_length
+    )
 
     def preprocess(batch: Dict[str, Any]) -> Dict[str, Any]:
         """Tokenize source and target columns into model-ready tensors."""
@@ -29,7 +34,7 @@ def build_preprocess_fn(
         )
         labels = tokenizer(
             text_target=targets,
-            max_length=cfg.max_target_length,
+            max_length=target_max_length,
             truncation=True,
         )
         model_inputs["labels"] = labels["input_ids"]

@@ -43,7 +43,10 @@ class TokenizedSeq2SeqDataset(Dataset):
 
 
 def _tokenize_dataframe(
-    cfg: Config, tokenizer: Any, dataframe: pd.DataFrame
+    cfg: Config,
+    tokenizer: Any,
+    dataframe: pd.DataFrame,
+    target_max_length: int,
 ) -> TokenizedSeq2SeqDataset:
     """Convert a pandas dataframe into a tokenized seq2seq dataset."""
     if dataframe.empty:
@@ -67,20 +70,24 @@ def _tokenize_dataframe(
     )
     labels = tokenizer(
         text_target=targets,
-        max_length=cfg.max_target_length,
+        max_length=target_max_length,
         truncation=True,
     )
     model_inputs["labels"] = labels["input_ids"]
     return TokenizedSeq2SeqDataset(model_inputs)
 
 
-def _prepare_dataset(cfg: Config, tokenizer: Any, dataset: Any) -> Any:
+def _prepare_dataset(
+    cfg: Config, tokenizer: Any, dataset: Any, target_max_length: int
+) -> Any:
     """Convert an input dataset into the tokenized format expected by Trainer."""
     if isinstance(dataset, pd.DataFrame):
-        return _tokenize_dataframe(cfg, tokenizer, dataset)
+        return _tokenize_dataframe(cfg, tokenizer, dataset, target_max_length)
 
     if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
-        preprocess = build_preprocess_fn(cfg, tokenizer)
+        preprocess = build_preprocess_fn(
+            cfg, tokenizer, max_target_length=target_max_length
+        )
         return dataset.map(
             preprocess, batched=True, remove_columns=dataset.column_names
         )
@@ -138,7 +145,9 @@ def _resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], Optional[str
     return "none", None
 
 
-def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments:
+def build_training_args(
+    cfg: Config, has_eval: bool, generation_max_length: Optional[int] = None
+) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
@@ -146,6 +155,11 @@ def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments
     bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
     report_to, run_name = _resolve_wandb_reporting(cfg)
     data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
+    resolved_generation_max_length = (
+        cfg.resolved_max_target_length()
+        if generation_max_length is None
+        else generation_max_length
+    )
     training_kwargs = {
         "output_dir": cfg.output_dir,
         "learning_rate": cfg.lr,
@@ -161,7 +175,7 @@ def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments
         "save_strategy": cfg.save_strategy,
         "save_steps": cfg.save_steps,
         "predict_with_generate": True,
-        "generation_max_length": cfg.max_target_length,
+        "generation_max_length": resolved_generation_max_length,
         "fp16": fp16,
         "bf16": bf16,
         "report_to": report_to,
@@ -181,14 +195,19 @@ def train(
     """Preprocess datasets and run a seq2seq fine-tuning job."""
     configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
+    target_max_length = cfg.resolved_max_target_length()
 
-    processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds)
+    processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds, target_max_length)
     processed_eval_ds = None
     if eval_ds is not None:
-        processed_eval_ds = _prepare_dataset(cfg, tokenizer, eval_ds)
+        processed_eval_ds = _prepare_dataset(cfg, tokenizer, eval_ds, target_max_length)
 
     collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
-    args = build_training_args(cfg, has_eval=processed_eval_ds is not None)
+    args = build_training_args(
+        cfg,
+        has_eval=processed_eval_ds is not None,
+        generation_max_length=target_max_length,
+    )
 
     trainer = Seq2SeqTrainer(
         model=model,

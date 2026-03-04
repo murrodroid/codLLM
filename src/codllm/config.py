@@ -79,6 +79,9 @@ class Config:
 
     max_source_length: int = 512
     max_target_length: int = 16
+    label_separator: str = " | "
+    label_code_length: int = 7
+    max_target_length_buffer: int = 4
     dataset_text_column: str = "text"
     dataset_label_column: str = "label"
 
@@ -126,6 +129,23 @@ class Config:
     test_size: float = 0.1
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
+
+    def resolved_max_target_length(self) -> int:
+        """Return effective target length using code-format-aware lower bounds."""
+        if self.max_label_count < 1:
+            raise ValueError("max_label_count must be at least 1.")
+        if self.label_code_length < 1:
+            raise ValueError("label_code_length must be at least 1.")
+        if self.max_target_length_buffer < 0:
+            raise ValueError("max_target_length_buffer must be non-negative.")
+
+        separator_count = max(0, self.max_label_count - 1)
+        formatted_length = (
+            self.max_label_count * self.label_code_length
+            + separator_count * len(self.label_separator)
+        )
+        inferred_min_length = formatted_length + self.max_target_length_buffer
+        return max(self.max_target_length, inferred_min_length)
 
 
 def _parse_env_int(name: str) -> Optional[int]:
@@ -183,6 +203,30 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_DATALOADER_NUM_WORKERS must be non-negative.")
         cfg.dataloader_num_workers = dataloader_num_workers
 
+    max_label_count = _parse_env_int("CODLLM_MAX_LABEL_COUNT")
+    if max_label_count is not None:
+        if max_label_count < 1:
+            raise ValueError("CODLLM_MAX_LABEL_COUNT must be at least 1.")
+        cfg.max_label_count = max_label_count
+
+    max_target_length = _parse_env_int("CODLLM_MAX_TARGET_LENGTH")
+    if max_target_length is not None:
+        if max_target_length < 1:
+            raise ValueError("CODLLM_MAX_TARGET_LENGTH must be at least 1.")
+        cfg.max_target_length = max_target_length
+
+    label_code_length = _parse_env_int("CODLLM_LABEL_CODE_LENGTH")
+    if label_code_length is not None:
+        if label_code_length < 1:
+            raise ValueError("CODLLM_LABEL_CODE_LENGTH must be at least 1.")
+        cfg.label_code_length = label_code_length
+
+    max_target_length_buffer = _parse_env_int("CODLLM_MAX_TARGET_LENGTH_BUFFER")
+    if max_target_length_buffer is not None:
+        if max_target_length_buffer < 0:
+            raise ValueError("CODLLM_MAX_TARGET_LENGTH_BUFFER must be non-negative.")
+        cfg.max_target_length_buffer = max_target_length_buffer
+
     deterministic_algorithms = _parse_env_bool("CODLLM_DETERMINISTIC_ALGORITHMS")
     if deterministic_algorithms is not None:
         cfg.deterministic_algorithms = deterministic_algorithms
@@ -220,6 +264,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:
         cfg.output_dir = output_dir
+
+    label_separator = os.getenv("CODLLM_LABEL_SEPARATOR")
+    if label_separator is not None:
+        cfg.label_separator = label_separator
 
     data_raw_dir = os.getenv("CODLLM_DATA_RAW_DIR")
     if data_raw_dir:

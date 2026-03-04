@@ -60,6 +60,8 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
         seed=123,
         data_seed=321,
         dataloader_num_workers=2,
+        max_target_length=16,
+        max_label_count=2,
     )
     with_eval = build_training_args(cfg, has_eval=True)
     without_eval = build_training_args(cfg, has_eval=False)
@@ -70,6 +72,7 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
     assert with_eval.seed == 123
     assert with_eval.data_seed == 321
     assert with_eval.dataloader_num_workers == 2
+    assert with_eval.generation_max_length == 21
 
 
 def test_build_training_args_defaults_data_seed_to_seed(
@@ -85,6 +88,20 @@ def test_build_training_args_defaults_data_seed_to_seed(
     args = build_training_args(cfg, has_eval=True)
     assert args.seed == 77
     assert args.data_seed == 77
+
+
+def test_build_training_args_honors_explicit_generation_max_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit generation cap should override derived target max length."""
+    monkeypatch.setattr(
+        train_module,
+        "_resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(max_target_length=16, max_label_count=4)
+    args = build_training_args(cfg, has_eval=True, generation_max_length=19)
+    assert args.generation_max_length == 19
 
 
 def test_resolve_wandb_reporting_uses_wandb_with_credentials(

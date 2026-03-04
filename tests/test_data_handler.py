@@ -183,6 +183,35 @@ class TestLoaders:
         with pytest.raises(ValueError):
             build_processed_dataset(cfg, mapping_registry={"test_mapping": mapping})
 
+    def test_build_processed_dataset_uses_configured_label_separator(
+        self, tmp_path: Path
+    ) -> None:
+        """Processed labels should follow the configured separator."""
+        csv_path = tmp_path / "sample.csv"
+        _sample_df().to_csv(csv_path, index=False)
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=2,
+            label_separator=",",
+        )
+        mapping = _make_mapping(multi_code_cols=[2, 6])
+        raw = pd.DataFrame(
+            [["text", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"]]
+        )
+        raw.to_csv(csv_path, index=False)
+        result = build_processed_dataset(
+            cfg, mapping_registry={"test_mapping": mapping}
+        )
+        assert result.iloc[0]["label"] == "J18.100,R99.900"
+
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
     ) -> None:

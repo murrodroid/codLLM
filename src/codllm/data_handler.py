@@ -346,9 +346,9 @@ def _build_y(row: pd.Series, mapping: DatasetMapping, max_labels: int = 1) -> li
     return codes[:max_labels]
 
 
-def _build_label(codes: list[str]) -> str:
+def _build_label(codes: list[str], separator: str = " | ") -> str:
     """Convert code labels into a single seq2seq target string."""
-    return " | ".join(codes)
+    return separator.join(codes)
 
 
 def _detect_file_type(path: Path, source: DataSourceConfig) -> str:
@@ -377,6 +377,7 @@ def load_source_dataset(
     mapping: DatasetMapping,
     training_input: Sequence[str],
     max_labels: int = 1,
+    label_separator: str = " | ",
     data_raw_dir: str = "data/raw",
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
@@ -411,7 +412,9 @@ def load_source_dataset(
     result["y_codes"] = raw_df.apply(
         lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
     )
-    result["label"] = result["y_codes"].apply(_build_label)
+    result["label"] = result["y_codes"].apply(
+        lambda codes: _build_label(codes, separator=label_separator)
+    )
     if drop_missing_label:
         result = result[result["label"] != ""].reset_index(drop=True)
     return result
@@ -441,6 +444,7 @@ def build_processed_dataset(
                 mapping=mapping,
                 training_input=cfg.training_input,
                 max_labels=cfg.max_label_count,
+                label_separator=cfg.label_separator,
                 data_raw_dir=cfg.data_raw_dir,
             )
         )

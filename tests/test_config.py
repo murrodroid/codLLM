@@ -7,6 +7,11 @@ ENV_KEYS = [
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
+    "CODLLM_MAX_LABEL_COUNT",
+    "CODLLM_MAX_TARGET_LENGTH",
+    "CODLLM_LABEL_CODE_LENGTH",
+    "CODLLM_MAX_TARGET_LENGTH_BUFFER",
+    "CODLLM_LABEL_SEPARATOR",
     "CODLLM_DETERMINISTIC_ALGORITHMS",
     "CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY",
     "CODLLM_CUDNN_DETERMINISTIC",
@@ -35,6 +40,11 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
+    monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
+    monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH", "18")
+    monkeypatch.setenv("CODLLM_LABEL_CODE_LENGTH", "7")
+    monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH_BUFFER", "6")
+    monkeypatch.setenv("CODLLM_LABEL_SEPARATOR", ",")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS", "true")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY", "false")
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
@@ -53,6 +63,11 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.seed == 101
     assert cfg.data_seed == 202
     assert cfg.dataloader_num_workers == 3
+    assert cfg.max_label_count == 2
+    assert cfg.max_target_length == 18
+    assert cfg.label_code_length == 7
+    assert cfg.max_target_length_buffer == 6
+    assert cfg.label_separator == ","
     assert cfg.deterministic_algorithms is True
     assert cfg.deterministic_algorithms_warn_only is False
     assert cfg.cudnn_deterministic is False
@@ -86,3 +101,27 @@ def test_config_from_env_rejects_negative_dataloader_workers(
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "-1")
     with pytest.raises(ValueError):
         config_from_env()
+
+
+def test_resolved_max_target_length_uses_code_length_and_label_count() -> None:
+    """Target max length should expand with multiple labels."""
+    cfg = Config(
+        max_target_length=16,
+        max_label_count=2,
+        label_code_length=7,
+        label_separator=" | ",
+        max_target_length_buffer=4,
+    )
+    assert cfg.resolved_max_target_length() == 21
+
+
+def test_resolved_max_target_length_respects_manual_ceiling() -> None:
+    """Configured max_target_length should remain when already larger."""
+    cfg = Config(
+        max_target_length=64,
+        max_label_count=2,
+        label_code_length=7,
+        label_separator=" | ",
+        max_target_length_buffer=4,
+    )
+    assert cfg.resolved_max_target_length() == 64
