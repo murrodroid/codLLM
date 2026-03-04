@@ -110,7 +110,12 @@ docker build -f dockerfiles/train.dockerfile -t codllm-train:latest .
 Run:
 
 ```bash
+docker volume create codllm-runs
+docker volume create codllm-processed
+
 docker run --rm \
+  -v codllm-runs:/app/runs \
+  -v codllm-processed:/app/data/processed \
   -e HUGGINGFACE_HUB_TOKEN \
   -e WANDB_API_KEY \
   -e CODLLM_SEED=42 \
@@ -119,6 +124,7 @@ docker run --rm \
 ```
 
 `WANDB_API_KEY` is optional. Without it, training runs with W&B disabled.
+Model outputs and processed data persist in the named Docker volumes.
 
 ## HPC Usage (LSF + Docker)
 
