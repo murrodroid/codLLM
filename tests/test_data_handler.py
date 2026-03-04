@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from sklearn.model_selection import train_test_split
 
 from codllm.config import Config, DataSourceConfig
 from codllm.data_handler import (
@@ -297,6 +298,38 @@ class TestDataHandler:
         assert len(splits.train) == 8
         assert len(splits.val) == 1
         assert len(splits.test) == 1
+
+    def test_split_dataframe_uses_data_seed_when_configured(self) -> None:
+        """Configured data_seed should control deterministic split ordering."""
+        cfg = Config(train_size=0.6, val_size=0.2, test_size=0.2, seed=42, data_seed=7)
+        handler = DataHandler(cfg)
+        df = _processed_df(num_rows=20)
+        splits = handler.split_dataframe(df)
+
+        expected_train, expected_holdout = train_test_split(
+            df,
+            test_size=0.4,
+            random_state=7,
+            shuffle=True,
+        )
+        expected_val, expected_test = train_test_split(
+            expected_holdout,
+            test_size=0.5,
+            random_state=7,
+            shuffle=True,
+        )
+        assert (
+            splits.train["record_id"].tolist()
+            == expected_train.reset_index(drop=True)["record_id"].tolist()
+        )
+        assert (
+            splits.val["record_id"].tolist()
+            == expected_val.reset_index(drop=True)["record_id"].tolist()
+        )
+        assert (
+            splits.test["record_id"].tolist()
+            == expected_test.reset_index(drop=True)["record_id"].tolist()
+        )
 
     def test_split_dataframe_rejects_invalid_split_sum(self) -> None:
         """Invalid split totals should fail with a clear error."""

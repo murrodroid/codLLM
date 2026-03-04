@@ -114,6 +114,10 @@ class DataHandler:
         sampled_df = self._apply_dataset_size(processed_df)
         return self.split_dataframe(sampled_df)
 
+    def _resolved_data_seed(self) -> int:
+        """Return data seed, falling back to the main seed."""
+        return self.cfg.seed if self.cfg.data_seed is None else self.cfg.data_seed
+
     def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
         """Split a dataframe into train, validation, and test sets."""
         self._validate_split_sizes()
@@ -124,9 +128,10 @@ class DataHandler:
 
         holdout_size = round(self.cfg.val_size + self.cfg.test_size, 10)
         empty_df = df.iloc[0:0].copy()
+        data_seed = self._resolved_data_seed()
 
         if holdout_size == 0:
-            shuffled = df.sample(frac=1.0, random_state=self.cfg.seed).reset_index(
+            shuffled = df.sample(frac=1.0, random_state=data_seed).reset_index(
                 drop=True
             )
             return DataSplits(train=shuffled, val=empty_df.copy(), test=empty_df.copy())
@@ -135,7 +140,7 @@ class DataHandler:
             train_df, holdout_df = train_test_split(
                 df,
                 test_size=holdout_size,
-                random_state=self.cfg.seed,
+                random_state=data_seed,
                 shuffle=True,
             )
         except ValueError as exc:
@@ -155,7 +160,7 @@ class DataHandler:
                 val_df, test_df = train_test_split(
                     holdout_df,
                     test_size=test_ratio,
-                    random_state=self.cfg.seed,
+                    random_state=data_seed,
                     shuffle=True,
                 )
             except ValueError as exc:
@@ -194,8 +199,9 @@ class DataHandler:
         if sample_count >= len(df):
             return df.reset_index(drop=True)
 
+        data_seed = self._resolved_data_seed()
         return df.sample(
-            n=sample_count, random_state=self.cfg.seed, replace=False
+            n=sample_count, random_state=data_seed, replace=False
         ).reset_index(drop=True)
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:

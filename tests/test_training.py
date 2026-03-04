@@ -54,13 +54,37 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
         "_resolve_wandb_reporting",
         lambda _: ("none", None),
     )
-    cfg = Config(eval_strategy="steps", save_strategy="steps")
+    cfg = Config(
+        eval_strategy="steps",
+        save_strategy="steps",
+        seed=123,
+        data_seed=321,
+        dataloader_num_workers=2,
+    )
     with_eval = build_training_args(cfg, has_eval=True)
     without_eval = build_training_args(cfg, has_eval=False)
     assert with_eval.eval_strategy.value == "steps"
     assert with_eval.eval_steps == cfg.eval_steps
     assert without_eval.eval_strategy.value == "no"
     assert without_eval.eval_steps is None
+    assert with_eval.seed == 123
+    assert with_eval.data_seed == 321
+    assert with_eval.dataloader_num_workers == 2
+
+
+def test_build_training_args_defaults_data_seed_to_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Data seed should fall back to seed when data_seed is not set."""
+    monkeypatch.setattr(
+        train_module,
+        "_resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(seed=77, data_seed=None)
+    args = build_training_args(cfg, has_eval=True)
+    assert args.seed == 77
+    assert args.data_seed == 77
 
 
 def test_resolve_wandb_reporting_uses_wandb_with_credentials(

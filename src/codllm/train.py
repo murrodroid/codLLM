@@ -14,11 +14,11 @@ from transformers import (
     Seq2SeqTrainingArguments,
 )
 
-from codllm.config import Config
-from codllm.config import config as default_config
+from codllm.config import Config, config_from_env
 from codllm.data_handler import DataHandler, DataSplits
 from codllm.model_registry import load_base_model
 from codllm.preprocess import build_preprocess_fn
+from codllm.reproducibility import configure_reproducibility
 
 
 class TokenizedSeq2SeqDataset(Dataset):
@@ -145,6 +145,7 @@ def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments
     fp16 = torch.cuda.is_available() and cfg.torch_dtype in (None, "auto", "float16")
     bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
     report_to, run_name = _resolve_wandb_reporting(cfg)
+    data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
     training_kwargs = {
         "output_dir": cfg.output_dir,
         "learning_rate": cfg.lr,
@@ -166,6 +167,8 @@ def build_training_args(cfg: Config, has_eval: bool) -> Seq2SeqTrainingArguments
         "report_to": report_to,
         "run_name": run_name,
         "seed": cfg.seed,
+        "data_seed": data_seed,
+        "dataloader_num_workers": cfg.dataloader_num_workers,
     }
     if cfg.warmup_ratio is not None:
         training_kwargs["warmup_ratio"] = cfg.warmup_ratio
@@ -176,6 +179,7 @@ def train(
     cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
 ) -> Tuple[Seq2SeqTrainer, Any]:
     """Preprocess datasets and run a seq2seq fine-tuning job."""
+    configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
 
     processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds)
@@ -225,14 +229,31 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Rebuild processed data even when a processed file already exists.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override config seed for reproducible runs.",
+    )
+    parser.add_argument(
+        "--data-seed",
+        type=int,
+        default=None,
+        help="Override config data seed for split/sampler reproducibility.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Launch fine-tuning using the default project config."""
     args = _parse_args()
+    cfg = config_from_env()
+    if args.seed is not None:
+        cfg.seed = args.seed
+    if args.data_seed is not None:
+        cfg.data_seed = args.data_seed
     _, _, splits = train_with_data_handler(
-        cfg=default_config,
+        cfg=cfg,
         force_reprocess=args.force_reprocess,
     )
     print(

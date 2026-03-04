@@ -42,7 +42,7 @@ def is_valid_code(code: str) -> bool:
 def coarse_code(full_code: str) -> str:
     """Extract coarse category: ``'A00.000'`` → ``'A00'``."""
     return full_code[0] + full_code[1] + full_code[2]
- 
+
 
 def icd10_code(full_code: str) -> str:
     """Convert ICD10h to ICD10: ``'A00.000'`` → ``'A00.0'``."""
