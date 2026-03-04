@@ -24,6 +24,8 @@ PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
 
+PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
 RUN_STORAGE_DIR="${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}"
 
@@ -55,6 +57,7 @@ CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
 OMP_NUM_THREADS="${OMP_NUM_THREADS:-${LSB_DJOB_NUMPROC:-1}}"
 MKL_NUM_THREADS="${MKL_NUM_THREADS:-$OMP_NUM_THREADS}"
 TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+UV_BIN="${UV_BIN:-uv}"
 
 export HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE HF_DATASETS_CACHE TORCH_HOME
 export WANDB_DIR WANDB_CACHE_DIR
@@ -84,8 +87,17 @@ if [ ! -d "$CODLLM_DATA_RAW_DIR" ]; then
   exit 1
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
+if ! command -v "$UV_BIN" >/dev/null 2>&1; then
+  if [ -x "$HOME/.local/bin/uv" ]; then
+    UV_BIN="$HOME/.local/bin/uv"
+  elif [ -x "$HOME/.cargo/bin/uv" ]; then
+    UV_BIN="$HOME/.cargo/bin/uv"
+  fi
+fi
+
+if ! command -v "$UV_BIN" >/dev/null 2>&1; then
   echo "ERROR: uv is not available in PATH."
+  echo "Set UV_BIN to the full uv path, e.g. export UV_BIN=\$HOME/.local/bin/uv"
   exit 1
 fi
 
@@ -99,10 +111,10 @@ fi
 
 if [ "$SYNC_ENV" = "1" ]; then
   echo "Syncing Python environment with uv."
-  uv sync --frozen --no-dev
+  "$UV_BIN" sync --frozen --no-dev
 fi
 
-train_cmd=(uv run python -m codllm.train)
+train_cmd=("$UV_BIN" run python -m codllm.train)
 if [ "$FORCE_REPROCESS" = "1" ]; then
   train_cmd+=(--force-reprocess)
 fi
