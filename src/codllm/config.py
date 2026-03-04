@@ -85,13 +85,14 @@ class Config:
     dataset_text_column: str = "text"
     dataset_label_column: str = "label"
 
-    lr: float = 1e-4
+    lr: float = 3e-5
     weight_decay: float = 0.0
     num_train_epochs: int = 3
-    per_device_train_batch_size: int = 12
+    per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
-    warmup_steps: int = 1
+    max_grad_norm: float = 0.5
+    warmup_steps: int = 300
     dataloader_num_workers: int = 4
     logging_steps: int = 25
     eval_steps: int = 200
@@ -122,7 +123,7 @@ class Config:
     )
     max_label_count: int = 1
 
-    dataset_size: float = 0.5
+    dataset_size: float = 0.2
     train_size: float = 0.8
     val_size: float = 0.1
     test_size: float = 0.1
@@ -202,6 +203,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_DATALOADER_NUM_WORKERS must be non-negative.")
         cfg.dataloader_num_workers = dataloader_num_workers
 
+    warmup_steps = _parse_env_int("CODLLM_WARMUP_STEPS")
+    if warmup_steps is not None:
+        if warmup_steps < 0:
+            raise ValueError("CODLLM_WARMUP_STEPS must be non-negative.")
+        cfg.warmup_steps = warmup_steps
+
     max_label_count = _parse_env_int("CODLLM_MAX_LABEL_COUNT")
     if max_label_count is not None:
         if max_label_count < 1:
@@ -251,6 +258,18 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:
         cfg.dataset_size = dataset_size
+
+    lr = _parse_env_float("CODLLM_LR")
+    if lr is not None:
+        if lr <= 0:
+            raise ValueError("CODLLM_LR must be positive.")
+        cfg.lr = lr
+
+    max_grad_norm = _parse_env_float("CODLLM_MAX_GRAD_NORM")
+    if max_grad_norm is not None:
+        if max_grad_norm < 0:
+            raise ValueError("CODLLM_MAX_GRAD_NORM must be non-negative.")
+        cfg.max_grad_norm = max_grad_norm
 
     train_size = _parse_env_float("CODLLM_TRAIN_SIZE")
     if train_size is not None:

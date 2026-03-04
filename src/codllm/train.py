@@ -175,6 +175,7 @@ def build_training_args(
         "per_device_train_batch_size": cfg.per_device_train_batch_size,
         "per_device_eval_batch_size": cfg.per_device_eval_batch_size,
         "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
+        "max_grad_norm": cfg.max_grad_norm,
         "warmup_steps": cfg.warmup_steps,
         "logging_steps": cfg.logging_steps,
         "eval_strategy": eval_strategy,

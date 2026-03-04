@@ -7,6 +7,8 @@ ENV_KEYS = [
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
+    "CODLLM_WARMUP_STEPS",
+    "CODLLM_MAX_GRAD_NORM",
     "CODLLM_MAX_LABEL_COUNT",
     "CODLLM_MAX_TARGET_LENGTH",
     "CODLLM_LABEL_CODE_LENGTH",
@@ -17,6 +19,7 @@ ENV_KEYS = [
     "CODLLM_CUDNN_DETERMINISTIC",
     "CODLLM_CUDNN_BENCHMARK",
     "CODLLM_LOAD_IN_8BIT",
+    "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
@@ -41,6 +44,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
+    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
+    monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH", "18")
     monkeypatch.setenv("CODLLM_LABEL_CODE_LENGTH", "7")
@@ -51,6 +56,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
     monkeypatch.setenv("CODLLM_CUDNN_BENCHMARK", "true")
     monkeypatch.setenv("CODLLM_LOAD_IN_8BIT", "true")
+    monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
@@ -65,6 +71,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.seed == 101
     assert cfg.data_seed == 202
     assert cfg.dataloader_num_workers == 3
+    assert cfg.warmup_steps == 500
+    assert cfg.max_grad_norm == 0.25
     assert cfg.max_label_count == 2
     assert cfg.max_target_length == 18
     assert cfg.label_code_length == 7
@@ -75,6 +83,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.cudnn_deterministic is False
     assert cfg.cudnn_benchmark is True
     assert cfg.load_in_8bit is True
+    assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2
@@ -102,6 +111,36 @@ def test_config_from_env_rejects_negative_dataloader_workers(
     """Dataloader worker count should be non-negative."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "-1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_warmup_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Warmup steps should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "-1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_non_positive_learning_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Learning rate should be positive."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_LR", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_max_grad_norm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Max grad norm should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "-0.1")
     with pytest.raises(ValueError):
         config_from_env()
 
