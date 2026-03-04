@@ -24,6 +24,10 @@ PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
 
+if [ -z "${HOME:-}" ] && command -v getent >/dev/null 2>&1; then
+  HOME="$(getent passwd "$(id -u)" | cut -d: -f6 || true)"
+fi
+
 PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
@@ -88,6 +92,10 @@ if [ ! -d "$CODLLM_DATA_RAW_DIR" ]; then
   exit 1
 fi
 
+if command -v module >/dev/null 2>&1; then
+  module load uv >/dev/null 2>&1 || true
+fi
+
 if [ -n "${UV_BIN:-}" ] && [ -x "$UV_BIN" ]; then
   UV_CMD=("$UV_BIN")
 elif command -v "$UV_BIN" >/dev/null 2>&1; then
@@ -105,6 +113,15 @@ else
   done
 fi
 
+if [ "${#UV_CMD[@]}" -eq 0 ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+  discovered_uv="$(
+    find "$HOME" -maxdepth 4 -type f -name uv -perm -u+x 2>/dev/null | head -n 1
+  )"
+  if [ -n "$discovered_uv" ]; then
+    UV_CMD=("$discovered_uv")
+  fi
+fi
+
 if [ "${#UV_CMD[@]}" -eq 0 ]; then
   echo "ERROR: uv is not available in PATH."
   echo "Tried UV_BIN='$UV_BIN', \$HOME/.local/bin/uv, \$HOME/.cargo/bin/uv, and python -m uv."
@@ -113,6 +130,8 @@ if [ "${#UV_CMD[@]}" -eq 0 ]; then
   echo "Set UV_BIN to the full uv path, e.g. export UV_BIN=\$HOME/.local/bin/uv"
   exit 1
 fi
+
+echo "Using uv command: ${UV_CMD[*]}"
 
 if command -v module >/dev/null 2>&1; then
   module load cuda/12.2
