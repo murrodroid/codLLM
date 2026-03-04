@@ -114,8 +114,20 @@ else
 fi
 
 if [ "${#UV_CMD[@]}" -eq 0 ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+  for candidate in \
+    "$HOME/.local/pipx/venvs/uv/bin/uv" \
+    "$HOME/.local/share/pipx/venvs/uv/bin/uv"
+  do
+    if [ -x "$candidate" ]; then
+      UV_CMD=("$candidate")
+      break
+    fi
+  done
+fi
+
+if [ "${#UV_CMD[@]}" -eq 0 ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
   discovered_uv="$(
-    find "$HOME" -maxdepth 4 -type f -name uv -perm -u+x 2>/dev/null | head -n 1
+    find "$HOME" -maxdepth 8 -type f -name uv -perm -u+x 2>/dev/null | head -n 1
   )"
   if [ -n "$discovered_uv" ]; then
     UV_CMD=("$discovered_uv")
