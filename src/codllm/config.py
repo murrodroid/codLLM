@@ -85,13 +85,13 @@ class Config:
     dataset_text_column: str = "text"
     dataset_label_column: str = "label"
 
-    lr: float = 3e-5
+    lr: float = 1e-5
     weight_decay: float = 0.0
     num_train_epochs: int = 3
     per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 0.1
     warmup_steps: int = 300
     dataloader_num_workers: int = 4
     logging_steps: int = 25
@@ -112,7 +112,7 @@ class Config:
     load_in_8bit: bool = False
     use_safetensors: bool = False
     disable_safetensors_conversion: bool = True
-    torch_dtype: Optional[str] = "float16"
+    torch_dtype: Optional[str] = "auto"
 
     data_raw_dir: str = "data/raw"
     data_processed_dir: str = "data/processed"
