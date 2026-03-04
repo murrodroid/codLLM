@@ -3,9 +3,9 @@
 #BSUB -J codllm-train
 #BSUB -q gpuv100
 #BSUB -W 08:00
-#BSUB -n 4
+#BSUB -n 6
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=6GB]"
+#BSUB -R "rusage[mem=4GB]"
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -u s234805@dtu.dk
 #BSUB -B

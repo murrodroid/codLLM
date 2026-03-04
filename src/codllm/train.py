@@ -218,6 +218,16 @@ def _model_uses_trainable_fp16_params(model: Any) -> bool:
     return False
 
 
+def _upcast_trainable_fp16_params(model: Any) -> bool:
+    """Cast model to float32 when trainable parameters are float16."""
+    if not _model_uses_trainable_fp16_params(model):
+        return False
+    if not hasattr(model, "float"):
+        return False
+    model.float()
+    return True
+
+
 def train(
     cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
 ) -> Tuple[Seq2SeqTrainer, Any]:
@@ -225,7 +235,16 @@ def train(
     configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
     _validate_trainable_model(model)
+    upcasted_fp16_model = _upcast_trainable_fp16_params(model)
     disable_fp16 = _model_uses_trainable_fp16_params(model)
+    if upcasted_fp16_model:
+        warnings.warn(
+            (
+                "Trainable model parameters were loaded as float16. "
+                "Upcasting model to float32 to improve optimization stability."
+            ),
+            stacklevel=2,
+        )
     if disable_fp16:
         warnings.warn(
             (

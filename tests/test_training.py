@@ -132,6 +132,22 @@ def test_model_uses_trainable_fp16_params_ignores_frozen_weights() -> None:
     assert train_module._model_uses_trainable_fp16_params(model) is False
 
 
+def test_upcast_trainable_fp16_params_casts_to_float32() -> None:
+    """Upcast helper should convert trainable half weights to float32."""
+    model = train_module.torch.nn.Linear(4, 2).half()
+    did_upcast = train_module._upcast_trainable_fp16_params(model)
+    assert did_upcast is True
+    dtypes = {parameter.dtype for parameter in model.parameters() if parameter.requires_grad}
+    assert dtypes == {train_module.torch.float32}
+
+
+def test_upcast_trainable_fp16_params_noop_for_float32() -> None:
+    """Upcast helper should no-op when model is already float32."""
+    model = train_module.torch.nn.Linear(4, 2).float()
+    did_upcast = train_module._upcast_trainable_fp16_params(model)
+    assert did_upcast is False
+
+
 def test_validate_trainable_model_rejects_quantized_model() -> None:
     """Quantized base models should fail with an actionable error."""
 

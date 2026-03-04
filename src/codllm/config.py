@@ -87,10 +87,10 @@ class Config:
 
     lr: float = 1e-4
     weight_decay: float = 0.0
-    num_train_epochs: int = 8
-    per_device_train_batch_size: int = 4
+    num_train_epochs: int = 3
+    per_device_train_batch_size: int = 12
     per_device_eval_batch_size: int = 8
-    gradient_accumulation_steps: int = 8
+    gradient_accumulation_steps: int = 2
     warmup_steps: int = 1
     dataloader_num_workers: int = 4
     logging_steps: int = 25
