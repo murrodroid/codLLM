@@ -1,8 +1,10 @@
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 import pytest
 
+import codllm.metrics as metrics_module
 import codllm.train as train_module
 import codllm.wandb_utils as wandb_utils_module
 from codllm.config import Config, WandbConfig
@@ -28,6 +30,30 @@ class DummyTokenizer:
         assert max_length is not None
         encoded = [[len(value)] for value in values]
         return {"input_ids": encoded}
+
+
+class DummyDecodeTokenizer:
+    """Tokenizer stub for metric decoding tests."""
+
+    pad_token_id = 0
+    token_map = {
+        0: "<pad>",
+        1: "A00",
+        2: "A01",
+        3: "B00",
+    }
+
+    def batch_decode(
+        self, sequences: List[List[int]], skip_special_tokens: bool = True
+    ) -> List[str]:
+        """Decode integer token ids into space-separated token strings."""
+        decoded: List[str] = []
+        for sequence in sequences:
+            tokens = [self.token_map.get(int(token), str(int(token))) for token in sequence]
+            if skip_special_tokens:
+                tokens = [token for token in tokens if token != "<pad>"]
+            decoded.append(" ".join(tokens))
+        return decoded
 
 
 def test_preprocess_uses_configured_columns() -> None:
@@ -117,6 +143,24 @@ def test_build_training_args_disables_fp16_when_requested(
     cfg = Config(torch_dtype="float16")
     args = build_training_args(cfg, has_eval=True, disable_fp16=True)
     assert args.fp16 is False
+
+
+def test_exact_match_accuracy_is_one_for_identical_predictions() -> None:
+    """Exact-match metric should be 1.0 when decoded predictions equal labels."""
+    metric_fn = metrics_module.build_exact_match_accuracy_metric(DummyDecodeTokenizer())
+    predictions = np.array([[1, 0, 0], [2, 0, 0]])
+    labels = np.array([[1, -100, -100], [2, -100, -100]])
+    metrics = metric_fn((predictions, labels))
+    assert metrics["accuracy"] == 1.0
+
+
+def test_exact_match_accuracy_reports_partial_match() -> None:
+    """Exact-match metric should reflect prediction/label mismatches."""
+    metric_fn = metrics_module.build_exact_match_accuracy_metric(DummyDecodeTokenizer())
+    predictions = np.array([[1, 0, 0], [3, 0, 0]])
+    labels = np.array([[1, -100, -100], [2, -100, -100]])
+    metrics = metric_fn((predictions, labels))
+    assert metrics["accuracy"] == 0.5
 
 
 def test_build_training_args_auto_dtype_disables_fp16_without_bf16_support(

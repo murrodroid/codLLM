@@ -17,6 +17,7 @@ from codllm.data_handler import (
     prepare_training_dataset,
     resolve_training_frames,
 )
+from codllm.metrics import build_exact_match_accuracy_metric
 from codllm.model_registry import load_base_model
 from codllm.reproducibility import configure_reproducibility
 
@@ -174,6 +175,11 @@ def _train_from_datasets(
         eval_dataset=processed_eval_ds,
         data_collator=collator,
         processing_class=tokenizer,
+        compute_metrics=(
+            build_exact_match_accuracy_metric(tokenizer)
+            if processed_eval_ds is not None
+            else None
+        ),
     )
 
     trainer.train()

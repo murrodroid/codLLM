@@ -80,7 +80,7 @@ class Config:
 
     max_source_length: int = 256
     max_target_length: int = 32
-    label_separator: str = " | "
+    label_separator: str = ","
     label_code_length: int = 7
     max_target_length_buffer: int = 4
     dataset_text_column: str = "text"
@@ -88,7 +88,7 @@ class Config:
 
     lr: float = 1e-5
     weight_decay: float = 0.0
-    num_train_epochs: int = 3
+    num_train_epochs: int = 2
     per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
@@ -98,8 +98,8 @@ class Config:
     logging_steps: int = 25
     eval_steps: int = 200
     save_steps: int = 200
-    eval_strategy: str = "steps"
-    save_strategy: str = "steps"
+    eval_strategy: str = "epoch"
+    save_strategy: str = "epoch"
     output_dir: str = "./runs"
     seed: int = 42
     data_seed: Optional[int] = None
