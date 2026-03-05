@@ -48,11 +48,13 @@ def _resolve_torch_dtype(dtype_name: Optional[str]) -> Optional[object]:
 
 def _build_model_kwargs(cfg: Config, token: Optional[str]) -> Dict[str, object]:
     """Build model loading kwargs with hardware-safe defaults."""
+    dtype = _resolve_torch_dtype(cfg.torch_dtype)
     kwargs: Dict[str, object] = {
         "trust_remote_code": cfg.trust_remote_code,
         "use_safetensors": cfg.use_safetensors,
-        "torch_dtype": _resolve_torch_dtype(cfg.torch_dtype),
     }
+    if dtype is not None:
+        kwargs["dtype"] = dtype
 
     if cfg.device_map is not None:
         kwargs["device_map"] = cfg.device_map

@@ -1,8 +1,11 @@
 # Coding Historical Causes of Death with Large Language Models
 
-This project investigates whether modern Large Language Models (LLMs) can automatically translate historical free-text descriptions of causes of death into ICD10h codes.
+This project investigates whether modern Large Language Models (LLMs) can automatically
+translate historical free-text descriptions of causes of death into ICD10h codes.
 
-Historical demographers currently perform this coding manually. The process is time-consuming, requires specialised knowledge, and does not scale to rapidly growing digitised archives. This project aims to reduce coding time from months to minutes using machine learning.
+Historical demographers currently perform this coding manually. The process is time-consuming,
+requires specialised knowledge, and does not scale to rapidly growing digitised archives.
+This project aims to reduce coding time from months to minutes using machine learning.
 
 ## Project Goals
 
@@ -12,9 +15,11 @@ Historical demographers currently perform this coding manually. The process is t
 
 ## Data
 
-This project builds on existing European historical datasets, including manually coded cause-of-death records with ICD10h classifications.
+This project builds on existing European historical datasets, including manually coded
+cause-of-death records with ICD10h classifications.
 
-> **Important:** The datasets used in this project are not included in this repository and are subject to separate data-sharing agreements with the respective institutions.
+> **Important:** The datasets used in this project are not included in this repository and
+> are subject to separate data-sharing agreements with the respective institutions.
 
 ## Method Overview
 
@@ -58,43 +63,142 @@ pip install uv
 uv sync
 ```
 
-## Environment Variables
+## Runtime Environment Variables
 
-You will need to define environment variables for HuggingFace and WandB (Note: HuggingFace is optional by strongly recommended).
+Environment variables are supported, but only if they are explicitly read by the scripts.
 
-You can do this easily by using the following terminal commands:
+- `jobs/train.sh` reads a fixed set of variables and runs on HPC.
+- The Python training code reads `HUGGINGFACE_HUB_TOKEN` (or `HF_TOKEN`) and `WANDB_API_KEY`.
+- Reproducibility controls are read from `CODLLM_*` env vars (listed below).
+- Arbitrary env vars are ignored unless the code references them.
+
+## Reproducibility Defaults
+
+The training runtime uses config-driven reproducibility defaults:
+
+- global seed (`seed`)
+- data split/sampler seed (`data_seed`, defaults to `seed`)
+- deterministic torch algorithms
+- deterministic CuDNN mode
+- fixed dataloader worker count (`0` by default)
+- dynamic target-length floor for labels
+
+You can override these at runtime without editing code:
 
 ```bash
-echo 'export WANDB_API_KEY="YOUR_WANDB_KEY"' >> ~/.zshrc
-echo 'export HUGGINGFACE_HUB_TOKEN="YOUR_HF_KEY"' >> ~/.zshrc
-source ~/.zshrc
+export CODLLM_SEED=42
+export CODLLM_DATA_SEED=42
+export CODLLM_DATALOADER_NUM_WORKERS=0
+export CODLLM_DETERMINISTIC_ALGORITHMS=true
+export CODLLM_CUDNN_DETERMINISTIC=true
+export CODLLM_CUDNN_BENCHMARK=false
+export CODLLM_LOAD_IN_8BIT=0
+export CODLLM_TORCH_DTYPE=auto
+export CODLLM_WARMUP_STEPS=1000
+export CODLLM_LR=3e-5
+export CODLLM_MAX_GRAD_NORM=0.5
+export CODLLM_MAX_LABEL_COUNT=2
+export CODLLM_MAX_TARGET_LENGTH=16
+export CODLLM_LABEL_CODE_LENGTH=7
+export CODLLM_LABEL_SEPARATOR=" | "
+export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
 ```
 
-And check that it worked by launching a new terminal and running the following:
+## Docker (Local)
 
-```bash
-echo "${WANDB_API_KEY:0:8}..."
-echo "${HUGGINGFACE_HUB_TOKEN:0:8}..."
-```
-
-## Docker
-
-Build the training image:
+Build:
 
 ```bash
 docker build -f dockerfiles/train.dockerfile -t codllm-train:latest .
 ```
 
-Run the container:
+Run:
 
 ```bash
-docker run --rm -e HUGGINGFACE_HUB_TOKEN -e WANDB_API_KEY codllm-train:latest
+docker volume create codllm-runs
+docker volume create codllm-processed
+
+docker run --rm \
+  -v codllm-runs:/app/runs \
+  -v codllm-processed:/app/data/processed \
+  -e HUGGINGFACE_HUB_TOKEN \
+  -e WANDB_API_KEY \
+  -e CODLLM_SEED=42 \
+  -e CODLLM_DATA_SEED=42 \
+  codllm-train:latest
 ```
 
-`WANDB_API_KEY` is optional. When not used, training runs without Weights & Biases logging in unauthenticated containers.
+`WANDB_API_KEY` is optional. Without it, training runs with W&B disabled.
+Model outputs and processed data persist in the named Docker volumes.
+
+## HPC Usage (LSF, No Docker)
+
+Use this path when your cluster does not allow Docker.
+
+Script: `jobs/train.sh`
+
+### 1) Edit scheduler directives in `jobs/train.sh`
+
+Update the `#BSUB` lines for your cluster before first run:
+
+- queue (`-q`)
+- wall time (`-W`)
+- CPU/GPU request (`-n`, `-gpu`)
+- memory (`-R "rusage[mem=...]"`)
+- email (`-u`)
+- output log path (`-oo`)
+
+### 2) Prepare environment and submit
+
+From repo root:
+
+```bash
+mkdir -p logs
+
+export STORAGE_FOLDER="/work3/$USER"
+export HUGGINGFACE_HUB_TOKEN="YOUR_HF_KEY"   # optional, but recommended
+export WANDB_API_KEY="YOUR_WANDB_KEY"        # optional
+export CODLLM_SEED=42
+export CODLLM_DATA_SEED=42
+
+bsub < jobs/train.sh
+```
+
+LSF inherits exported environment variables from the submitting shell, so set them before
+`bsub`.
+
+### 3) Monitor
+
+```bash
+bjobs
+tail -f logs/<job_id>.out
+```
+
+### Native HPC env vars supported by `jobs/train.sh`
+
+- `STORAGE_FOLDER` (default: `/work3/s234805`)
+- `RUN_STORAGE_DIR` (default: `$STORAGE_FOLDER/codllm`)
+- `TRAIN_DATA_RAW_DIR` (default: `$PROJECT_DIR/data/raw`)
+- `TRAIN_DATA_PROCESSED_DIR` (default: `$RUN_STORAGE_DIR/data/processed`)
+- `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
+- `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
+- `SYNC_ENV` (`1` to run `uv sync`, default `1`)
+- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `1`)
+- `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
+- `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
+- `CODLLM_*` training/reproducibility settings from the section above
+- `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
+- `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
+- `CODLLM_WARMUP_STEPS` (default: `1000`)
+- `CODLLM_LR` (default: `3e-5`)
+- `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
+- `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
+- `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
+
 
 ## License
 
 This repository is licensed under the MIT License.
 
-Note that the historical datasets used for training and evaluation are not publicly available and require separate agreements with the data providers.
+Note that the historical datasets used for training and evaluation are not publicly available and
+require separate agreements with the data providers.

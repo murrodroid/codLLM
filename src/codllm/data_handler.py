@@ -1,11 +1,15 @@
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, cast
+import warnings
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset
 
 from codllm.config import Config, DataSourceConfig, TrainingInput
+from codllm.preprocess import build_preprocess_fn
 
 UNKNOWN_VALUE = "unknown"
 SUPPORTED_TRAINING_INPUTS: tuple[TrainingInput, ...] = ("cod", "age", "sex")
@@ -17,6 +21,7 @@ PROCESSED_COLUMNS = [
     "y_codes",
     "label",
 ]
+PROCESSING_METADATA_VERSION = 2
 
 
 @dataclass
@@ -40,6 +45,91 @@ class DataSplits:
     train: pd.DataFrame
     val: pd.DataFrame
     test: pd.DataFrame
+
+
+class TokenizedSeq2SeqDataset(Dataset):
+    """Simple torch dataset wrapper for tokenized seq2seq features."""
+
+    def __init__(self, features: dict[str, list[Any]]) -> None:
+        if not features:
+            raise ValueError("Tokenized features must not be empty.")
+        lengths = {len(values) for values in features.values()}
+        if len(lengths) != 1:
+            raise ValueError("Tokenized feature lengths are inconsistent.")
+        self.features = features
+        self.length = lengths.pop()
+
+    def __len__(self) -> int:
+        """Return number of rows."""
+        return self.length
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        """Return one tokenized training sample."""
+        return {key: values[idx] for key, values in self.features.items()}
+
+
+def _tokenize_dataframe(
+    cfg: Config,
+    tokenizer: Any,
+    dataframe: pd.DataFrame,
+    target_max_length: int,
+) -> TokenizedSeq2SeqDataset:
+    """Convert a pandas dataframe into a tokenized seq2seq dataset."""
+    if dataframe.empty:
+        raise ValueError("Training dataframe is empty.")
+    if cfg.dataset_text_column not in dataframe.columns:
+        raise KeyError(
+            f"Missing source column '{cfg.dataset_text_column}' in dataframe."
+        )
+    if cfg.dataset_label_column not in dataframe.columns:
+        raise KeyError(
+            f"Missing label column '{cfg.dataset_label_column}' in dataframe."
+        )
+
+    sources = dataframe[cfg.dataset_text_column].fillna("").astype(str).tolist()
+    targets = dataframe[cfg.dataset_label_column].fillna("").astype(str).tolist()
+
+    model_inputs = tokenizer(
+        sources,
+        max_length=cfg.max_source_length,
+        truncation=True,
+    )
+    labels = tokenizer(
+        text_target=targets,
+        max_length=target_max_length,
+        truncation=True,
+    )
+    model_inputs["labels"] = labels["input_ids"]
+    return TokenizedSeq2SeqDataset(model_inputs)
+
+
+def prepare_training_dataset(
+    cfg: Config, tokenizer: Any, dataset: Any, target_max_length: int
+) -> Any:
+    """Convert a dataset into the tokenized format expected by Seq2SeqTrainer."""
+    if isinstance(dataset, pd.DataFrame):
+        return _tokenize_dataframe(cfg, tokenizer, dataset, target_max_length)
+
+    if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
+        preprocess = build_preprocess_fn(
+            cfg, tokenizer, max_target_length=target_max_length
+        )
+        return dataset.map(
+            preprocess, batched=True, remove_columns=dataset.column_names
+        )
+
+    raise TypeError(
+        "Unsupported dataset type. Expected pandas.DataFrame or a dataset with map/column_names."
+    )
+
+
+def resolve_training_frames(
+    splits: DataSplits,
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Return train and optional validation dataframes from split output."""
+    if splits.val.empty:
+        return splits.train, None
+    return splits.train, splits.val
 
 
 BELGIUM_MAPPING = DatasetMapping(
@@ -94,17 +184,93 @@ class DataHandler:
         """Return the configured processed-data output path."""
         return Path(self.cfg.data_processed_dir) / self.cfg.processed_filename
 
+    @property
+    def processed_metadata_path(self) -> Path:
+        """Return the sidecar metadata path used for processed-data validation."""
+        suffix = self.processed_path.suffix
+        return self.processed_path.with_suffix(f"{suffix}.meta.json")
+
     def processed_exists(self) -> bool:
         """Return True when the configured processed file already exists."""
         return self.processed_path.exists()
 
+    def _source_file_signature(self, path: Path) -> dict[str, Any]:
+        """Return a lightweight file signature for cache invalidation checks."""
+        resolved_path = path.resolve()
+        signature: dict[str, Any] = {
+            "path": str(resolved_path),
+            "exists": path.exists(),
+        }
+        if path.exists():
+            stats = path.stat()
+            signature["size_bytes"] = stats.st_size
+            signature["mtime_ns"] = stats.st_mtime_ns
+        return signature
+
+    def _build_processing_metadata(self) -> dict[str, Any]:
+        """Build metadata that defines whether a processed file is still reusable."""
+        source_metadata: list[dict[str, Any]] = []
+        for source in self.cfg.data_sources:
+            if not source.enabled:
+                continue
+            if source.mapping_id not in self.mapping_registry:
+                raise KeyError(
+                    f"Unknown mapping_id '{source.mapping_id}' for source '{source.source_id}'."
+                )
+            mapping = self.mapping_registry[source.mapping_id]
+            source_path = _resolve_source_path(source, self.cfg.data_raw_dir)
+            source_metadata.append(
+                {
+                    "source": asdict(source),
+                    "mapping": asdict(mapping),
+                    "file": self._source_file_signature(source_path),
+                }
+            )
+
+        return {
+            "version": PROCESSING_METADATA_VERSION,
+            "data_raw_dir": str(Path(self.cfg.data_raw_dir).resolve()),
+            "training_input": list(self.cfg.training_input),
+            "max_label_count": self.cfg.max_label_count,
+            "label_separator": self.cfg.label_separator,
+            "sources": source_metadata,
+        }
+
+    def _load_saved_processing_metadata(self) -> dict[str, Any] | None:
+        """Load saved processed metadata when available and parseable."""
+        if not self.processed_metadata_path.exists():
+            return None
+        try:
+            return json.loads(self.processed_metadata_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _write_processing_metadata(self, metadata: dict[str, Any]) -> None:
+        """Persist processed-data metadata next to the processed file."""
+        self.processed_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(metadata, sort_keys=True, indent=2)
+        self.processed_metadata_path.write_text(f"{payload}\n")
+
+    def _processed_cache_is_valid(self) -> bool:
+        """Return True when the current setup matches saved processed metadata."""
+        saved = self._load_saved_processing_metadata()
+        if saved is None:
+            return False
+        current = self._build_processing_metadata()
+        return saved == current
+
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
         """Load processed data, or build and save it when missing."""
-        if force_reprocess or not self.processed_exists():
+        should_reprocess = force_reprocess or not self.processed_exists()
+        if not should_reprocess:
+            should_reprocess = not self._processed_cache_is_valid()
+
+        if should_reprocess:
             processed_df = build_processed_dataset(
                 cfg=self.cfg, mapping_registry=self.mapping_registry
             )
             save_processed_dataset(processed_df, str(self.processed_path))
+            self._write_processing_metadata(self._build_processing_metadata())
             return processed_df
         return self._load_processed_dataset()
 
@@ -114,19 +280,25 @@ class DataHandler:
         sampled_df = self._apply_dataset_size(processed_df)
         return self.split_dataframe(sampled_df)
 
+    def _resolved_data_seed(self) -> int:
+        """Return data seed, falling back to the main seed."""
+        return self.cfg.seed if self.cfg.data_seed is None else self.cfg.data_seed
+
     def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
         """Split a dataframe into train, validation, and test sets."""
         self._validate_split_sizes()
         self._validate_required_columns(df)
+        self._validate_label_quality(df)
 
         if df.empty:
             raise ValueError("Cannot split an empty dataframe.")
 
         holdout_size = round(self.cfg.val_size + self.cfg.test_size, 10)
         empty_df = df.iloc[0:0].copy()
+        data_seed = self._resolved_data_seed()
 
         if holdout_size == 0:
-            shuffled = df.sample(frac=1.0, random_state=self.cfg.seed).reset_index(
+            shuffled = df.sample(frac=1.0, random_state=data_seed).reset_index(
                 drop=True
             )
             return DataSplits(train=shuffled, val=empty_df.copy(), test=empty_df.copy())
@@ -135,7 +307,7 @@ class DataHandler:
             train_df, holdout_df = train_test_split(
                 df,
                 test_size=holdout_size,
-                random_state=self.cfg.seed,
+                random_state=data_seed,
                 shuffle=True,
             )
         except ValueError as exc:
@@ -155,7 +327,7 @@ class DataHandler:
                 val_df, test_df = train_test_split(
                     holdout_df,
                     test_size=test_ratio,
-                    random_state=self.cfg.seed,
+                    random_state=data_seed,
                     shuffle=True,
                 )
             except ValueError as exc:
@@ -180,6 +352,7 @@ class DataHandler:
         else:
             raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
         self._validate_required_columns(df)
+        self._validate_label_quality(df)
         return df
 
     def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -194,8 +367,9 @@ class DataHandler:
         if sample_count >= len(df):
             return df.reset_index(drop=True)
 
+        data_seed = self._resolved_data_seed()
         return df.sample(
-            n=sample_count, random_state=self.cfg.seed, replace=False
+            n=sample_count, random_state=data_seed, replace=False
         ).reset_index(drop=True)
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:
@@ -206,6 +380,23 @@ class DataHandler:
             missing_columns = ", ".join(sorted(missing))
             raise KeyError(
                 f"Processed data is missing required columns: {missing_columns}."
+            )
+
+    def _validate_label_quality(self, df: pd.DataFrame) -> None:
+        """Validate that labels contain trainable targets."""
+        labels = df[self.cfg.dataset_label_column].fillna("").astype(str).str.strip()
+        non_empty_labels = labels[labels != ""]
+        if non_empty_labels.empty:
+            raise ValueError(
+                f"Processed data has no non-empty values in '{self.cfg.dataset_label_column}'."
+            )
+        if non_empty_labels.nunique() == 1:
+            warnings.warn(
+                (
+                    f"Processed data contains only one unique label in "
+                    f"'{self.cfg.dataset_label_column}'. Training may collapse to trivial loss."
+                ),
+                stacklevel=2,
             )
 
     def _validate_split_sizes(self) -> None:
@@ -340,9 +531,9 @@ def _build_y(row: pd.Series, mapping: DatasetMapping, max_labels: int = 1) -> li
     return codes[:max_labels]
 
 
-def _build_label(codes: list[str]) -> str:
+def _build_label(codes: list[str], separator: str = " | ") -> str:
     """Convert code labels into a single seq2seq target string."""
-    return " | ".join(codes)
+    return separator.join(codes)
 
 
 def _detect_file_type(path: Path, source: DataSourceConfig) -> str:
@@ -371,6 +562,7 @@ def load_source_dataset(
     mapping: DatasetMapping,
     training_input: Sequence[str],
     max_labels: int = 1,
+    label_separator: str = " | ",
     data_raw_dir: str = "data/raw",
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
@@ -405,7 +597,9 @@ def load_source_dataset(
     result["y_codes"] = raw_df.apply(
         lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
     )
-    result["label"] = result["y_codes"].apply(_build_label)
+    result["label"] = result["y_codes"].apply(
+        lambda codes: _build_label(codes, separator=label_separator)
+    )
     if drop_missing_label:
         result = result[result["label"] != ""].reset_index(drop=True)
     return result
@@ -435,6 +629,7 @@ def build_processed_dataset(
                 mapping=mapping,
                 training_input=cfg.training_input,
                 max_labels=cfg.max_label_count,
+                label_separator=cfg.label_separator,
                 data_raw_dir=cfg.data_raw_dir,
             )
         )
