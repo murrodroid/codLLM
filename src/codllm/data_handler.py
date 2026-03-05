@@ -2,6 +2,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
+import warnings
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -20,7 +21,7 @@ PROCESSED_COLUMNS = [
     "y_codes",
     "label",
 ]
-PROCESSING_METADATA_VERSION = 1
+PROCESSING_METADATA_VERSION = 2
 
 
 @dataclass
@@ -287,6 +288,7 @@ class DataHandler:
         """Split a dataframe into train, validation, and test sets."""
         self._validate_split_sizes()
         self._validate_required_columns(df)
+        self._validate_label_quality(df)
 
         if df.empty:
             raise ValueError("Cannot split an empty dataframe.")
@@ -350,6 +352,7 @@ class DataHandler:
         else:
             raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
         self._validate_required_columns(df)
+        self._validate_label_quality(df)
         return df
 
     def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -377,6 +380,23 @@ class DataHandler:
             missing_columns = ", ".join(sorted(missing))
             raise KeyError(
                 f"Processed data is missing required columns: {missing_columns}."
+            )
+
+    def _validate_label_quality(self, df: pd.DataFrame) -> None:
+        """Validate that labels contain trainable targets."""
+        labels = df[self.cfg.dataset_label_column].fillna("").astype(str).str.strip()
+        non_empty_labels = labels[labels != ""]
+        if non_empty_labels.empty:
+            raise ValueError(
+                f"Processed data has no non-empty values in '{self.cfg.dataset_label_column}'."
+            )
+        if non_empty_labels.nunique() == 1:
+            warnings.warn(
+                (
+                    f"Processed data contains only one unique label in "
+                    f"'{self.cfg.dataset_label_column}'. Training may collapse to trivial loss."
+                ),
+                stacklevel=2,
             )
 
     def _validate_split_sizes(self) -> None:

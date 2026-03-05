@@ -427,6 +427,39 @@ class TestDataHandler:
         assert len(splits.val) == 1
         assert len(splits.test) == 1
 
+    def test_get_splits_rejects_processed_data_with_empty_labels(
+        self, tmp_path: Path
+    ) -> None:
+        """Processed data must contain at least one non-empty label."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        pd.DataFrame(
+            {
+                "source_id": ["src1", "src2"],
+                "record_id": ["RID-001", "RID-002"],
+                "source_path": ["sample.csv", "sample.csv"],
+                "text": ["cod: one | age: 1 | sex: male", "cod: two | age: 2 | sex: female"],
+                "y_codes": [[], []],
+                "label": ["", ""],
+            }
+        ).to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+
+        with pytest.raises(ValueError, match="no non-empty values"):
+            handler.get_splits()
+
     def test_split_dataframe_uses_data_seed_when_configured(self) -> None:
         """Configured data_seed should control deterministic split ordering."""
         cfg = Config(train_size=0.6, val_size=0.2, test_size=0.2, seed=42, data_seed=7)

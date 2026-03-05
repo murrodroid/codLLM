@@ -1,13 +1,14 @@
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 import torch
 
 
 TrainingInput = Literal["cod", "age", "sex"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
+TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 
 
 def _default_device() -> torch.device:
@@ -112,7 +113,7 @@ class Config:
     load_in_8bit: bool = False
     use_safetensors: bool = False
     disable_safetensors_conversion: bool = True
-    torch_dtype: Optional[str] = "auto"
+    torch_dtype: Optional[TorchDType] = "auto"
 
     data_raw_dir: str = "data/raw"
     data_processed_dir: str = "data/processed"
@@ -254,6 +255,17 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     load_in_8bit = _parse_env_bool("CODLLM_LOAD_IN_8BIT")
     if load_in_8bit is not None:
         cfg.load_in_8bit = load_in_8bit
+
+    torch_dtype = os.getenv("CODLLM_TORCH_DTYPE")
+    if torch_dtype is not None and torch_dtype.strip() != "":
+        normalized_torch_dtype = torch_dtype.strip().lower()
+        allowed_torch_dtypes = {"auto", "float16", "bfloat16", "float32"}
+        if normalized_torch_dtype not in allowed_torch_dtypes:
+            allowed = ", ".join(sorted(allowed_torch_dtypes))
+            raise ValueError(
+                f"CODLLM_TORCH_DTYPE must be one of: {allowed}."
+            )
+        cfg.torch_dtype = cast(TorchDType, normalized_torch_dtype)
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:

@@ -30,12 +30,30 @@ def build_training_args(
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
-    fp16 = (
-        torch.cuda.is_available()
-        and cfg.torch_dtype in (None, "auto", "float16")
-        and not disable_fp16
+    using_cuda = torch.cuda.is_available()
+    bf16_supported = (
+        using_cuda
+        and hasattr(torch.cuda, "is_bf16_supported")
+        and torch.cuda.is_bf16_supported()
     )
-    bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
+    requested_dtype = cfg.torch_dtype
+    fp16 = using_cuda and requested_dtype == "float16" and not disable_fp16
+    bf16 = using_cuda and (
+        requested_dtype == "bfloat16" or (requested_dtype == "auto" and bf16_supported)
+    )
+    if requested_dtype == "bfloat16" and using_cuda and not bf16_supported:
+        warnings.warn(
+            "torch_dtype='bfloat16' requested, but current CUDA hardware does not support bf16 AMP.",
+            stacklevel=2,
+        )
+    if requested_dtype == "auto" and using_cuda and not bf16_supported:
+        warnings.warn(
+            (
+                "torch_dtype='auto' on CUDA now defaults to full precision unless bf16 is supported. "
+                "Set torch_dtype='float16' explicitly to force fp16 AMP."
+            ),
+            stacklevel=2,
+        )
     report_to, run_name = wandb_utils.resolve_wandb_reporting(cfg)
     data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
     resolved_generation_max_length = (

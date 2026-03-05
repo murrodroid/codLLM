@@ -93,6 +93,7 @@ export CODLLM_DETERMINISTIC_ALGORITHMS=true
 export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
 export CODLLM_LOAD_IN_8BIT=0
+export CODLLM_TORCH_DTYPE=auto
 export CODLLM_WARMUP_STEPS=1000
 export CODLLM_LR=3e-5
 export CODLLM_MAX_GRAD_NORM=0.5
@@ -182,11 +183,12 @@ tail -f logs/<job_id>.out
 - `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
 - `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
 - `SYNC_ENV` (`1` to run `uv sync`, default `1`)
-- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `0`)
+- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `1`)
 - `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
+- `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
 - `CODLLM_WARMUP_STEPS` (default: `1000`)
 - `CODLLM_LR` (default: `3e-5`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)

@@ -19,6 +19,7 @@ ENV_KEYS = [
     "CODLLM_CUDNN_DETERMINISTIC",
     "CODLLM_CUDNN_BENCHMARK",
     "CODLLM_LOAD_IN_8BIT",
+    "CODLLM_TORCH_DTYPE",
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
     "CODLLM_TRAIN_SIZE",
@@ -56,6 +57,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
     monkeypatch.setenv("CODLLM_CUDNN_BENCHMARK", "true")
     monkeypatch.setenv("CODLLM_LOAD_IN_8BIT", "true")
+    monkeypatch.setenv("CODLLM_TORCH_DTYPE", "float32")
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
@@ -83,6 +85,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.cudnn_deterministic is False
     assert cfg.cudnn_benchmark is True
     assert cfg.load_in_8bit is True
+    assert cfg.torch_dtype == "float32"
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
     assert cfg.train_size == 0.7
@@ -131,6 +134,16 @@ def test_config_from_env_rejects_non_positive_learning_rate(
     """Learning rate should be positive."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_LR", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_torch_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Torch dtype override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_TORCH_DTYPE", "fp8")
     with pytest.raises(ValueError):
         config_from_env()
 

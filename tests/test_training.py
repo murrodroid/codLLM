@@ -119,6 +119,45 @@ def test_build_training_args_disables_fp16_when_requested(
     assert args.fp16 is False
 
 
+def test_build_training_args_auto_dtype_disables_fp16_without_bf16_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto dtype on CUDA should avoid fp16 when bf16 AMP is unavailable."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        train_module.torch.cuda, "is_bf16_supported", lambda: False, raising=False
+    )
+    cfg = Config(torch_dtype="auto")
+    with pytest.warns(UserWarning, match="full precision"):
+        args = build_training_args(cfg, has_eval=True)
+    assert args.fp16 is False
+    assert args.bf16 is False
+
+
+def test_build_training_args_auto_dtype_uses_bf16_when_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto dtype on CUDA should prefer bf16 AMP when hardware supports it."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        train_module.torch.cuda, "is_bf16_supported", lambda: True, raising=False
+    )
+    cfg = Config(torch_dtype="auto")
+    args = build_training_args(cfg, has_eval=True)
+    assert args.fp16 is False
+    assert args.bf16 is True
+
+
 def test_model_uses_trainable_fp16_params_detects_half_weights() -> None:
     """Model inspection should detect trainable float16 parameters."""
     model = train_module.torch.nn.Linear(4, 2).half()
