@@ -439,7 +439,10 @@ class TestDataHandler:
                 "source_id": ["src1", "src2"],
                 "record_id": ["RID-001", "RID-002"],
                 "source_path": ["sample.csv", "sample.csv"],
-                "text": ["cod: one | age: 1 | sex: male", "cod: two | age: 2 | sex: female"],
+                "text": [
+                    "cod: one | age: 1 | sex: male",
+                    "cod: two | age: 2 | sex: female",
+                ],
                 "y_codes": [[], []],
                 "label": ["", ""],
             }

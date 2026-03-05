@@ -8,6 +8,7 @@ import torch
 
 TrainingInput = Literal["cod", "age", "sex"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
+WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 
 
@@ -51,6 +52,7 @@ class WandbConfig:
     entity: Optional[str] = None
     run_name: Optional[str] = None
     mode: WandbMode = "auto"
+    log_model: WandbLogModel = "checkpoint"
 
 
 def _default_data_sources() -> list[DataSourceConfig]:
@@ -88,7 +90,7 @@ class Config:
 
     lr: float = 1e-5
     weight_decay: float = 0.0
-    num_train_epochs: int = 2
+    num_train_epochs: int = 4
     per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
@@ -97,7 +99,7 @@ class Config:
     dataloader_num_workers: int = 4
     logging_steps: int = 25
     eval_steps: int = 200
-    save_steps: int = 200
+    save_steps: int = 5000
     eval_strategy: str = "epoch"
     save_strategy: str = "epoch"
     output_dir: str = "./runs"
@@ -262,9 +264,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         allowed_torch_dtypes = {"auto", "float16", "bfloat16", "float32"}
         if normalized_torch_dtype not in allowed_torch_dtypes:
             allowed = ", ".join(sorted(allowed_torch_dtypes))
-            raise ValueError(
-                f"CODLLM_TORCH_DTYPE must be one of: {allowed}."
-            )
+            raise ValueError(f"CODLLM_TORCH_DTYPE must be one of: {allowed}.")
         cfg.torch_dtype = cast(TorchDType, normalized_torch_dtype)
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
@@ -310,6 +310,15 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     data_processed_dir = os.getenv("CODLLM_DATA_PROCESSED_DIR")
     if data_processed_dir:
         cfg.data_processed_dir = data_processed_dir
+
+    wandb_log_model = os.getenv("CODLLM_WANDB_LOG_MODEL")
+    if wandb_log_model is not None and wandb_log_model.strip() != "":
+        normalized_wandb_log_model = wandb_log_model.strip().lower()
+        allowed_wandb_log_models = {"false", "end", "checkpoint"}
+        if normalized_wandb_log_model not in allowed_wandb_log_models:
+            allowed = ", ".join(sorted(allowed_wandb_log_models))
+            raise ValueError(f"CODLLM_WANDB_LOG_MODEL must be one of: {allowed}.")
+        cfg.wandb.log_model = cast(WandbLogModel, normalized_wandb_log_model)
 
     return cfg
 

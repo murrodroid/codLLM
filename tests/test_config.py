@@ -28,6 +28,7 @@ ENV_KEYS = [
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
+    "CODLLM_WANDB_LOG_MODEL",
 ]
 
 
@@ -66,6 +67,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
+    monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "checkpoint")
 
     base = Config(seed=42, data_seed=None, output_dir="./runs", load_in_8bit=False)
     cfg = config_from_env(base)
@@ -94,6 +96,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"
+    assert cfg.wandb.log_model == "checkpoint"
     assert base.seed == 42
     assert base.output_dir == "./runs"
 
@@ -154,6 +157,16 @@ def test_config_from_env_rejects_negative_max_grad_norm(
     """Max grad norm should be non-negative."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_wandb_log_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W&B log-model override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "always")
     with pytest.raises(ValueError):
         config_from_env()
 

@@ -18,7 +18,7 @@ def delete_random_char(text: str) -> str:
         return text
 
     i = random.randint(0, len(text) - 1)
-    return text[:i] + text[i + 1:]
+    return text[:i] + text[i + 1 :]
 
 
 def insert_random_whitespace(text: str) -> str:
@@ -44,7 +44,7 @@ def accent_random_vowel(text: str) -> str:
 
     i = random.choice(vowel_indices)
     accented = random.choice(vowel_to_accented[text[i]])
-    return text[:i] + accented + text[i + 1:]
+    return text[:i] + accented + text[i + 1 :]
 
 
 def qwerty_misspell(text: str) -> str:
@@ -87,7 +87,7 @@ def qwerty_misspell(text: str) -> str:
     replacement = random.choice(qwerty_neighbors[original.lower()])
     if original.isupper():
         replacement = replacement.upper()
-    return text[:i] + replacement + text[i + 1:]
+    return text[:i] + replacement + text[i + 1 :]
 
 
 def expand_special_digraphs(text: str) -> str:
@@ -101,20 +101,16 @@ def expand_special_digraphs(text: str) -> str:
         "æ": "ae",
         "ø": "oe",
         "å": "aa",
-
         # German
         "ä": "ae",
         "ö": "oe",
         "ü": "ue",
         "ß": "ss",
-
         # Dutch / French ligatures
         "œ": "oe",
-
         # # Icelandic
         # "ð": "d",
         # "þ": "th",
-
         # # Some Slavic cases that are commonly expanded
         # "ł": "l",  # sometimes written as l
     }

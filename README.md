@@ -94,6 +94,7 @@ export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
 export CODLLM_LOAD_IN_8BIT=0
 export CODLLM_TORCH_DTYPE=auto
+export CODLLM_WANDB_LOG_MODEL=end
 export CODLLM_WARMUP_STEPS=1000
 export CODLLM_LR=3e-5
 export CODLLM_MAX_GRAD_NORM=0.5
@@ -189,6 +190,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_*` training/reproducibility settings from the section above
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
+- `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)
 - `CODLLM_WARMUP_STEPS` (default: `1000`)
 - `CODLLM_LR` (default: `3e-5`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
