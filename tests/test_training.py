@@ -3,10 +3,11 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import pytest
 
+import codllm.train as train_module
+import codllm.wandb_utils as wandb_utils_module
 from codllm.config import Config, WandbConfig
 from codllm.data_handler import DataSplits
 from codllm.preprocess import build_preprocess_fn
-import codllm.train as train_module
 from codllm.train import build_training_args
 
 
@@ -50,8 +51,8 @@ def test_preprocess_raises_when_column_missing() -> None:
 def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> None:
     """Training args should use eval_strategy and disable eval when absent."""
     monkeypatch.setattr(
-        train_module,
-        "_resolve_wandb_reporting",
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(
@@ -80,8 +81,8 @@ def test_build_training_args_defaults_data_seed_to_seed(
 ) -> None:
     """Data seed should fall back to seed when data_seed is not set."""
     monkeypatch.setattr(
-        train_module,
-        "_resolve_wandb_reporting",
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(seed=77, data_seed=None)
@@ -95,8 +96,8 @@ def test_build_training_args_honors_explicit_generation_max_length(
 ) -> None:
     """Explicit generation cap should override derived target max length."""
     monkeypatch.setattr(
-        train_module,
-        "_resolve_wandb_reporting",
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(max_target_length=16, max_label_count=4)
@@ -109,8 +110,8 @@ def test_build_training_args_disables_fp16_when_requested(
 ) -> None:
     """Explicit disable flag should force fp16 AMP off."""
     monkeypatch.setattr(
-        train_module,
-        "_resolve_wandb_reporting",
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(torch_dtype="float16")
@@ -178,7 +179,7 @@ def test_resolve_wandb_reporting_uses_wandb_with_credentials(
     monkeypatch.delenv("WANDB_PROJECT", raising=False)
     monkeypatch.delenv("WANDB_ENTITY", raising=False)
     monkeypatch.delenv("WANDB_MODE", raising=False)
-    monkeypatch.setattr(train_module, "_has_wandb_credentials", lambda: True)
+    monkeypatch.setattr(wandb_utils_module, "has_wandb_credentials", lambda: True)
 
     cfg = Config(
         wandb=WandbConfig(
@@ -189,12 +190,12 @@ def test_resolve_wandb_reporting_uses_wandb_with_credentials(
             mode="auto",
         )
     )
-    report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+    report_to, run_name = wandb_utils_module.resolve_wandb_reporting(cfg)
 
     assert report_to == ["wandb"]
     assert run_name == "unit-run"
-    assert train_module.os.environ["WANDB_PROJECT"] == "unit-project"
-    assert train_module.os.environ["WANDB_ENTITY"] == "unit-entity"
+    assert wandb_utils_module.os.environ["WANDB_PROJECT"] == "unit-project"
+    assert wandb_utils_module.os.environ["WANDB_ENTITY"] == "unit-entity"
 
 
 def test_resolve_wandb_reporting_disables_without_credentials(
@@ -202,15 +203,15 @@ def test_resolve_wandb_reporting_disables_without_credentials(
 ) -> None:
     """Auto mode should gracefully disable W&B when credentials are unavailable."""
     monkeypatch.delenv("WANDB_MODE", raising=False)
-    monkeypatch.setattr(train_module, "_has_wandb_credentials", lambda: False)
+    monkeypatch.setattr(wandb_utils_module, "has_wandb_credentials", lambda: False)
     cfg = Config(wandb=WandbConfig(enabled=True, mode="auto"))
 
     with pytest.warns(UserWarning):
-        report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+        report_to, run_name = wandb_utils_module.resolve_wandb_reporting(cfg)
 
     assert report_to == "none"
     assert run_name is None
-    assert train_module.os.environ["WANDB_MODE"] == "disabled"
+    assert wandb_utils_module.os.environ["WANDB_MODE"] == "disabled"
 
 
 def test_resolve_wandb_reporting_online_mode(
@@ -219,17 +220,17 @@ def test_resolve_wandb_reporting_online_mode(
     """Online mode should always report to W&B and set WANDB_MODE accordingly."""
     monkeypatch.delenv("WANDB_MODE", raising=False)
     cfg = Config(wandb=WandbConfig(enabled=True, mode="online", run_name="online-run"))
-    report_to, run_name = train_module._resolve_wandb_reporting(cfg)
+    report_to, run_name = wandb_utils_module.resolve_wandb_reporting(cfg)
 
     assert report_to == ["wandb"]
     assert run_name == "online-run"
-    assert train_module.os.environ["WANDB_MODE"] == "online"
+    assert wandb_utils_module.os.environ["WANDB_MODE"] == "online"
 
 
-def test_train_with_data_handler_uses_validation_split(
+def test_train_uses_validation_split_from_data_handler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """train_with_data_handler should forward train and validation splits to train."""
+    """train should forward train and validation splits to the training core."""
     cfg = Config()
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
@@ -257,9 +258,9 @@ def test_train_with_data_handler_uses_validation_split(
         captured["eval_ds"] = eval_ds
         return "trainer", "tokenizer"
 
-    monkeypatch.setattr(train_module, "train", fake_train)
+    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
     handler = DummyDataHandler()
-    trainer, tokenizer, returned_splits = train_module.train_with_data_handler(
+    trainer, tokenizer, returned_splits = train_module.train(
         cfg, data_handler=handler, force_reprocess=True
     )
 
@@ -272,10 +273,10 @@ def test_train_with_data_handler_uses_validation_split(
     assert handler.force_reprocess is True
 
 
-def test_train_with_data_handler_omits_eval_when_validation_is_empty(
+def test_train_omits_eval_when_validation_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """train_with_data_handler should pass eval_ds=None when validation split is empty."""
+    """train should pass eval_ds=None when validation split is empty."""
     cfg = Config()
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
@@ -299,8 +300,8 @@ def test_train_with_data_handler_omits_eval_when_validation_is_empty(
         captured["eval_ds"] = eval_ds
         return "trainer", "tokenizer"
 
-    monkeypatch.setattr(train_module, "train", fake_train)
-    _, _, _ = train_module.train_with_data_handler(cfg, data_handler=DummyDataHandler())
+    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
+    _, _, _ = train_module.train(cfg, data_handler=DummyDataHandler())
 
     assert captured["cfg"] is cfg
     assert captured["train_ds"] is splits.train

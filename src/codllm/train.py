@@ -1,148 +1,24 @@
 import argparse
-import netrc
-import os
-from pathlib import Path
 from typing import Any, Optional, Tuple
 import warnings
 
-import pandas as pd
 import torch
-from torch.utils.data import Dataset
 from transformers import (
     DataCollatorForSeq2Seq,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
 )
 
+import codllm.wandb_utils as wandb_utils
 from codllm.config import Config, config_from_env
-from codllm.data_handler import DataHandler, DataSplits
+from codllm.data_handler import (
+    DataHandler,
+    DataSplits,
+    prepare_training_dataset,
+    resolve_training_frames,
+)
 from codllm.model_registry import load_base_model
-from codllm.preprocess import build_preprocess_fn
 from codllm.reproducibility import configure_reproducibility
-
-
-class TokenizedSeq2SeqDataset(Dataset):
-    """Simple torch dataset wrapper for tokenized seq2seq features."""
-
-    def __init__(self, features: dict[str, list[Any]]) -> None:
-        if not features:
-            raise ValueError("Tokenized features must not be empty.")
-        lengths = {len(values) for values in features.values()}
-        if len(lengths) != 1:
-            raise ValueError("Tokenized feature lengths are inconsistent.")
-        self.features = features
-        self.length = lengths.pop()
-
-    def __len__(self) -> int:
-        """Return number of rows."""
-        return self.length
-
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        """Return one tokenized training sample."""
-        return {key: values[idx] for key, values in self.features.items()}
-
-
-def _tokenize_dataframe(
-    cfg: Config,
-    tokenizer: Any,
-    dataframe: pd.DataFrame,
-    target_max_length: int,
-) -> TokenizedSeq2SeqDataset:
-    """Convert a pandas dataframe into a tokenized seq2seq dataset."""
-    if dataframe.empty:
-        raise ValueError("Training dataframe is empty.")
-    if cfg.dataset_text_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing source column '{cfg.dataset_text_column}' in dataframe."
-        )
-    if cfg.dataset_label_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing label column '{cfg.dataset_label_column}' in dataframe."
-        )
-
-    sources = dataframe[cfg.dataset_text_column].fillna("").astype(str).tolist()
-    targets = dataframe[cfg.dataset_label_column].fillna("").astype(str).tolist()
-
-    model_inputs = tokenizer(
-        sources,
-        max_length=cfg.max_source_length,
-        truncation=True,
-    )
-    labels = tokenizer(
-        text_target=targets,
-        max_length=target_max_length,
-        truncation=True,
-    )
-    model_inputs["labels"] = labels["input_ids"]
-    return TokenizedSeq2SeqDataset(model_inputs)
-
-
-def _prepare_dataset(
-    cfg: Config, tokenizer: Any, dataset: Any, target_max_length: int
-) -> Any:
-    """Convert an input dataset into the tokenized format expected by Trainer."""
-    if isinstance(dataset, pd.DataFrame):
-        return _tokenize_dataframe(cfg, tokenizer, dataset, target_max_length)
-
-    if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
-        preprocess = build_preprocess_fn(
-            cfg, tokenizer, max_target_length=target_max_length
-        )
-        return dataset.map(
-            preprocess, batched=True, remove_columns=dataset.column_names
-        )
-
-    raise TypeError(
-        "Unsupported dataset type. Expected pandas.DataFrame or a dataset with map/column_names."
-    )
-
-
-def _has_wandb_credentials() -> bool:
-    """Return True when W&B credentials are available via env or netrc."""
-    if os.getenv("WANDB_API_KEY"):
-        return True
-
-    for filename in (".netrc", "_netrc"):
-        netrc_path = Path.home() / filename
-        if not netrc_path.exists():
-            continue
-        try:
-            auth = netrc.netrc(str(netrc_path)).authenticators("api.wandb.ai")
-        except (OSError, netrc.NetrcParseError):
-            continue
-        if auth and auth[2]:
-            return True
-    return False
-
-
-def _resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], Optional[str]]:
-    """Resolve Trainer reporting settings and runtime environment for W&B."""
-    wandb_cfg = cfg.wandb
-
-    if not wandb_cfg.enabled or wandb_cfg.mode == "disabled":
-        os.environ["WANDB_MODE"] = "disabled"
-        return "none", None
-
-    os.environ.setdefault("WANDB_PROJECT", wandb_cfg.project)
-    if wandb_cfg.entity:
-        os.environ["WANDB_ENTITY"] = wandb_cfg.entity
-
-    if wandb_cfg.mode in ("online", "offline"):
-        os.environ["WANDB_MODE"] = wandb_cfg.mode
-        return ["wandb"], wandb_cfg.run_name
-
-    if _has_wandb_credentials():
-        return ["wandb"], wandb_cfg.run_name
-
-    os.environ["WANDB_MODE"] = "disabled"
-    warnings.warn(
-        (
-            "W&B is enabled but no WANDB_API_KEY or ~/.netrc credentials were found. "
-            "Falling back to report_to='none'."
-        ),
-        stacklevel=2,
-    )
-    return "none", None
 
 
 def build_training_args(
@@ -160,7 +36,7 @@ def build_training_args(
         and not disable_fp16
     )
     bf16 = torch.cuda.is_available() and cfg.torch_dtype == "bfloat16"
-    report_to, run_name = _resolve_wandb_reporting(cfg)
+    report_to, run_name = wandb_utils.resolve_wandb_reporting(cfg)
     data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
     resolved_generation_max_length = (
         cfg.resolved_max_target_length()
@@ -229,7 +105,7 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
     return True
 
 
-def train(
+def _train_from_datasets(
     cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
 ) -> Tuple[Seq2SeqTrainer, Any]:
     """Preprocess datasets and run a seq2seq fine-tuning job."""
@@ -256,10 +132,14 @@ def train(
         )
     target_max_length = cfg.resolved_max_target_length()
 
-    processed_train_ds = _prepare_dataset(cfg, tokenizer, train_ds, target_max_length)
+    processed_train_ds = prepare_training_dataset(
+        cfg, tokenizer, train_ds, target_max_length
+    )
     processed_eval_ds = None
     if eval_ds is not None:
-        processed_eval_ds = _prepare_dataset(cfg, tokenizer, eval_ds, target_max_length)
+        processed_eval_ds = prepare_training_dataset(
+            cfg, tokenizer, eval_ds, target_max_length
+        )
 
     collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
     args = build_training_args(
@@ -282,7 +162,7 @@ def train(
     return trainer, tokenizer
 
 
-def train_with_data_handler(
+def train(
     cfg: Config,
     data_handler: Optional[DataHandler] = None,
     force_reprocess: bool = False,
@@ -291,12 +171,8 @@ def train_with_data_handler(
 
     handler = data_handler or DataHandler(cfg)
     splits = handler.get_splits(force_reprocess=force_reprocess)
-    eval_dataset: Optional[pd.DataFrame]
-    if splits.val.empty:
-        eval_dataset = None
-    else:
-        eval_dataset = splits.val
-    trainer, tokenizer = train(cfg, splits.train, eval_dataset)
+    train_ds, eval_ds = resolve_training_frames(splits)
+    trainer, tokenizer = _train_from_datasets(cfg, train_ds, eval_ds)
     return trainer, tokenizer, splits
 
 
@@ -331,7 +207,7 @@ def main() -> None:
         cfg.seed = args.seed
     if args.data_seed is not None:
         cfg.data_seed = args.data_seed
-    _, _, splits = train_with_data_handler(
+    _, _, splits = train(
         cfg=cfg,
         force_reprocess=args.force_reprocess,
     )
