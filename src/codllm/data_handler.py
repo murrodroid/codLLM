@@ -21,7 +21,7 @@ PROCESSED_COLUMNS = [
     "y_codes",
     "label",
 ]
-PROCESSING_METADATA_VERSION = 2
+PROCESSING_METADATA_VERSION = 3
 
 
 @dataclass
@@ -523,12 +523,9 @@ def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
     return codes
 
 
-def _build_y(row: pd.Series, mapping: DatasetMapping, max_labels: int = 1) -> list[str]:
-    """Build target code list, truncated to the configured maximum number of labels."""
-    if max_labels < 1:
-        raise ValueError("max_labels must be at least 1.")
-    codes = _collect_codes(row, mapping)
-    return codes[:max_labels]
+def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
+    """Build complete target code list for one source row."""
+    return _collect_codes(row, mapping)
 
 
 def _build_label(codes: list[str], separator: str = " | ") -> str:
@@ -567,6 +564,8 @@ def load_source_dataset(
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
     """Load and process one source dataset into the canonical schema."""
+    if max_labels < 1:
+        raise ValueError("max_labels must be at least 1.")
     normalized_training_input = _normalize_training_input(training_input)
     source_path = _resolve_source_path(source, data_raw_dir)
     raw_df = _read_raw_dataframe(source_path, source)
@@ -594,9 +593,10 @@ def load_source_dataset(
     result["text"] = raw_df.apply(
         lambda row: _build_text(row, mapping, normalized_training_input), axis=1
     )
-    result["y_codes"] = raw_df.apply(
-        lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
-    )
+    result["y_codes"] = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
+    result["label_count"] = result["y_codes"].apply(len)
+    result = result[result["label_count"] <= max_labels].reset_index(drop=True)
+    result = result.drop(columns=["label_count"])
     result["label"] = result["y_codes"].apply(
         lambda codes: _build_label(codes, separator=label_separator)
     )

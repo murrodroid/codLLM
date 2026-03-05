@@ -52,7 +52,7 @@ class WandbConfig:
     entity: Optional[str] = None
     run_name: Optional[str] = None
     mode: WandbMode = "auto"
-    log_model: WandbLogModel = "checkpoint"
+    log_model: WandbLogModel = "end"
 
 
 def _default_data_sources() -> list[DataSourceConfig]:
@@ -126,7 +126,7 @@ class Config:
     )
     max_label_count: int = 1
 
-    dataset_size: float = 0.2
+    dataset_size: float = 0.5
     train_size: float = 0.8
     val_size: float = 0.1
     test_size: float = 0.1
