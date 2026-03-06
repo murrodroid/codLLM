@@ -131,6 +131,9 @@ docker run --rm \
 
 `WANDB_API_KEY` is optional. Without it, training runs with W&B disabled.
 Model outputs and processed data persist in the named Docker volumes.
+Each training invocation writes checkpoints under a run-scoped folder:
+`<CODLLM_OUTPUT_DIR>/run-<id>/checkpoint-*`. On HPC, `<id>` uses `LSB_JOBID`
+(and `LSB_JOBINDEX` when present). Locally, `<id>` is an auto-incremented number.
 
 ## HPC Usage (LSF, No Docker)
 
@@ -168,6 +171,9 @@ bsub < jobs/train.sh
 LSF inherits exported environment variables from the submitting shell, so set them before
 `bsub`.
 
+For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
+You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
+
 ### 3) Monitor
 
 ```bash
@@ -184,10 +190,13 @@ tail -f logs/<job_id>.out
 - `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
 - `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
 - `SYNC_ENV` (`1` to run `uv sync`, default `1`)
-- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `1`)
+- `UV_SYNC_LOCK_FILE` (lock file used to serialize `uv sync`, default: `$RUN_STORAGE_DIR/.uv-sync.lock`)
+- `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `0`)
 - `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
+- `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed-cache lock wait timeout, default: `900`)
+- `CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS` (run-dir lock wait timeout, default: `120`)
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
 - `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)

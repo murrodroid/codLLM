@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -336,10 +337,10 @@ def test_resolve_wandb_reporting_online_mode(
 
 
 def test_train_uses_validation_split_from_data_handler(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """train should forward train and validation splits to the training core."""
-    cfg = Config()
+    cfg = Config(output_dir=str(tmp_path / "runs"))
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
         val=pd.DataFrame({"text": ["v1"], "label": ["A02"]}),
@@ -388,13 +389,15 @@ def test_train_uses_validation_split_from_data_handler(
         "test": 1,
     }
     assert handler.force_reprocess is True
+    assert Path(captured["cfg"].output_dir).name.startswith("run-")
+    assert Path(captured["cfg"].output_dir).parent.name == "runs"
 
 
 def test_train_omits_eval_when_validation_is_empty(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """train should pass eval_ds=None when validation split is empty."""
-    cfg = Config()
+    cfg = Config(output_dir=str(tmp_path / "runs"))
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
         val=pd.DataFrame(columns=["text", "label"]),
@@ -434,11 +437,40 @@ def test_train_omits_eval_when_validation_is_empty(
     }
 
 
+def test_resolve_run_output_dir_uses_hpc_job_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Run directory should use LSF job identifiers when present."""
+    monkeypatch.setenv("LSB_JOBID", "12345")
+    monkeypatch.setenv("LSB_JOBINDEX", "2")
+
+    run_dir = train_module._resolve_run_output_dir(str(tmp_path / "runs"))
+
+    assert run_dir.name == "run-12345_2"
+    assert run_dir.exists()
+
+
+def test_resolve_run_output_dir_local_allocates_next_numeric(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Local run directory should increment from existing run folders."""
+    monkeypatch.delenv("LSB_JOBID", raising=False)
+    monkeypatch.delenv("LSB_JOBINDEX", raising=False)
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run-0001").mkdir(parents=True, exist_ok=True)
+    (runs_dir / "run-0003").mkdir(parents=True, exist_ok=True)
+
+    run_dir = train_module._resolve_run_output_dir(str(runs_dir))
+
+    assert run_dir.name == "run-0004"
+    assert run_dir.exists()
+
+
 def test_train_runs_final_test_evaluation(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """train should run a final evaluation pass on the test split."""
-    cfg = Config()
+    cfg = Config(output_dir=str(tmp_path / "runs"))
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
         val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),

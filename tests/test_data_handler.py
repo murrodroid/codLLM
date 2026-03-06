@@ -1,9 +1,12 @@
 from pathlib import Path
+import threading
+import time
 
 import pandas as pd
 import pytest
 from sklearn.model_selection import train_test_split
 
+import codllm.data_handler as data_handler_module
 from codllm.config import Config, DataSourceConfig
 from codllm.data_handler import (
     DataHandler,
@@ -528,3 +531,55 @@ class TestDataHandler:
         handler = DataHandler(cfg)
         with pytest.raises(ValueError):
             handler.split_dataframe(_processed_df(num_rows=20))
+
+    def test_ensure_processed_serializes_parallel_rebuilds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Concurrent ensure_processed calls should rebuild shared cache once."""
+        cfg = Config(
+            data_processed_dir=str(tmp_path / "processed"),
+            processed_filename="training.csv",
+            data_sources=[],
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+        )
+        handler = DataHandler(cfg)
+        rebuilt_frame = _processed_df(num_rows=4)
+        build_calls = {"count": 0}
+
+        def fake_build_processed_dataset(
+            *args: object, **kwargs: object
+        ) -> pd.DataFrame:
+            build_calls["count"] += 1
+            time.sleep(0.2)
+            return rebuilt_frame.copy()
+
+        monkeypatch.setattr(
+            data_handler_module,
+            "build_processed_dataset",
+            fake_build_processed_dataset,
+        )
+
+        errors: list[Exception] = []
+        results: list[pd.DataFrame] = []
+
+        def run_worker() -> None:
+            try:
+                results.append(handler.ensure_processed(force_reprocess=False))
+            except Exception as exc:
+                errors.append(exc)
+
+        first = threading.Thread(target=run_worker)
+        second = threading.Thread(target=run_worker)
+        first.start()
+        second.start()
+        first.join()
+        second.join()
+
+        assert not errors
+        assert build_calls["count"] == 1
+        assert len(results) == 2
+        assert handler.processed_path.exists()
+        assert handler.processed_metadata_path.exists()

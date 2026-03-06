@@ -46,8 +46,9 @@ CODLLM_OUTPUT_DIR="${CODLLM_OUTPUT_DIR:-$TRAIN_OUTPUT_DIR}"
 CODLLM_DATA_RAW_DIR="${CODLLM_DATA_RAW_DIR:-$TRAIN_DATA_RAW_DIR}"
 CODLLM_DATA_PROCESSED_DIR="${CODLLM_DATA_PROCESSED_DIR:-$TRAIN_DATA_PROCESSED_DIR}"
 
-FORCE_REPROCESS="${FORCE_REPROCESS:-1}"
+FORCE_REPROCESS="${FORCE_REPROCESS:-0}"
 SYNC_ENV="${SYNC_ENV:-1}"
+UV_SYNC_LOCK_FILE="${UV_SYNC_LOCK_FILE:-$RUN_STORAGE_DIR/.uv-sync.lock}"
 
 CODLLM_SEED="${CODLLM_SEED:-42}"
 CODLLM_LOAD_IN_8BIT="${CODLLM_LOAD_IN_8BIT:-0}"
@@ -108,7 +109,12 @@ fi
 
 if [ "$SYNC_ENV" = "1" ]; then
   echo "Syncing Python environment with uv."
-  uv sync --frozen --no-dev
+  if command -v flock >/dev/null 2>&1; then
+    flock "$UV_SYNC_LOCK_FILE" uv sync --frozen --no-dev
+  else
+    echo "WARNING: flock is not available; running uv sync without cross-job locking."
+    uv sync --frozen --no-dev
+  fi
 fi
 
 train_cmd=(uv run python -m codllm.train)
