@@ -95,7 +95,7 @@ class Config:
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 0.1
-    warmup_steps: int = 300
+    warmup_steps: int = 1000
     dataloader_num_workers: int = 4
     logging_steps: int = 25
     eval_steps: int = 200
@@ -188,6 +188,28 @@ def _parse_env_float(name: str) -> Optional[float]:
         raise ValueError(f"Environment variable '{name}' must be a float.") from exc
 
 
+def _parse_training_input(raw_value: str) -> list[TrainingInput]:
+    """Parse comma-separated training_input env values."""
+    allowed_inputs = {"cod", "age", "sex"}
+    parsed: list[TrainingInput] = []
+    for feature in raw_value.split(","):
+        cleaned_feature = feature.strip().lower()
+        if cleaned_feature == "":
+            continue
+        if cleaned_feature not in allowed_inputs:
+            allowed = ", ".join(sorted(allowed_inputs))
+            raise ValueError(
+                f"CODLLM_TRAINING_INPUT contains unsupported value '{feature}'. "
+                f"Supported values are: {allowed}."
+            )
+        normalized_feature = cast(TrainingInput, cleaned_feature)
+        if normalized_feature not in parsed:
+            parsed.append(normalized_feature)
+    if not parsed:
+        raise ValueError("CODLLM_TRAINING_INPUT must include at least one value.")
+    return parsed
+
+
 def config_from_env(base: Optional[Config] = None) -> Config:
     """Create runtime config with environment overrides for HPC and reproducibility."""
     cfg = deepcopy(base) if base is not None else Config()
@@ -211,6 +233,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if warmup_steps < 0:
             raise ValueError("CODLLM_WARMUP_STEPS must be non-negative.")
         cfg.warmup_steps = warmup_steps
+
+    num_train_epochs = _parse_env_int("CODLLM_NUM_TRAIN_EPOCHS")
+    if num_train_epochs is not None:
+        if num_train_epochs < 1:
+            raise ValueError("CODLLM_NUM_TRAIN_EPOCHS must be at least 1.")
+        cfg.num_train_epochs = num_train_epochs
 
     max_label_count = _parse_env_int("CODLLM_MAX_LABEL_COUNT")
     if max_label_count is not None:
@@ -283,6 +311,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_MAX_GRAD_NORM must be non-negative.")
         cfg.max_grad_norm = max_grad_norm
 
+    weight_decay = _parse_env_float("CODLLM_WEIGHT_DECAY")
+    if weight_decay is not None:
+        if weight_decay < 0:
+            raise ValueError("CODLLM_WEIGHT_DECAY must be non-negative.")
+        cfg.weight_decay = weight_decay
+
     train_size = _parse_env_float("CODLLM_TRAIN_SIZE")
     if train_size is not None:
         cfg.train_size = train_size
@@ -302,6 +336,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     label_separator = os.getenv("CODLLM_LABEL_SEPARATOR")
     if label_separator is not None:
         cfg.label_separator = label_separator
+
+    training_input = os.getenv("CODLLM_TRAINING_INPUT")
+    if training_input is not None and training_input.strip() != "":
+        cfg.training_input = _parse_training_input(training_input)
 
     data_raw_dir = os.getenv("CODLLM_DATA_RAW_DIR")
     if data_raw_dir:
