@@ -1,9 +1,10 @@
 import argparse
+from dataclasses import asdict
 import json
 import os
 from pathlib import Path
 import re
-from typing import Any, Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 import warnings
 
 from filelock import FileLock, Timeout
@@ -194,6 +195,49 @@ def _build_data_metadata(
     return payload
 
 
+def _serialize_for_terminal(value: Any) -> Any:
+    """Convert nested values into JSON-serializable terminal output."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _serialize_for_terminal(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_serialize_for_terminal(item) for item in value]
+    return str(value)
+
+
+def _print_training_configuration(
+    cfg: Config,
+    args: Seq2SeqTrainingArguments,
+    run_data_metadata: Optional[dict[str, Any]],
+) -> None:
+    """Print resolved run configuration and hyperparameters when verbosity is enabled."""
+    if not cfg.verbose:
+        return
+
+    cfg_payload = _serialize_for_terminal(asdict(cfg))
+    if isinstance(cfg_payload, dict):
+        cfg_payload.pop("hf_token", None)
+
+    training_args_payload: dict[str, Any] = {}
+    if hasattr(args, "to_dict"):
+        training_args_payload = _serialize_for_terminal(args.to_dict())
+
+    payload: dict[str, Any] = {
+        "run_id": os.getenv("CODLLM_RUN_ID"),
+        "output_dir": cfg.output_dir,
+        "config": cfg_payload,
+        "training_args": training_args_payload,
+    }
+    if run_data_metadata is not None:
+        payload["dataset"] = _serialize_for_terminal(run_data_metadata)
+
+    print("Resolved training setup:")
+    print(json.dumps(payload, sort_keys=True, indent=2))
+
+
 def build_training_args(
     cfg: Config,
     has_eval: bool,
@@ -364,6 +408,7 @@ def _train_from_datasets(
         run_name=args.run_name,
         metadata=metadata_payload,
     )
+    _print_training_configuration(cfg, args, run_data_metadata)
 
     trainer = Seq2SeqTrainer(
         model=model,

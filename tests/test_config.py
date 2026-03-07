@@ -22,6 +22,7 @@ ENV_KEYS = [
     "CODLLM_CUDNN_DETERMINISTIC",
     "CODLLM_CUDNN_BENCHMARK",
     "CODLLM_LOAD_IN_8BIT",
+    "CODLLM_VERBOSE",
     "CODLLM_TORCH_DTYPE",
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
@@ -64,6 +65,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
     monkeypatch.setenv("CODLLM_CUDNN_BENCHMARK", "true")
     monkeypatch.setenv("CODLLM_LOAD_IN_8BIT", "true")
+    monkeypatch.setenv("CODLLM_VERBOSE", "true")
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "float32")
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
@@ -96,6 +98,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.cudnn_deterministic is False
     assert cfg.cudnn_benchmark is True
     assert cfg.load_in_8bit is True
+    assert cfg.verbose is True
     assert cfg.torch_dtype == "float32"
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
@@ -168,6 +171,16 @@ def test_config_from_env_rejects_invalid_torch_dtype(
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "fp8")
     with pytest.raises(ValueError):
         config_from_env()
+
+
+def test_config_from_env_honors_verbose_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verbose override should disable terminal config dumps when false."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_VERBOSE", "false")
+    cfg = config_from_env(Config(verbose=True))
+    assert cfg.verbose is False
 
 
 def test_config_from_env_rejects_negative_max_grad_norm(

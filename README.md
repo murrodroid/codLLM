@@ -93,6 +93,7 @@ export CODLLM_DETERMINISTIC_ALGORITHMS=true
 export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
 export CODLLM_LOAD_IN_8BIT=0
+export CODLLM_VERBOSE=true
 export CODLLM_TORCH_DTYPE=auto
 export CODLLM_WANDB_LOG_MODEL=end
 export CODLLM_WARMUP_STEPS=1000
@@ -211,6 +212,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed-cache lock wait timeout, default: `900`)
 - `CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS` (run-dir lock wait timeout, default: `120`)
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
+- `CODLLM_VERBOSE` (`1`/`0`, default: `1`; prints resolved setup before training)
 - `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
 - `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)
 - `CODLLM_WARMUP_STEPS` (default: `1000`)

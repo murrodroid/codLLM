@@ -102,6 +102,7 @@ class Config:
     save_steps: int = 5000
     eval_strategy: str = "epoch"
     save_strategy: str = "epoch"
+    verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
     data_seed: Optional[int] = None
@@ -285,6 +286,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     load_in_8bit = _parse_env_bool("CODLLM_LOAD_IN_8BIT")
     if load_in_8bit is not None:
         cfg.load_in_8bit = load_in_8bit
+
+    verbose = _parse_env_bool("CODLLM_VERBOSE")
+    if verbose is not None:
+        cfg.verbose = verbose
 
     torch_dtype = os.getenv("CODLLM_TORCH_DTYPE")
     if torch_dtype is not None and torch_dtype.strip() != "":

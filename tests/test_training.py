@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -146,6 +147,53 @@ def test_build_training_args_disables_fp16_when_requested(
     cfg = Config(torch_dtype="float16")
     args = build_training_args(cfg, has_eval=True, disable_fp16=True)
     assert args.fp16 is False
+
+
+def test_print_training_configuration_emits_summary_when_verbose(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Verbose mode should print JSON summary with config and training args."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(verbose=True, training_input=["cod", "age"], hf_token="secret")
+    args = build_training_args(cfg, has_eval=True)
+    train_module._print_training_configuration(
+        cfg=cfg,
+        args=args,
+        run_data_metadata={"split_rows": {"train": 3}},
+    )
+
+    output = capsys.readouterr().out
+    assert "Resolved training setup:" in output
+    payload = json.loads(output.split("\n", maxsplit=1)[1])
+    assert payload["config"]["training_input"] == ["cod", "age"]
+    assert payload["config"]["verbose"] is True
+    assert payload["training_args"]["learning_rate"] == cfg.lr
+    assert payload["dataset"]["split_rows"]["train"] == 3
+    assert "hf_token" not in payload["config"]
+
+
+def test_print_training_configuration_noop_when_not_verbose(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Non-verbose mode should not print config summary."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(verbose=False)
+    args = build_training_args(cfg, has_eval=True)
+    train_module._print_training_configuration(
+        cfg=cfg,
+        args=args,
+        run_data_metadata={"split_rows": {"train": 3}},
+    )
+
+    assert capsys.readouterr().out == ""
 
 
 def test_exact_match_accuracy_is_one_for_identical_predictions() -> None:
