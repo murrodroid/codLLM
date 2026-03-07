@@ -576,6 +576,18 @@ def test_build_experiment_metadata_redacts_hf_token() -> None:
     assert payload["dataset"]["split_rows"]["train"] == 10
 
 
+def test_build_experiment_metadata_includes_training_args() -> None:
+    """Experiment metadata should include serialized Trainer argument values."""
+    cfg = Config(seed=42)
+    payload = wandb_utils_module.build_experiment_metadata(
+        cfg,
+        training_args={"learning_rate": 3e-5, "num_train_epochs": 4},
+    )
+
+    assert payload["training_args"]["learning_rate"] == 3e-5
+    assert payload["training_args"]["num_train_epochs"] == 4
+
+
 def test_log_wandb_run_metadata_initializes_and_updates_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -610,6 +622,46 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
         fake_wandb.config.updates[0]["payload"]["dataset"]["split_rows"]["train"] == 3
     )
     assert fake_wandb.config.updates[0]["allow_val_change"] is True
+
+
+def test_log_wandb_run_metadata_writes_flattened_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Metadata logger should publish flattened dot-notation keys for filtering."""
+    fake_wandb = _FakeWandbModule()
+    monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
+    monkeypatch.setenv("WANDB_PROJECT", "test-project")
+    monkeypatch.setenv("WANDB_MODE", "offline")
+
+    cfg = Config(
+        wandb=WandbConfig(
+            enabled=True,
+            project="cfg-project",
+            entity="cfg-entity",
+            run_name="cfg-run",
+            mode="offline",
+        )
+    )
+    metadata = {
+        "config": {"lr": 3e-5, "training_input": ["cod", "age"]},
+        "dataset": {"split_rows": {"train": 3}},
+    }
+    wandb_utils_module.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=["wandb"],
+        run_name="flattened-run",
+        metadata=metadata,
+    )
+
+    flattened_updates = [
+        update["payload"]
+        for update in fake_wandb.config.updates
+        if "config.lr" in update["payload"]
+    ]
+    assert flattened_updates
+    assert flattened_updates[0]["config.lr"] == 3e-5
+    assert flattened_updates[0]["config.training_input"] == ["cod", "age"]
+    assert flattened_updates[0]["dataset.split_rows.train"] == 3
 
 
 def test_log_wandb_run_metadata_noop_when_wandb_not_requested(

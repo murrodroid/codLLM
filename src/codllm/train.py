@@ -348,6 +348,7 @@ def _train_from_datasets(
             "eval": _dataset_row_count(eval_ds),
         }
     }
+    training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
     metadata_payload = wandb_utils.build_experiment_metadata(
         cfg=cfg,
         data_metadata=(
@@ -355,6 +356,7 @@ def _train_from_datasets(
             if run_data_metadata is not None
             else fallback_data_metadata
         ),
+        training_args=training_args_payload,
     )
     wandb_utils.log_wandb_run_metadata(
         cfg=cfg,

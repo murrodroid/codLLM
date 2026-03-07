@@ -174,6 +174,15 @@ bsub < jobs/train.sh
 LSF inherits exported environment variables from the submitting shell, so set them before
 `bsub`.
 
+You can also submit using a job config file:
+
+```bash
+JOB_CONFIG_FILE=jobs/configs/example.env bsub < jobs/train.sh
+```
+
+`JOB_CONFIG_FILE` accepts simple shell `KEY=value` lines (comments with `#` are allowed).
+See `jobs/configs/example.env`.
+
 For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
 You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
 
@@ -191,6 +200,7 @@ tail -f logs/<job_id>.out
 - `TRAIN_DATA_RAW_DIR` (default: `$PROJECT_DIR/data/raw`)
 - `TRAIN_DATA_PROCESSED_DIR` (default: `$RUN_STORAGE_DIR/data/processed`)
 - `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
+- `JOB_CONFIG_FILE` (optional path to a shell-style job config file)
 - `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
 - `SYNC_ENV` (`1` to run `uv sync`, default `1`)
 - `UV_SYNC_LOCK_FILE` (lock file used to serialize `uv sync`, default: `$RUN_STORAGE_DIR/.uv-sync.lock`)

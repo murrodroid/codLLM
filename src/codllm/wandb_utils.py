@@ -87,6 +87,20 @@ def _sanitize_for_wandb(value: Any) -> Any:
     return str(value)
 
 
+def _flatten_mapping_for_wandb(
+    payload: Mapping[str, Any], prefix: str = ""
+) -> dict[str, Any]:
+    """Flatten nested mapping keys into dot notation for W&B config views."""
+    flattened: dict[str, Any] = {}
+    for key, value in payload.items():
+        dotted_key = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, Mapping):
+            flattened.update(_flatten_mapping_for_wandb(value, prefix=dotted_key))
+            continue
+        flattened[dotted_key] = _sanitize_for_wandb(value)
+    return flattened
+
+
 def _resolve_source_path(path_value: str, data_raw_dir: str) -> Path:
     """Resolve source file path against the configured raw data directory."""
     source_path = Path(path_value)
@@ -177,7 +191,9 @@ def _runtime_metadata() -> dict[str, Any]:
 
 
 def build_experiment_metadata(
-    cfg: Config, data_metadata: Mapping[str, Any] | None = None
+    cfg: Config,
+    data_metadata: Mapping[str, Any] | None = None,
+    training_args: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a W&B-ready metadata payload for one experiment run."""
     cfg_payload = _sanitize_for_wandb(asdict(cfg))
@@ -193,6 +209,8 @@ def build_experiment_metadata(
         "data_sources": _build_source_metadata(cfg),
         "runtime": _runtime_metadata(),
     }
+    if training_args is not None:
+        payload["training_args"] = _sanitize_for_wandb(dict(training_args))
     if data_metadata is not None:
         payload["dataset"] = _sanitize_for_wandb(dict(data_metadata))
     return payload
@@ -243,4 +261,9 @@ def log_wandb_run_metadata(
     if getattr(wandb, "run", None) is None:
         return
 
-    wandb.config.update(_sanitize_for_wandb(dict(metadata)), allow_val_change=True)
+    sanitized_metadata = _sanitize_for_wandb(dict(metadata))
+    wandb.config.update(sanitized_metadata, allow_val_change=True)
+    if isinstance(sanitized_metadata, Mapping):
+        flattened_metadata = _flatten_mapping_for_wandb(sanitized_metadata)
+        if flattened_metadata:
+            wandb.config.update(flattened_metadata, allow_val_change=True)

@@ -24,6 +24,22 @@ PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
 
+JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-}"
+if [ -n "$JOB_CONFIG_FILE" ]; then
+  if [ -f "$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$JOB_CONFIG_FILE"
+  elif [ -f "$PROJECT_DIR/$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$PROJECT_DIR/$JOB_CONFIG_FILE"
+  else
+    echo "ERROR: JOB_CONFIG_FILE '$JOB_CONFIG_FILE' does not exist."
+    exit 1
+  fi
+  echo "Loading job config file: $resolved_job_config"
+  set -a
+  source "$resolved_job_config"
+  set +a
+fi
+
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
 RUN_STORAGE_DIR="${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}"
 
