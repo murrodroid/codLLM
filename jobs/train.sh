@@ -2,12 +2,13 @@
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
 #BSUB -q gpuv100
-#BSUB -W 08:00
+#BSUB -W 10:00
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=6GB]"
 #BSUB -R "select[gpu32gb]"
 #BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -env "all"
 #BSUB -u s234805@dtu.dk
 #BSUB -B
 #BSUB -N
@@ -24,12 +25,19 @@ PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
 
-JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-}"
+JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-${1:-}}"
+REQUIRE_JOB_CONFIG_FILE="${REQUIRE_JOB_CONFIG_FILE:-0}"
+if [ "$REQUIRE_JOB_CONFIG_FILE" = "1" ] && [ -z "$JOB_CONFIG_FILE" ]; then
+  echo "ERROR: REQUIRE_JOB_CONFIG_FILE=1 but JOB_CONFIG_FILE is not set."
+  exit 1
+fi
 if [ -n "$JOB_CONFIG_FILE" ]; then
   if [ -f "$JOB_CONFIG_FILE" ]; then
     resolved_job_config="$JOB_CONFIG_FILE"
   elif [ -f "$PROJECT_DIR/$JOB_CONFIG_FILE" ]; then
     resolved_job_config="$PROJECT_DIR/$JOB_CONFIG_FILE"
+  elif [ -f "$PROJECT_DIR/jobs/configs/$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$PROJECT_DIR/jobs/configs/$JOB_CONFIG_FILE"
   else
     echo "ERROR: JOB_CONFIG_FILE '$JOB_CONFIG_FILE' does not exist."
     exit 1
@@ -38,6 +46,8 @@ if [ -n "$JOB_CONFIG_FILE" ]; then
   set -a
   source "$resolved_job_config"
   set +a
+else
+  echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
 fi
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
@@ -96,6 +106,14 @@ export CODLLM_TRAINING_INPUT
 export PYTHONHASHSEED CUBLAS_WORKSPACE_CONFIG
 export OMP_NUM_THREADS MKL_NUM_THREADS TOKENIZERS_PARALLELISM
 export PYTHONUNBUFFERED=1
+
+echo "Effective training environment:"
+echo "  JOB_CONFIG_FILE=${resolved_job_config:-<none>}"
+echo "  CODLLM_LR=$CODLLM_LR"
+echo "  CODLLM_NUM_TRAIN_EPOCHS=$CODLLM_NUM_TRAIN_EPOCHS"
+echo "  CODLLM_WEIGHT_DECAY=$CODLLM_WEIGHT_DECAY"
+echo "  CODLLM_TRAINING_INPUT=$CODLLM_TRAINING_INPUT"
+echo "  CODLLM_VERBOSE=$CODLLM_VERBOSE"
 
 mkdir -p \
   "$RUN_STORAGE_DIR" \

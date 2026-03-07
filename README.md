@@ -172,13 +172,13 @@ export CODLLM_DATA_SEED=42
 bsub < jobs/train.sh
 ```
 
-LSF inherits exported environment variables from the submitting shell, so set them before
-`bsub`.
+Some clusters do not forward temporary `VAR=value bsub ...` values unless `-env` is used.
+Use `-env "all"` to make forwarding explicit.
 
 You can also submit using a job config file:
 
 ```bash
-JOB_CONFIG_FILE=jobs/configs/example.env bsub < jobs/train.sh
+bsub -env "all,JOB_CONFIG_FILE=jobs/configs/example.env,REQUIRE_JOB_CONFIG_FILE=1" < jobs/train.sh
 ```
 
 `JOB_CONFIG_FILE` accepts simple shell `KEY=value` lines (comments with `#` are allowed).
@@ -202,6 +202,7 @@ tail -f logs/<job_id>.out
 - `TRAIN_DATA_PROCESSED_DIR` (default: `$RUN_STORAGE_DIR/data/processed`)
 - `TRAIN_OUTPUT_DIR` (default: `$RUN_STORAGE_DIR/runs`)
 - `JOB_CONFIG_FILE` (optional path to a shell-style job config file)
+- `REQUIRE_JOB_CONFIG_FILE` (`1` to fail early if `JOB_CONFIG_FILE` is missing, default `0`)
 - `CODLLM_DATA_RAW_DIR`, `CODLLM_DATA_PROCESSED_DIR`, `CODLLM_OUTPUT_DIR` (optional overrides)
 - `SYNC_ENV` (`1` to run `uv sync`, default `1`)
 - `UV_SYNC_LOCK_FILE` (lock file used to serialize `uv sync`, default: `$RUN_STORAGE_DIR/.uv-sync.lock`)
