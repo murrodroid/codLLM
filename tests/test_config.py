@@ -32,6 +32,10 @@ ENV_KEYS = [
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
+    "CODLLM_DATASET_TEXT_COLUMN",
+    "CODLLM_DATASET_LABEL_COLUMN",
+    "CODLLM_DEVICE",
+    "CODLLM_DEVICE_MAP",
     "CODLLM_WANDB_LOG_MODEL",
 ]
 
@@ -75,6 +79,10 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
+    monkeypatch.setenv("CODLLM_DATASET_TEXT_COLUMN", "prompt")
+    monkeypatch.setenv("CODLLM_DATASET_LABEL_COLUMN", "target")
+    monkeypatch.setenv("CODLLM_DEVICE", "cpu")
+    monkeypatch.setenv("CODLLM_DEVICE_MAP", "none")
     monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "checkpoint")
 
     base = Config(seed=42, data_seed=None, output_dir="./runs", load_in_8bit=False)
@@ -108,6 +116,10 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"
+    assert cfg.dataset_text_column == "prompt"
+    assert cfg.dataset_label_column == "target"
+    assert cfg.device.type == "cpu"
+    assert cfg.device_map is None
     assert cfg.wandb.log_model == "checkpoint"
     assert base.seed == 42
     assert base.output_dir == "./runs"
@@ -169,6 +181,16 @@ def test_config_from_env_rejects_invalid_torch_dtype(
     """Torch dtype override should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "fp8")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Device override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_DEVICE", "tpu")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -245,3 +267,15 @@ def test_resolved_max_target_length_respects_manual_ceiling() -> None:
         max_target_length_buffer=4,
     )
     assert cfg.resolved_max_target_length() == 64
+
+
+def test_resolved_data_seed_falls_back_to_seed() -> None:
+    """Data seed helper should fall back to the global seed."""
+    cfg = Config(seed=123, data_seed=None)
+    assert cfg.resolved_data_seed() == 123
+
+
+def test_resolved_data_seed_uses_explicit_value() -> None:
+    """Data seed helper should use explicit data_seed when configured."""
+    cfg = Config(seed=123, data_seed=456)
+    assert cfg.resolved_data_seed() == 456

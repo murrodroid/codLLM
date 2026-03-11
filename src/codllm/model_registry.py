@@ -56,13 +56,14 @@ def _build_model_kwargs(cfg: Config, token: Optional[str]) -> Dict[str, object]:
     if dtype is not None:
         kwargs["dtype"] = dtype
 
-    if cfg.device_map is not None:
-        kwargs["device_map"] = cfg.device_map
+    device_map = cfg.resolved_device_map()
+    if device_map is not None:
+        kwargs["device_map"] = device_map
 
     if token:
         kwargs["token"] = token
 
-    if cfg.load_in_8bit and torch.cuda.is_available():
+    if cfg.load_in_8bit and cfg.uses_cuda():
         kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
 
     return kwargs

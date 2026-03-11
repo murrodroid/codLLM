@@ -31,7 +31,7 @@ def configure_reproducibility(cfg: Config) -> None:
     _seed_numpy(cfg.seed)
     torch.manual_seed(cfg.seed)
 
-    if torch.cuda.is_available():
+    if cfg.uses_cuda():
         torch.cuda.manual_seed(cfg.seed)
         torch.cuda.manual_seed_all(cfg.seed)
 

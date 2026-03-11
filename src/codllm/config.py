@@ -1,7 +1,7 @@
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal, Optional, cast
+from typing import ClassVar, Literal, Optional, cast
 
 import torch
 
@@ -76,17 +76,28 @@ def _default_data_sources() -> list[DataSourceConfig]:
 class Config:
     """Configuration for Hugging Face seq2seq training experiments."""
 
+    DEFAULT_LABEL_SEPARATOR: ClassVar[str] = ","
+    DEFAULT_DATASET_TEXT_COLUMN: ClassVar[str] = "text"
+    DEFAULT_DATASET_LABEL_COLUMN: ClassVar[str] = "label"
+    DEFAULT_DATA_RAW_DIR: ClassVar[str] = "data/raw"
+    DEFAULT_DATA_PROCESSED_DIR: ClassVar[str] = "data/processed"
+    SUPPORTED_TRAINING_INPUTS: ClassVar[tuple[TrainingInput, ...]] = (
+        "cod",
+        "age",
+        "sex",
+    )
+
     hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
     trust_remote_code: bool = False
 
     max_source_length: int = 256
     max_target_length: int = 32
-    label_separator: str = ","
+    label_separator: str = DEFAULT_LABEL_SEPARATOR
     label_code_length: int = 7
     max_target_length_buffer: int = 4
-    dataset_text_column: str = "text"
-    dataset_label_column: str = "label"
+    dataset_text_column: str = DEFAULT_DATASET_TEXT_COLUMN
+    dataset_label_column: str = DEFAULT_DATASET_LABEL_COLUMN
 
     lr: float = 1e-5
     weight_decay: float = 0.0
@@ -118,12 +129,12 @@ class Config:
     disable_safetensors_conversion: bool = True
     torch_dtype: Optional[TorchDType] = "auto"
 
-    data_raw_dir: str = "data/raw"
-    data_processed_dir: str = "data/processed"
+    data_raw_dir: str = DEFAULT_DATA_RAW_DIR
+    data_processed_dir: str = DEFAULT_DATA_PROCESSED_DIR
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=_default_data_sources)
     training_input: list[TrainingInput] = field(
-        default_factory=lambda: ["cod", "age", "sex"]
+        default_factory=lambda: list(Config.SUPPORTED_TRAINING_INPUTS)
     )
     max_label_count: int = 1
 
@@ -150,6 +161,28 @@ class Config:
         )
         inferred_min_length = formatted_length + self.max_target_length_buffer
         return max(self.max_target_length, inferred_min_length)
+
+    def resolved_data_seed(self) -> int:
+        """Return data seed, defaulting to the global seed when unset."""
+        return self.seed if self.data_seed is None else self.data_seed
+
+    def uses_cuda(self) -> bool:
+        """Return True when config targets CUDA and CUDA runtime is available."""
+        return self.device.type == "cuda" and torch.cuda.is_available()
+
+    def bf16_amp_supported(self) -> bool:
+        """Return True when current CUDA runtime supports bf16 AMP."""
+        return (
+            self.uses_cuda()
+            and hasattr(torch.cuda, "is_bf16_supported")
+            and torch.cuda.is_bf16_supported()
+        )
+
+    def resolved_device_map(self) -> Optional[str]:
+        """Return an effective device map compatible with the configured device."""
+        if self.device_map == "auto" and self.device.type != "cuda":
+            return None
+        return self.device_map
 
 
 def _parse_env_int(name: str) -> Optional[int]:
@@ -191,7 +224,7 @@ def _parse_env_float(name: str) -> Optional[float]:
 
 def _parse_training_input(raw_value: str) -> list[TrainingInput]:
     """Parse comma-separated training_input env values."""
-    allowed_inputs = {"cod", "age", "sex"}
+    allowed_inputs = set(Config.SUPPORTED_TRAINING_INPUTS)
     parsed: list[TrainingInput] = []
     for feature in raw_value.split(","):
         cleaned_feature = feature.strip().lower()
@@ -341,6 +374,31 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     label_separator = os.getenv("CODLLM_LABEL_SEPARATOR")
     if label_separator is not None:
         cfg.label_separator = label_separator
+
+    dataset_text_column = os.getenv("CODLLM_DATASET_TEXT_COLUMN")
+    if dataset_text_column is not None and dataset_text_column.strip() != "":
+        cfg.dataset_text_column = dataset_text_column.strip()
+
+    dataset_label_column = os.getenv("CODLLM_DATASET_LABEL_COLUMN")
+    if dataset_label_column is not None and dataset_label_column.strip() != "":
+        cfg.dataset_label_column = dataset_label_column.strip()
+
+    device = os.getenv("CODLLM_DEVICE")
+    if device is not None and device.strip() != "":
+        normalized_device = device.strip().lower()
+        allowed_devices = {"cpu", "cuda", "mps"}
+        if normalized_device not in allowed_devices:
+            allowed = ", ".join(sorted(allowed_devices))
+            raise ValueError(f"CODLLM_DEVICE must be one of: {allowed}.")
+        cfg.device = torch.device(normalized_device)
+
+    device_map = os.getenv("CODLLM_DEVICE_MAP")
+    if device_map is not None and device_map.strip() != "":
+        normalized_device_map = device_map.strip().lower()
+        if normalized_device_map in {"none", "null", "off"}:
+            cfg.device_map = None
+        else:
+            cfg.device_map = device_map.strip()
 
     training_input = os.getenv("CODLLM_TRAINING_INPUT")
     if training_input is not None and training_input.strip() != "":

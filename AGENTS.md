@@ -24,6 +24,18 @@
 * Use f-strings for formatting.
 * Use type hints
 * Do not add inline comments unless absolutely necessary.
+* Keep implementations config-first and consistency-first:
+  * User-editable defaults must be defined in `Config` (inside the class), not as
+    module-level constants.
+  * Reuse existing config fields and shared helpers (for example `_default_device`,
+    `resolved_max_target_length`, and existing path/metadata resolvers) instead of
+    duplicating logic.
+  * Do not hardcode defaults in multiple places when the same value already exists in
+    `Config`; wire code to `Config` so behavior updates dynamically when config changes.
+  * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
+    all relevant call sites and tests use the config-driven value.
+* Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners
+  by default) and do not depend on local-only resources or hardware.
 
 # Documentation
 
