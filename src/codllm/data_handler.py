@@ -11,21 +11,29 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-from codllm.config import Config, DataSourceConfig, TrainingInput
+from codllm.config import (
+    Config,
+    DataSourceConfig,
+    TrainingInput,
+)
+from codllm.path_utils import resolve_source_path
 from codllm.preprocess import build_preprocess_fn
 
 UNKNOWN_VALUE = "unknown"
-SUPPORTED_TRAINING_INPUTS: tuple[TrainingInput, ...] = ("cod", "age", "sex")
-PROCESSED_COLUMNS = [
-    "source_id",
-    "record_id",
-    "source_path",
-    "text",
-    "y_codes",
-    "label",
-]
 PROCESSING_METADATA_VERSION = 3
 DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
+
+
+def _processed_columns(text_column: str, label_column: str) -> list[str]:
+    """Return canonical processed-data column order for configured text/label names."""
+    return [
+        "source_id",
+        "record_id",
+        "source_path",
+        text_column,
+        "y_codes",
+        label_column,
+    ]
 
 
 @dataclass
@@ -245,7 +253,7 @@ class DataHandler:
                     f"Unknown mapping_id '{source.mapping_id}' for source '{source.source_id}'."
                 )
             mapping = self.mapping_registry[source.mapping_id]
-            source_path = _resolve_source_path(source, self.cfg.data_raw_dir)
+            source_path = resolve_source_path(source.path, self.cfg.data_raw_dir)
             source_metadata.append(
                 {
                     "source": asdict(source),
@@ -324,10 +332,6 @@ class DataHandler:
         sampled_df = self._apply_dataset_size(processed_df)
         return self.split_dataframe(sampled_df)
 
-    def _resolved_data_seed(self) -> int:
-        """Return data seed, falling back to the main seed."""
-        return self.cfg.seed if self.cfg.data_seed is None else self.cfg.data_seed
-
     def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
         """Split a dataframe into train, validation, and test sets."""
         self._validate_split_sizes()
@@ -339,7 +343,7 @@ class DataHandler:
 
         holdout_size = round(self.cfg.val_size + self.cfg.test_size, 10)
         empty_df = df.iloc[0:0].copy()
-        data_seed = self._resolved_data_seed()
+        data_seed = self.cfg.resolved_data_seed()
 
         if holdout_size == 0:
             shuffled = df.sample(frac=1.0, random_state=data_seed).reset_index(
@@ -411,7 +415,7 @@ class DataHandler:
         if sample_count >= len(df):
             return df.reset_index(drop=True)
 
-        data_seed = self._resolved_data_seed()
+        data_seed = self.cfg.resolved_data_seed()
         return df.sample(
             n=sample_count, random_state=data_seed, replace=False
         ).reset_index(drop=True)
@@ -461,23 +465,14 @@ class DataHandler:
             raise ValueError("train_size, val_size, and test_size must sum to 1.0.")
 
 
-def _resolve_source_path(source: DataSourceConfig, data_raw_dir: str) -> Path:
-    """Resolve a source path relative to the raw data directory when needed."""
-    source_path = Path(source.path)
-    if source_path.is_absolute() or source_path.exists():
-        return source_path
-    if not data_raw_dir:
-        return source_path
-    return Path(data_raw_dir) / source_path
-
-
 def _normalize_training_input(training_input: Sequence[str]) -> list[TrainingInput]:
     """Validate and normalize requested training input fields."""
     normalized: list[TrainingInput] = []
+    supported_inputs = Config.SUPPORTED_TRAINING_INPUTS
     for feature in training_input:
         cleaned = feature.strip().lower()
-        if cleaned not in SUPPORTED_TRAINING_INPUTS:
-            supported = ", ".join(SUPPORTED_TRAINING_INPUTS)
+        if cleaned not in supported_inputs:
+            supported = ", ".join(supported_inputs)
             raise ValueError(
                 f"Unsupported training input '{feature}'. Supported values are: {supported}."
             )
@@ -572,7 +567,9 @@ def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
     return _collect_codes(row, mapping)
 
 
-def _build_label(codes: list[str], separator: str = " | ") -> str:
+def _build_label(
+    codes: list[str], separator: str = Config.DEFAULT_LABEL_SEPARATOR
+) -> str:
     """Convert code labels into a single seq2seq target string."""
     return separator.join(codes)
 
@@ -603,15 +600,17 @@ def load_source_dataset(
     mapping: DatasetMapping,
     training_input: Sequence[str],
     max_labels: int = 1,
-    label_separator: str = " | ",
-    data_raw_dir: str = "data/raw",
+    label_separator: str = Config.DEFAULT_LABEL_SEPARATOR,
+    data_raw_dir: str = Config.DEFAULT_DATA_RAW_DIR,
+    text_column: str = Config.DEFAULT_DATASET_TEXT_COLUMN,
+    label_column: str = Config.DEFAULT_DATASET_LABEL_COLUMN,
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
     """Load and process one source dataset into the canonical schema."""
     if max_labels < 1:
         raise ValueError("max_labels must be at least 1.")
     normalized_training_input = _normalize_training_input(training_input)
-    source_path = _resolve_source_path(source, data_raw_dir)
+    source_path = resolve_source_path(source.path, data_raw_dir)
     raw_df = _read_raw_dataframe(source_path, source)
     combined_skip_rows = sorted(set(mapping.skip_rows + source.skip_rows))
     if combined_skip_rows:
@@ -634,18 +633,18 @@ def load_source_dataset(
             for idx, record_id in enumerate(extracted_ids.tolist())
         ]
     result["source_path"] = [str(source_path)] * len(raw_df)
-    result["text"] = raw_df.apply(
+    result[text_column] = raw_df.apply(
         lambda row: _build_text(row, mapping, normalized_training_input), axis=1
     )
     result["y_codes"] = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
     result["label_count"] = result["y_codes"].apply(len)
     result = result[result["label_count"] <= max_labels].reset_index(drop=True)
     result = result.drop(columns=["label_count"])
-    result["label"] = result["y_codes"].apply(
+    result[label_column] = result["y_codes"].apply(
         lambda codes: _build_label(codes, separator=label_separator)
     )
     if drop_missing_label:
-        result = result[result["label"] != ""].reset_index(drop=True)
+        result = result[result[label_column] != ""].reset_index(drop=True)
     return result
 
 
@@ -675,11 +674,18 @@ def build_processed_dataset(
                 max_labels=cfg.max_label_count,
                 label_separator=cfg.label_separator,
                 data_raw_dir=cfg.data_raw_dir,
+                text_column=cfg.dataset_text_column,
+                label_column=cfg.dataset_label_column,
             )
         )
 
     if not processed_frames:
-        return pd.DataFrame(columns=PROCESSED_COLUMNS)
+        return pd.DataFrame(
+            columns=_processed_columns(
+                cfg.dataset_text_column,
+                cfg.dataset_label_column,
+            )
+        )
     return pd.concat(processed_frames, ignore_index=True)
 
 
@@ -730,9 +736,18 @@ def load_dataset(
     processed = load_source_dataset(
         source=source,
         mapping=mapping,
-        training_input=training_input or ["cod", "age", "sex"],
+        training_input=training_input or list(Config.SUPPORTED_TRAINING_INPUTS),
         max_labels=max_labels,
         data_raw_dir="",
+        text_column=Config.DEFAULT_DATASET_TEXT_COLUMN,
+        label_column=Config.DEFAULT_DATASET_LABEL_COLUMN,
         drop_missing_label=False,
     )
-    return pd.DataFrame({"text": processed["text"], "y": processed["y_codes"]})
+    return pd.DataFrame(
+        {
+            Config.DEFAULT_DATASET_TEXT_COLUMN: processed[
+                Config.DEFAULT_DATASET_TEXT_COLUMN
+            ],
+            "y": processed["y_codes"],
+        }
+    )

@@ -167,6 +167,36 @@ class TestLoaders:
         assert sorted(result["source_id"].unique()) == ["csv_source", "xlsx_source"]
         assert set(result["label"]) == {"A00", "J18"}
 
+    def test_build_processed_dataset_uses_configured_text_and_label_columns(
+        self, tmp_path: Path
+    ) -> None:
+        """Processed output should honor configured text/label column names."""
+        csv_path = tmp_path / "sample.csv"
+        _sample_df().to_csv(csv_path, index=False)
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            dataset_text_column="prompt",
+            dataset_label_column="target",
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+        )
+        mapping = _make_mapping()
+        result = build_processed_dataset(
+            cfg, mapping_registry={"test_mapping": mapping}
+        )
+        assert "prompt" in result.columns
+        assert "target" in result.columns
+        assert "text" not in result.columns
+        assert "label" not in result.columns
+        assert result.iloc[0]["target"] == "A00"
+
     def test_build_processed_dataset_rejects_unknown_training_input(
         self, tmp_path: Path
     ) -> None:

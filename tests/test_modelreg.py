@@ -69,6 +69,7 @@ def test_build_model_kwargs_with_cuda_quantization(
         hf_token="token",
         trust_remote_code=True,
         device_map="auto",
+        device=model_registry.torch.device("cuda"),
         load_in_8bit=True,
         torch_dtype="float16",
     )
@@ -100,6 +101,17 @@ def test_build_model_kwargs_without_cuda_quantization(
     assert kwargs["use_safetensors"] is False
     assert "device_map" not in kwargs
     assert "quantization_config" not in kwargs
+
+
+def test_build_model_kwargs_drops_auto_device_map_on_non_cuda_device() -> None:
+    """Auto device_map should be disabled when config device is not CUDA."""
+    cfg = Config(
+        device_map="auto",
+        device=model_registry.torch.device("cpu"),
+        load_in_8bit=False,
+    )
+    kwargs = model_registry._build_model_kwargs(cfg, token=None)
+    assert "device_map" not in kwargs
 
 
 def test_load_base_model_uses_registry_override(

@@ -247,12 +247,8 @@ def build_training_args(
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
-    using_cuda = torch.cuda.is_available()
-    bf16_supported = (
-        using_cuda
-        and hasattr(torch.cuda, "is_bf16_supported")
-        and torch.cuda.is_bf16_supported()
-    )
+    using_cuda = cfg.uses_cuda()
+    bf16_supported = cfg.bf16_amp_supported()
     requested_dtype = cfg.torch_dtype
     fp16 = using_cuda and requested_dtype == "float16" and not disable_fp16
     bf16 = using_cuda and (
@@ -272,7 +268,7 @@ def build_training_args(
             stacklevel=2,
         )
     report_to, run_name = wandb_utils.resolve_wandb_reporting(cfg)
-    data_seed = cfg.seed if cfg.data_seed is None else cfg.data_seed
+    data_seed = cfg.resolved_data_seed()
     resolved_generation_max_length = (
         cfg.resolved_max_target_length()
         if generation_max_length is None

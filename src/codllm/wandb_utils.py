@@ -12,6 +12,7 @@ import warnings
 import torch
 
 from codllm.config import Config
+from codllm.path_utils import resolve_source_path
 
 
 def has_wandb_credentials() -> bool:
@@ -101,19 +102,11 @@ def _flatten_mapping_for_wandb(
     return flattened
 
 
-def _resolve_source_path(path_value: str, data_raw_dir: str) -> Path:
-    """Resolve source file path against the configured raw data directory."""
-    source_path = Path(path_value)
-    if source_path.is_absolute() or source_path.exists():
-        return source_path
-    return Path(data_raw_dir) / source_path
-
-
 def _build_source_metadata(cfg: Config) -> list[dict[str, Any]]:
     """Build file metadata for configured sources to aid experiment provenance."""
     source_payloads: list[dict[str, Any]] = []
     for source in cfg.data_sources:
-        resolved_path = _resolve_source_path(source.path, cfg.data_raw_dir)
+        resolved_path = resolve_source_path(source.path, cfg.data_raw_dir)
         payload = _sanitize_for_wandb(asdict(source))
         payload["resolved_path"] = str(resolved_path.resolve())
         payload["exists"] = resolved_path.exists()
@@ -204,7 +197,7 @@ def build_experiment_metadata(
         "config": cfg_payload,
         "resolved": {
             "max_target_length": cfg.resolved_max_target_length(),
-            "data_seed": cfg.seed if cfg.data_seed is None else cfg.data_seed,
+            "data_seed": cfg.resolved_data_seed(),
         },
         "data_sources": _build_source_metadata(cfg),
         "runtime": _runtime_metadata(),
