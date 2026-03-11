@@ -30,4 +30,6 @@
 * Use existing docstring style.
 * Ensure all functions and classes have docstrings.
 * Use Google style for docstrings.
+* Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners by default) and do not
+  depend on local-only resources or hardware.
 * Update this `AGENTS.md` file if any new tools or commands are added to the project.

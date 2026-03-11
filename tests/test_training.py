@@ -238,6 +238,8 @@ def test_build_training_args_auto_dtype_disables_fp16_without_bf16_support(
         lambda _: ("none", None),
     )
     monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(train_module.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(train_module.torch.cuda, "set_device", lambda _: None)
     monkeypatch.setattr(
         train_module.torch.cuda, "is_bf16_supported", lambda: False, raising=False
     )
@@ -258,6 +260,8 @@ def test_build_training_args_auto_dtype_uses_bf16_when_supported(
         lambda _: ("none", None),
     )
     monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(train_module.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(train_module.torch.cuda, "set_device", lambda _: None)
     monkeypatch.setattr(
         train_module.torch.cuda, "is_bf16_supported", lambda: True, raising=False
     )
