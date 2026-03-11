@@ -37,4 +37,4 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/codllm"]
+packages = ["src/codllm", "experiments"]
