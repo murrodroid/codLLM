@@ -8,6 +8,7 @@ import torch
 
 TrainingInput = Literal["cod", "age", "sex"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
+WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 
 
@@ -51,6 +52,7 @@ class WandbConfig:
     entity: Optional[str] = None
     run_name: Optional[str] = None
     mode: WandbMode = "auto"
+    log_model: WandbLogModel = "end"
 
 
 def _default_data_sources() -> list[DataSourceConfig]:
@@ -88,18 +90,19 @@ class Config:
 
     lr: float = 1e-5
     weight_decay: float = 0.0
-    num_train_epochs: int = 2
+    num_train_epochs: int = 4
     per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 0.1
-    warmup_steps: int = 300
+    warmup_steps: int = 1000
     dataloader_num_workers: int = 4
     logging_steps: int = 25
     eval_steps: int = 200
-    save_steps: int = 200
+    save_steps: int = 5000
     eval_strategy: str = "epoch"
     save_strategy: str = "epoch"
+    verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
     data_seed: Optional[int] = None
@@ -124,7 +127,7 @@ class Config:
     )
     max_label_count: int = 1
 
-    dataset_size: float = 0.2
+    dataset_size: float = 0.5
     train_size: float = 0.8
     val_size: float = 0.1
     test_size: float = 0.1
@@ -186,6 +189,28 @@ def _parse_env_float(name: str) -> Optional[float]:
         raise ValueError(f"Environment variable '{name}' must be a float.") from exc
 
 
+def _parse_training_input(raw_value: str) -> list[TrainingInput]:
+    """Parse comma-separated training_input env values."""
+    allowed_inputs = {"cod", "age", "sex"}
+    parsed: list[TrainingInput] = []
+    for feature in raw_value.split(","):
+        cleaned_feature = feature.strip().lower()
+        if cleaned_feature == "":
+            continue
+        if cleaned_feature not in allowed_inputs:
+            allowed = ", ".join(sorted(allowed_inputs))
+            raise ValueError(
+                f"CODLLM_TRAINING_INPUT contains unsupported value '{feature}'. "
+                f"Supported values are: {allowed}."
+            )
+        normalized_feature = cast(TrainingInput, cleaned_feature)
+        if normalized_feature not in parsed:
+            parsed.append(normalized_feature)
+    if not parsed:
+        raise ValueError("CODLLM_TRAINING_INPUT must include at least one value.")
+    return parsed
+
+
 def config_from_env(base: Optional[Config] = None) -> Config:
     """Create runtime config with environment overrides for HPC and reproducibility."""
     cfg = deepcopy(base) if base is not None else Config()
@@ -209,6 +234,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if warmup_steps < 0:
             raise ValueError("CODLLM_WARMUP_STEPS must be non-negative.")
         cfg.warmup_steps = warmup_steps
+
+    num_train_epochs = _parse_env_int("CODLLM_NUM_TRAIN_EPOCHS")
+    if num_train_epochs is not None:
+        if num_train_epochs < 1:
+            raise ValueError("CODLLM_NUM_TRAIN_EPOCHS must be at least 1.")
+        cfg.num_train_epochs = num_train_epochs
 
     max_label_count = _parse_env_int("CODLLM_MAX_LABEL_COUNT")
     if max_label_count is not None:
@@ -256,15 +287,17 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if load_in_8bit is not None:
         cfg.load_in_8bit = load_in_8bit
 
+    verbose = _parse_env_bool("CODLLM_VERBOSE")
+    if verbose is not None:
+        cfg.verbose = verbose
+
     torch_dtype = os.getenv("CODLLM_TORCH_DTYPE")
     if torch_dtype is not None and torch_dtype.strip() != "":
         normalized_torch_dtype = torch_dtype.strip().lower()
         allowed_torch_dtypes = {"auto", "float16", "bfloat16", "float32"}
         if normalized_torch_dtype not in allowed_torch_dtypes:
             allowed = ", ".join(sorted(allowed_torch_dtypes))
-            raise ValueError(
-                f"CODLLM_TORCH_DTYPE must be one of: {allowed}."
-            )
+            raise ValueError(f"CODLLM_TORCH_DTYPE must be one of: {allowed}.")
         cfg.torch_dtype = cast(TorchDType, normalized_torch_dtype)
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
@@ -282,6 +315,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if max_grad_norm < 0:
             raise ValueError("CODLLM_MAX_GRAD_NORM must be non-negative.")
         cfg.max_grad_norm = max_grad_norm
+
+    weight_decay = _parse_env_float("CODLLM_WEIGHT_DECAY")
+    if weight_decay is not None:
+        if weight_decay < 0:
+            raise ValueError("CODLLM_WEIGHT_DECAY must be non-negative.")
+        cfg.weight_decay = weight_decay
 
     train_size = _parse_env_float("CODLLM_TRAIN_SIZE")
     if train_size is not None:
@@ -303,6 +342,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if label_separator is not None:
         cfg.label_separator = label_separator
 
+    training_input = os.getenv("CODLLM_TRAINING_INPUT")
+    if training_input is not None and training_input.strip() != "":
+        cfg.training_input = _parse_training_input(training_input)
+
     data_raw_dir = os.getenv("CODLLM_DATA_RAW_DIR")
     if data_raw_dir:
         cfg.data_raw_dir = data_raw_dir
@@ -310,6 +353,15 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     data_processed_dir = os.getenv("CODLLM_DATA_PROCESSED_DIR")
     if data_processed_dir:
         cfg.data_processed_dir = data_processed_dir
+
+    wandb_log_model = os.getenv("CODLLM_WANDB_LOG_MODEL")
+    if wandb_log_model is not None and wandb_log_model.strip() != "":
+        normalized_wandb_log_model = wandb_log_model.strip().lower()
+        allowed_wandb_log_models = {"false", "end", "checkpoint"}
+        if normalized_wandb_log_model not in allowed_wandb_log_models:
+            allowed = ", ".join(sorted(allowed_wandb_log_models))
+            raise ValueError(f"CODLLM_WANDB_LOG_MODEL must be one of: {allowed}.")
+        cfg.wandb.log_model = cast(WandbLogModel, normalized_wandb_log_model)
 
     return cfg
 

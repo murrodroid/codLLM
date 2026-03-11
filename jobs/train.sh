@@ -2,12 +2,13 @@
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
 #BSUB -q gpuv100
-#BSUB -W 08:00
+#BSUB -W 10:00
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=6GB]"
 #BSUB -R "select[gpu32gb]"
 #BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -env "all"
 #BSUB -u s234805@dtu.dk
 #BSUB -B
 #BSUB -N
@@ -23,6 +24,31 @@ trap 'code=$?;
 PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
+
+JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-${1:-}}"
+REQUIRE_JOB_CONFIG_FILE="${REQUIRE_JOB_CONFIG_FILE:-0}"
+if [ "$REQUIRE_JOB_CONFIG_FILE" = "1" ] && [ -z "$JOB_CONFIG_FILE" ]; then
+  echo "ERROR: REQUIRE_JOB_CONFIG_FILE=1 but JOB_CONFIG_FILE is not set."
+  exit 1
+fi
+if [ -n "$JOB_CONFIG_FILE" ]; then
+  if [ -f "$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$JOB_CONFIG_FILE"
+  elif [ -f "$PROJECT_DIR/$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$PROJECT_DIR/$JOB_CONFIG_FILE"
+  elif [ -f "$PROJECT_DIR/jobs/configs/$JOB_CONFIG_FILE" ]; then
+    resolved_job_config="$PROJECT_DIR/jobs/configs/$JOB_CONFIG_FILE"
+  else
+    echo "ERROR: JOB_CONFIG_FILE '$JOB_CONFIG_FILE' does not exist."
+    exit 1
+  fi
+  echo "Loading job config file: $resolved_job_config"
+  set -a
+  source "$resolved_job_config"
+  set +a
+else
+  echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
+fi
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
 RUN_STORAGE_DIR="${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}"
@@ -46,15 +72,21 @@ CODLLM_OUTPUT_DIR="${CODLLM_OUTPUT_DIR:-$TRAIN_OUTPUT_DIR}"
 CODLLM_DATA_RAW_DIR="${CODLLM_DATA_RAW_DIR:-$TRAIN_DATA_RAW_DIR}"
 CODLLM_DATA_PROCESSED_DIR="${CODLLM_DATA_PROCESSED_DIR:-$TRAIN_DATA_PROCESSED_DIR}"
 
-FORCE_REPROCESS="${FORCE_REPROCESS:-1}"
+FORCE_REPROCESS="${FORCE_REPROCESS:-0}"
 SYNC_ENV="${SYNC_ENV:-1}"
+UV_SYNC_LOCK_FILE="${UV_SYNC_LOCK_FILE:-$RUN_STORAGE_DIR/.uv-sync.lock}"
 
 CODLLM_SEED="${CODLLM_SEED:-42}"
 CODLLM_LOAD_IN_8BIT="${CODLLM_LOAD_IN_8BIT:-0}"
+CODLLM_VERBOSE="${CODLLM_VERBOSE:-1}"
 CODLLM_TORCH_DTYPE="${CODLLM_TORCH_DTYPE:-auto}"
+CODLLM_WANDB_LOG_MODEL="${CODLLM_WANDB_LOG_MODEL:-end}"
 CODLLM_WARMUP_STEPS="${CODLLM_WARMUP_STEPS:-1000}"
+CODLLM_NUM_TRAIN_EPOCHS="${CODLLM_NUM_TRAIN_EPOCHS:-4}"
 CODLLM_LR="${CODLLM_LR:-3e-5}"
+CODLLM_WEIGHT_DECAY="${CODLLM_WEIGHT_DECAY:-0.0}"
 CODLLM_MAX_GRAD_NORM="${CODLLM_MAX_GRAD_NORM:-0.5}"
+CODLLM_TRAINING_INPUT="${CODLLM_TRAINING_INPUT:-cod,age,sex}"
 PYTHONHASHSEED="${PYTHONHASHSEED:-$CODLLM_SEED}"
 CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
 OMP_NUM_THREADS="${OMP_NUM_THREADS:-${LSB_DJOB_NUMPROC:-1}}"
@@ -66,11 +98,22 @@ export WANDB_DIR WANDB_CACHE_DIR
 export XDG_CACHE_HOME="$XDG_CACHE_HOME_DIR"
 export UV_CACHE_DIR UV_PROJECT_ENVIRONMENT
 export CODLLM_OUTPUT_DIR CODLLM_DATA_RAW_DIR CODLLM_DATA_PROCESSED_DIR
-export CODLLM_SEED CODLLM_LOAD_IN_8BIT CODLLM_TORCH_DTYPE
-export CODLLM_WARMUP_STEPS CODLLM_LR CODLLM_MAX_GRAD_NORM
+export CODLLM_SEED CODLLM_LOAD_IN_8BIT CODLLM_VERBOSE CODLLM_TORCH_DTYPE
+export CODLLM_WANDB_LOG_MODEL
+export CODLLM_WARMUP_STEPS CODLLM_NUM_TRAIN_EPOCHS
+export CODLLM_LR CODLLM_WEIGHT_DECAY CODLLM_MAX_GRAD_NORM
+export CODLLM_TRAINING_INPUT
 export PYTHONHASHSEED CUBLAS_WORKSPACE_CONFIG
 export OMP_NUM_THREADS MKL_NUM_THREADS TOKENIZERS_PARALLELISM
 export PYTHONUNBUFFERED=1
+
+echo "Effective training environment:"
+echo "  JOB_CONFIG_FILE=${resolved_job_config:-<none>}"
+echo "  CODLLM_LR=$CODLLM_LR"
+echo "  CODLLM_NUM_TRAIN_EPOCHS=$CODLLM_NUM_TRAIN_EPOCHS"
+echo "  CODLLM_WEIGHT_DECAY=$CODLLM_WEIGHT_DECAY"
+echo "  CODLLM_TRAINING_INPUT=$CODLLM_TRAINING_INPUT"
+echo "  CODLLM_VERBOSE=$CODLLM_VERBOSE"
 
 mkdir -p \
   "$RUN_STORAGE_DIR" \
@@ -106,7 +149,12 @@ fi
 
 if [ "$SYNC_ENV" = "1" ]; then
   echo "Syncing Python environment with uv."
-  uv sync --frozen --no-dev
+  if command -v flock >/dev/null 2>&1; then
+    flock "$UV_SYNC_LOCK_FILE" uv sync --frozen --no-dev
+  else
+    echo "WARNING: flock is not available; running uv sync without cross-job locking."
+    uv sync --frozen --no-dev
+  fi
 fi
 
 train_cmd=(uv run python -m codllm.train)

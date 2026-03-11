@@ -1,9 +1,12 @@
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
+from uuid import uuid4
 import warnings
 
+from filelock import FileLock, Timeout
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
@@ -21,7 +24,8 @@ PROCESSED_COLUMNS = [
     "y_codes",
     "label",
 ]
-PROCESSING_METADATA_VERSION = 2
+PROCESSING_METADATA_VERSION = 3
+DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
 
 
 @dataclass
@@ -190,6 +194,29 @@ class DataHandler:
         suffix = self.processed_path.suffix
         return self.processed_path.with_suffix(f"{suffix}.meta.json")
 
+    @property
+    def processed_lock_path(self) -> Path:
+        """Return lock path used to serialize processed-data cache access."""
+        suffix = self.processed_path.suffix
+        return self.processed_path.with_suffix(f"{suffix}.lock")
+
+    def _processed_lock_timeout_seconds(self) -> float:
+        """Return processed-cache lock timeout configured via environment."""
+        raw_value = os.getenv("CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS")
+        if raw_value is None or raw_value.strip() == "":
+            return DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS
+        try:
+            timeout_seconds = float(raw_value)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS must be a positive float."
+            ) from exc
+        if timeout_seconds <= 0:
+            raise ValueError(
+                "CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS must be greater than 0."
+            )
+        return timeout_seconds
+
     def processed_exists(self) -> bool:
         """Return True when the configured processed file already exists."""
         return self.processed_path.exists()
@@ -247,9 +274,16 @@ class DataHandler:
 
     def _write_processing_metadata(self, metadata: dict[str, Any]) -> None:
         """Persist processed-data metadata next to the processed file."""
-        self.processed_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path = self.processed_metadata_path
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(metadata, sort_keys=True, indent=2)
-        self.processed_metadata_path.write_text(f"{payload}\n")
+        temp_path = metadata_path.parent / f".{metadata_path.name}.{uuid4().hex}.tmp"
+        try:
+            temp_path.write_text(f"{payload}\n")
+            temp_path.replace(metadata_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
 
     def _processed_cache_is_valid(self) -> bool:
         """Return True when the current setup matches saved processed metadata."""
@@ -261,18 +295,28 @@ class DataHandler:
 
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
         """Load processed data, or build and save it when missing."""
-        should_reprocess = force_reprocess or not self.processed_exists()
-        if not should_reprocess:
-            should_reprocess = not self._processed_cache_is_valid()
+        lock_path = self.processed_lock_path
+        lock_timeout_seconds = self._processed_lock_timeout_seconds()
+        lock = FileLock(str(lock_path), timeout=lock_timeout_seconds)
+        try:
+            with lock:
+                should_reprocess = force_reprocess or not self.processed_exists()
+                if not should_reprocess:
+                    should_reprocess = not self._processed_cache_is_valid()
 
-        if should_reprocess:
-            processed_df = build_processed_dataset(
-                cfg=self.cfg, mapping_registry=self.mapping_registry
-            )
-            save_processed_dataset(processed_df, str(self.processed_path))
-            self._write_processing_metadata(self._build_processing_metadata())
-            return processed_df
-        return self._load_processed_dataset()
+                if should_reprocess:
+                    processed_df = build_processed_dataset(
+                        cfg=self.cfg, mapping_registry=self.mapping_registry
+                    )
+                    save_processed_dataset(processed_df, str(self.processed_path))
+                    self._write_processing_metadata(self._build_processing_metadata())
+                    return processed_df
+                return self._load_processed_dataset()
+        except Timeout as exc:
+            raise TimeoutError(
+                f"Timed out waiting for processed-data lock '{lock_path}'. "
+                "Set CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS to a larger value."
+            ) from exc
 
     def get_splits(self, force_reprocess: bool = False) -> DataSplits:
         """Return train/validation/test splits from processed data."""
@@ -523,12 +567,9 @@ def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
     return codes
 
 
-def _build_y(row: pd.Series, mapping: DatasetMapping, max_labels: int = 1) -> list[str]:
-    """Build target code list, truncated to the configured maximum number of labels."""
-    if max_labels < 1:
-        raise ValueError("max_labels must be at least 1.")
-    codes = _collect_codes(row, mapping)
-    return codes[:max_labels]
+def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
+    """Build complete target code list for one source row."""
+    return _collect_codes(row, mapping)
 
 
 def _build_label(codes: list[str], separator: str = " | ") -> str:
@@ -567,6 +608,8 @@ def load_source_dataset(
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
     """Load and process one source dataset into the canonical schema."""
+    if max_labels < 1:
+        raise ValueError("max_labels must be at least 1.")
     normalized_training_input = _normalize_training_input(training_input)
     source_path = _resolve_source_path(source, data_raw_dir)
     raw_df = _read_raw_dataframe(source_path, source)
@@ -594,9 +637,10 @@ def load_source_dataset(
     result["text"] = raw_df.apply(
         lambda row: _build_text(row, mapping, normalized_training_input), axis=1
     )
-    result["y_codes"] = raw_df.apply(
-        lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
-    )
+    result["y_codes"] = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
+    result["label_count"] = result["y_codes"].apply(len)
+    result = result[result["label_count"] <= max_labels].reset_index(drop=True)
+    result = result.drop(columns=["label_count"])
     result["label"] = result["y_codes"].apply(
         lambda codes: _build_label(codes, separator=label_separator)
     )
@@ -644,13 +688,18 @@ def save_processed_dataset(df: pd.DataFrame, output_path: str) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     suffix = output.suffix.lower()
-    if suffix == ".csv":
-        df.to_csv(output, index=False)
-        return
-    if suffix == ".parquet":
-        df.to_parquet(output, index=False)
-        return
-    raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
+    temporary_output = output.parent / f".{output.name}.{uuid4().hex}.tmp{suffix}"
+    try:
+        if suffix == ".csv":
+            df.to_csv(temporary_output, index=False)
+        elif suffix == ".parquet":
+            df.to_parquet(temporary_output, index=False)
+        else:
+            raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
+        temporary_output.replace(output)
+    finally:
+        if temporary_output.exists():
+            temporary_output.unlink()
 
 
 def build_and_save_processed_dataset(

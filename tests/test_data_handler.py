@@ -1,9 +1,12 @@
 from pathlib import Path
+import threading
+import time
 
 import pandas as pd
 import pytest
 from sklearn.model_selection import train_test_split
 
+import codllm.data_handler as data_handler_module
 from codllm.config import Config, DataSourceConfig
 from codllm.data_handler import (
     DataHandler,
@@ -80,17 +83,17 @@ class TestBuildText:
 
 
 class TestBuildY:
-    def test_build_y_limits_output_to_one_label_by_default(self) -> None:
-        """y should be capped to one code for current training objective."""
+    def test_build_y_collects_all_available_labels(self) -> None:
+        """y should preserve all collected labels from multi-code columns."""
         mapping = _make_mapping(multi_code_cols=[2, 6])
         row = _row("text", "A00", "J18", "1", "20", "RID-001", "R99")
-        assert _build_y(row, mapping) == ["J18"]
+        assert _build_y(row, mapping) == ["J18", "R99"]
 
-    def test_build_y_can_return_multiple_labels_for_future_use(self) -> None:
-        """y should support multiple labels when max_labels is increased."""
+    def test_build_y_falls_back_to_single_code_when_multicode_is_empty(self) -> None:
+        """y should use the single-code field when no multicode labels are present."""
         mapping = _make_mapping(multi_code_cols=[2, 6])
-        row = _row("text", "A00", "J18", "1", "20", "RID-001", "R99")
-        assert _build_y(row, mapping, max_labels=2) == ["J18", "R99"]
+        row = _row("text", "A00", "", "1", "20", "RID-001", "")
+        assert _build_y(row, mapping) == ["A00"]
 
 
 class TestLoaders:
@@ -211,6 +214,33 @@ class TestLoaders:
             cfg, mapping_registry={"test_mapping": mapping}
         )
         assert result.iloc[0]["label"] == "J18.100,R99.900"
+
+    def test_load_source_dataset_excludes_rows_above_max_label_count(
+        self, tmp_path: Path
+    ) -> None:
+        """Rows with more than max_labels should be removed from processed output."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                ["text-one", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"],
+                ["text-two", "B01.001", "B01.001", "1", "21", "RID-002", ""],
+            ]
+        ).to_csv(csv_path, index=False)
+
+        source = DataSourceConfig(
+            source_id="test_source", path=str(csv_path), mapping_id="test_mapping"
+        )
+        mapping = _make_mapping(multi_code_cols=[2, 6])
+        result = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=["cod", "age", "sex"],
+            max_labels=1,
+            data_raw_dir="",
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["record_id"] == "RID-002"
+        assert result.iloc[0]["label"] == "B01.001"
 
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
@@ -391,14 +421,14 @@ class TestDataHandler:
         )
         handler = DataHandler(
             cfg,
-            mapping_registry={"test_mapping": _make_mapping(multi_code_cols=[2, 6])},
+            mapping_registry={"test_mapping": _make_mapping(multi_code_cols=[2])},
         )
         _ = handler.get_splits()
         first_processed = pd.read_csv(handler.processed_path)
         assert first_processed.iloc[0]["label"] == "J18.100"
 
         pd.DataFrame(
-            [["cholera", "A00.000", "B01.001", "1", "20", "RID-001", "R99.900"]]
+            [["cholera", "A00.000", "B01.001", "1", "20", "RID-001", ""]]
         ).to_csv(raw_path, index=False)
         _ = handler.get_splits()
         second_processed = pd.read_csv(handler.processed_path)
@@ -439,7 +469,10 @@ class TestDataHandler:
                 "source_id": ["src1", "src2"],
                 "record_id": ["RID-001", "RID-002"],
                 "source_path": ["sample.csv", "sample.csv"],
-                "text": ["cod: one | age: 1 | sex: male", "cod: two | age: 2 | sex: female"],
+                "text": [
+                    "cod: one | age: 1 | sex: male",
+                    "cod: two | age: 2 | sex: female",
+                ],
                 "y_codes": [[], []],
                 "label": ["", ""],
             }
@@ -498,3 +531,55 @@ class TestDataHandler:
         handler = DataHandler(cfg)
         with pytest.raises(ValueError):
             handler.split_dataframe(_processed_df(num_rows=20))
+
+    def test_ensure_processed_serializes_parallel_rebuilds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Concurrent ensure_processed calls should rebuild shared cache once."""
+        cfg = Config(
+            data_processed_dir=str(tmp_path / "processed"),
+            processed_filename="training.csv",
+            data_sources=[],
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+        )
+        handler = DataHandler(cfg)
+        rebuilt_frame = _processed_df(num_rows=4)
+        build_calls = {"count": 0}
+
+        def fake_build_processed_dataset(
+            *args: object, **kwargs: object
+        ) -> pd.DataFrame:
+            build_calls["count"] += 1
+            time.sleep(0.2)
+            return rebuilt_frame.copy()
+
+        monkeypatch.setattr(
+            data_handler_module,
+            "build_processed_dataset",
+            fake_build_processed_dataset,
+        )
+
+        errors: list[Exception] = []
+        results: list[pd.DataFrame] = []
+
+        def run_worker() -> None:
+            try:
+                results.append(handler.ensure_processed(force_reprocess=False))
+            except Exception as exc:
+                errors.append(exc)
+
+        first = threading.Thread(target=run_worker)
+        second = threading.Thread(target=run_worker)
+        first.start()
+        second.start()
+        first.join()
+        second.join()
+
+        assert not errors
+        assert build_calls["count"] == 1
+        assert len(results) == 2
+        assert handler.processed_path.exists()
+        assert handler.processed_metadata_path.exists()

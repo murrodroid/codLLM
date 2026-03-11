@@ -47,9 +47,7 @@ def test_custom_separator() -> None:
 
 def test_validate_registry_rejects_unknown() -> None:
     set_valid_codes(frozenset({"A00.000"}))
-    result = parse_model_output(
-        "A00.000 | B99.999", validate_registry=True
-    )
+    result = parse_model_output("A00.000 | B99.999", validate_registry=True)
     assert result.parsed is not None
     assert len(result.parsed.codes) == 1
     assert result.parsed.codes[0].code == "A00.000"

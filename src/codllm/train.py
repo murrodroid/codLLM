@@ -1,7 +1,13 @@
 import argparse
-from typing import Any, Optional, Tuple
+from dataclasses import asdict
+import json
+import os
+from pathlib import Path
+import re
+from typing import Any, Mapping, Optional, Tuple
 import warnings
 
+from filelock import FileLock, Timeout
 import torch
 from transformers import (
     DataCollatorForSeq2Seq,
@@ -20,6 +26,216 @@ from codllm.data_handler import (
 from codllm.metrics import build_exact_match_accuracy_metric
 from codllm.model_registry import load_base_model
 from codllm.reproducibility import configure_reproducibility
+
+LOCAL_RUN_DIR_PATTERN = re.compile(r"^run-(\d+)$")
+DEFAULT_RUN_DIR_LOCK_TIMEOUT_SECONDS = 120.0
+
+
+def _run_dir_lock_timeout_seconds() -> float:
+    """Return run-directory allocation lock timeout from environment."""
+    raw_value = os.getenv("CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS")
+    if raw_value is None or raw_value.strip() == "":
+        return DEFAULT_RUN_DIR_LOCK_TIMEOUT_SECONDS
+    try:
+        timeout_seconds = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            "CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS must be a positive float."
+        ) from exc
+    if timeout_seconds <= 0:
+        raise ValueError("CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS must be greater than 0.")
+    return timeout_seconds
+
+
+def _next_local_run_number(base_output_dir: Path) -> int:
+    """Return the next available local run number in the output root."""
+    max_number = 0
+    if base_output_dir.exists():
+        for path in base_output_dir.iterdir():
+            if not path.is_dir():
+                continue
+            match = LOCAL_RUN_DIR_PATTERN.match(path.name)
+            if match is None:
+                continue
+            max_number = max(max_number, int(match.group(1)))
+    return max_number + 1
+
+
+def _resolve_run_output_dir(base_output_dir: str) -> Path:
+    """Resolve one run-scoped output directory below the configured root."""
+    output_root = Path(base_output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    lock_path = output_root / ".run-dir.lock"
+    lock_timeout_seconds = _run_dir_lock_timeout_seconds()
+    lock = FileLock(str(lock_path), timeout=lock_timeout_seconds)
+    try:
+        with lock:
+            hpc_job_id = os.getenv("LSB_JOBID")
+            hpc_job_index = os.getenv("LSB_JOBINDEX")
+            if hpc_job_id:
+                run_id = hpc_job_id
+                if hpc_job_index and hpc_job_index not in {"0", ""}:
+                    run_id = f"{hpc_job_id}_{hpc_job_index}"
+                run_dir = output_root / f"run-{run_id}"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                return run_dir
+
+            next_run_number = _next_local_run_number(output_root)
+            while True:
+                run_dir = output_root / f"run-{next_run_number:04d}"
+                try:
+                    run_dir.mkdir(parents=True, exist_ok=False)
+                    return run_dir
+                except FileExistsError:
+                    next_run_number += 1
+    except Timeout as exc:
+        raise TimeoutError(
+            f"Timed out waiting for run-directory lock '{lock_path}'. "
+            "Set CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS to a larger value."
+        ) from exc
+
+
+def _prepare_run_output_dir(cfg: Config) -> Path:
+    """Mutate config output_dir to a run-scoped checkpoint root."""
+    run_dir = _resolve_run_output_dir(cfg.output_dir)
+    cfg.output_dir = str(run_dir)
+    os.environ["CODLLM_RUN_ID"] = run_dir.name.removeprefix("run-")
+    return run_dir
+
+
+def _dataset_row_count(dataset: Any) -> int | None:
+    """Return dataset row count when available."""
+    if dataset is None:
+        return None
+    try:
+        return int(len(dataset))
+    except (TypeError, ValueError):
+        return None
+
+
+def _source_distribution(dataset: Any) -> dict[str, int] | None:
+    """Return per-source counts when the split contains source_id metadata."""
+    if dataset is None or not hasattr(dataset, "columns"):
+        return None
+    if "source_id" not in dataset.columns:
+        return None
+    counts = dataset["source_id"].fillna("unknown").astype(str).value_counts()
+    return {source: int(count) for source, count in counts.items()}
+
+
+def _label_stats(dataset: Any, label_column: str) -> dict[str, int] | None:
+    """Return non-empty and unique label counts for a split."""
+    if dataset is None or not hasattr(dataset, "columns"):
+        return None
+    if label_column not in dataset.columns:
+        return None
+    labels = dataset[label_column].fillna("").astype(str).str.strip()
+    non_empty = labels[labels != ""]
+    return {
+        "non_empty_count": int(non_empty.shape[0]),
+        "unique_count": int(non_empty.nunique()),
+    }
+
+
+def _load_json_file(path: Path) -> dict[str, Any] | None:
+    """Load JSON file contents when present and parseable."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _build_data_metadata(
+    cfg: Config, splits: DataSplits, force_reprocess: bool, handler: DataHandler
+) -> dict[str, Any]:
+    """Build split and processed-data metadata for W&B run config."""
+    source_distribution = {
+        "train": _source_distribution(splits.train),
+        "val": _source_distribution(splits.val),
+        "test": _source_distribution(splits.test),
+    }
+    label_stats = {
+        "train": _label_stats(splits.train, cfg.dataset_label_column),
+        "val": _label_stats(splits.val, cfg.dataset_label_column),
+        "test": _label_stats(splits.test, cfg.dataset_label_column),
+    }
+
+    default_processed_path = Path(cfg.data_processed_dir) / cfg.processed_filename
+    processed_path = Path(getattr(handler, "processed_path", default_processed_path))
+    default_metadata_path = processed_path.with_suffix(
+        f"{processed_path.suffix}.meta.json"
+    )
+    processed_metadata_path = Path(
+        getattr(handler, "processed_metadata_path", default_metadata_path)
+    )
+
+    payload: dict[str, Any] = {
+        "force_reprocess": force_reprocess,
+        "processed_path": str(processed_path.resolve()),
+        "processed_metadata_path": str(processed_metadata_path.resolve()),
+        "split_rows": {
+            "train": int(len(splits.train)),
+            "val": int(len(splits.val)),
+            "test": int(len(splits.test)),
+        },
+        "split_source_distribution": {
+            split: counts
+            for split, counts in source_distribution.items()
+            if counts is not None
+        },
+        "split_label_stats": {
+            split: stats for split, stats in label_stats.items() if stats is not None
+        },
+    }
+    fingerprint = _load_json_file(processed_metadata_path)
+    if fingerprint is not None:
+        payload["processed_fingerprint"] = fingerprint
+    return payload
+
+
+def _serialize_for_terminal(value: Any) -> Any:
+    """Convert nested values into JSON-serializable terminal output."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _serialize_for_terminal(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_serialize_for_terminal(item) for item in value]
+    return str(value)
+
+
+def _print_training_configuration(
+    cfg: Config,
+    args: Seq2SeqTrainingArguments,
+    run_data_metadata: Optional[dict[str, Any]],
+) -> None:
+    """Print resolved run configuration and hyperparameters when verbosity is enabled."""
+    if not cfg.verbose:
+        return
+
+    cfg_payload = _serialize_for_terminal(asdict(cfg))
+    if isinstance(cfg_payload, dict):
+        cfg_payload.pop("hf_token", None)
+
+    training_args_payload: dict[str, Any] = {}
+    if hasattr(args, "to_dict"):
+        training_args_payload = _serialize_for_terminal(args.to_dict())
+
+    payload: dict[str, Any] = {
+        "run_id": os.getenv("CODLLM_RUN_ID"),
+        "output_dir": cfg.output_dir,
+        "config": cfg_payload,
+        "training_args": training_args_payload,
+    }
+    if run_data_metadata is not None:
+        payload["dataset"] = _serialize_for_terminal(run_data_metadata)
+
+    print("Resolved training setup:")
+    print(json.dumps(payload, sort_keys=True, indent=2))
 
 
 def build_training_args(
@@ -125,7 +341,10 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
 
 
 def _train_from_datasets(
-    cfg: Config, train_ds: Any, eval_ds: Optional[Any] = None
+    cfg: Config,
+    train_ds: Any,
+    eval_ds: Optional[Any] = None,
+    run_data_metadata: Optional[dict[str, Any]] = None,
 ) -> Tuple[Seq2SeqTrainer, Any]:
     """Preprocess datasets and run a seq2seq fine-tuning job."""
     configure_reproducibility(cfg)
@@ -167,6 +386,29 @@ def _train_from_datasets(
         generation_max_length=target_max_length,
         disable_fp16=disable_fp16,
     )
+    fallback_data_metadata = {
+        "split_rows": {
+            "train": _dataset_row_count(train_ds),
+            "eval": _dataset_row_count(eval_ds),
+        }
+    }
+    training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
+    metadata_payload = wandb_utils.build_experiment_metadata(
+        cfg=cfg,
+        data_metadata=(
+            run_data_metadata
+            if run_data_metadata is not None
+            else fallback_data_metadata
+        ),
+        training_args=training_args_payload,
+    )
+    wandb_utils.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=args.report_to,
+        run_name=args.run_name,
+        metadata=metadata_payload,
+    )
+    _print_training_configuration(cfg, args, run_data_metadata)
 
     trainer = Seq2SeqTrainer(
         model=model,
@@ -176,7 +418,9 @@ def _train_from_datasets(
         data_collator=collator,
         processing_class=tokenizer,
         compute_metrics=(
-            build_exact_match_accuracy_metric(tokenizer)
+            build_exact_match_accuracy_metric(
+                tokenizer, label_separator=cfg.label_separator
+            )
             if processed_eval_ds is not None
             else None
         ),
@@ -186,17 +430,54 @@ def _train_from_datasets(
     return trainer, tokenizer
 
 
+def _evaluate_test_split(
+    cfg: Config, trainer: Any, tokenizer: Any, test_ds: Any
+) -> dict[str, float] | None:
+    """Run final evaluation on the test split and emit test-prefixed metrics."""
+    if _dataset_row_count(test_ds) in (None, 0):
+        return None
+    if not hasattr(trainer, "evaluate"):
+        return None
+
+    target_max_length = cfg.resolved_max_target_length()
+    processed_test_ds = prepare_training_dataset(
+        cfg, tokenizer, test_ds, target_max_length
+    )
+    raw_metrics = trainer.evaluate(
+        eval_dataset=processed_test_ds,
+        metric_key_prefix="test",
+    )
+    return {key: float(value) for key, value in raw_metrics.items()}
+
+
 def train(
     cfg: Config,
     data_handler: Optional[DataHandler] = None,
     force_reprocess: bool = False,
 ) -> Tuple[Seq2SeqTrainer, Any, DataSplits]:
     """Build/load data splits via DataHandler and launch training."""
-
+    _prepare_run_output_dir(cfg)
     handler = data_handler or DataHandler(cfg)
     splits = handler.get_splits(force_reprocess=force_reprocess)
     train_ds, eval_ds = resolve_training_frames(splits)
-    trainer, tokenizer = _train_from_datasets(cfg, train_ds, eval_ds)
+    run_data_metadata = _build_data_metadata(
+        cfg=cfg,
+        splits=splits,
+        force_reprocess=force_reprocess,
+        handler=handler,
+    )
+    trainer, tokenizer = _train_from_datasets(
+        cfg,
+        train_ds,
+        eval_ds,
+        run_data_metadata=run_data_metadata,
+    )
+    _evaluate_test_split(
+        cfg=cfg,
+        trainer=trainer,
+        tokenizer=tokenizer,
+        test_ds=splits.test,
+    )
     return trainer, tokenizer, splits
 
 
