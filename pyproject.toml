@@ -22,6 +22,7 @@ dependencies = [
     "torch>=2.10.0",
     "transformers>=5.1.0",
     "wandb>=0.25.0",
+    "openai>=2.24.0",
 ]
 
 [dependency-groups]
@@ -36,4 +37,4 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/codllm"]
+packages = ["src/codllm", "experiments"]
