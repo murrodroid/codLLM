@@ -107,12 +107,32 @@ class TestQwertyMisspell:
 
     def test_replacement_is_neighbor(self):
         neighbors = {
-            "q": "wa", "w": "qeas", "e": "wrds", "r": "etdf", "t": "ryfg",
-            "y": "tugh", "u": "yijh", "i": "uojk", "o": "iplk", "p": "ol",
-            "a": "qwsz", "s": "awedxz", "d": "serfcx", "f": "drtgvc",
-            "g": "ftyhbv", "h": "gyujnb", "j": "huiknm", "k": "jiolm",
-            "l": "kop", "z": "asx", "x": "zsdc", "c": "xdfv", "v": "cfgb",
-            "b": "vghn", "n": "bhjm", "m": "njk",
+            "q": "wa",
+            "w": "qeas",
+            "e": "wrds",
+            "r": "etdf",
+            "t": "ryfg",
+            "y": "tugh",
+            "u": "yijh",
+            "i": "uojk",
+            "o": "iplk",
+            "p": "ol",
+            "a": "qwsz",
+            "s": "awedxz",
+            "d": "serfcx",
+            "f": "drtgvc",
+            "g": "ftyhbv",
+            "h": "gyujnb",
+            "j": "huiknm",
+            "k": "jiolm",
+            "l": "kop",
+            "z": "asx",
+            "x": "zsdc",
+            "c": "xdfv",
+            "v": "cfgb",
+            "b": "vghn",
+            "n": "bhjm",
+            "m": "njk",
         }
         for _ in range(50):
             result = qwerty_misspell("a")
