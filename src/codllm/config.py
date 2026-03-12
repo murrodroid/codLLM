@@ -7,6 +7,7 @@ import torch
 
 
 TrainingInput = Literal["cod", "age", "sex"]
+BalanceStrategy = Literal["none", "upsample"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
@@ -142,6 +143,18 @@ class Config:
     train_size: float = 0.8
     val_size: float = 0.1
     test_size: float = 0.1
+
+    balance_strategy: BalanceStrategy = "none"
+    balance_target_quantile: float = 0.5
+    balance_perturbations: list[str] = field(
+        default_factory=lambda: [
+            "swap_adjacent_chars",
+            "delete_random_char",
+            "accent_random_vowel",
+            "qwerty_misspell",
+        ]
+    )
+    balance_perturbations_per_sample: int = 1
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
@@ -411,6 +424,37 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     data_processed_dir = os.getenv("CODLLM_DATA_PROCESSED_DIR")
     if data_processed_dir:
         cfg.data_processed_dir = data_processed_dir
+
+    balance_strategy = os.getenv("CODLLM_BALANCE_STRATEGY")
+    if balance_strategy is not None and balance_strategy.strip() != "":
+        normalized_balance = balance_strategy.strip().lower()
+        allowed_balance = {"none", "upsample"}
+        if normalized_balance not in allowed_balance:
+            allowed = ", ".join(sorted(allowed_balance))
+            raise ValueError(f"CODLLM_BALANCE_STRATEGY must be one of: {allowed}.")
+        cfg.balance_strategy = cast(BalanceStrategy, normalized_balance)
+
+    balance_target_quantile = _parse_env_float("CODLLM_BALANCE_TARGET_QUANTILE")
+    if balance_target_quantile is not None:
+        if balance_target_quantile < 0 or balance_target_quantile > 1:
+            raise ValueError("CODLLM_BALANCE_TARGET_QUANTILE must be between 0 and 1.")
+        cfg.balance_target_quantile = balance_target_quantile
+
+    balance_perturbations = os.getenv("CODLLM_BALANCE_PERTURBATIONS")
+    if balance_perturbations is not None and balance_perturbations.strip() != "":
+        cfg.balance_perturbations = [
+            p.strip() for p in balance_perturbations.split(",") if p.strip()
+        ]
+
+    balance_perturbations_per_sample = _parse_env_int(
+        "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE"
+    )
+    if balance_perturbations_per_sample is not None:
+        if balance_perturbations_per_sample < 1:
+            raise ValueError(
+                "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE must be at least 1."
+            )
+        cfg.balance_perturbations_per_sample = balance_perturbations_per_sample
 
     wandb_log_model = os.getenv("CODLLM_WANDB_LOG_MODEL")
     if wandb_log_model is not None and wandb_log_model.strip() != "":

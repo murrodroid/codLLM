@@ -16,6 +16,13 @@ from codllm.config import (
     DataSourceConfig,
     TrainingInput,
 )
+from codllm.data_augmentation import (
+    accent_random_vowel,
+    delete_random_char,
+    insert_random_whitespace,
+    qwerty_misspell,
+    swap_adjacent_chars,
+)
 from codllm.path_utils import resolve_source_path
 from codllm.preprocess import build_preprocess_fn
 
@@ -177,6 +184,92 @@ MAPPING_REGISTRY: dict[str, DatasetMapping] = {
     "amsterdam": AMSTERDAM_MAPPING,
 }
 
+PERTURBATION_REGISTRY: dict[str, Any] = {
+    "swap_adjacent_chars": swap_adjacent_chars,
+    "delete_random_char": delete_random_char,
+    "insert_random_whitespace": insert_random_whitespace,
+    "accent_random_vowel": accent_random_vowel,
+    "qwerty_misspell": qwerty_misspell,
+}
+
+
+def upsample_minority_classes(
+    df: pd.DataFrame,
+    text_column: str,
+    label_column: str,
+    target_quantile: float = 0.5,
+    perturbation_names: list[str] | None = None,
+    perturbations_per_sample: int = 1,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Upsample underrepresented classes by generating perturbed copies of their text.
+
+    Classes with fewer samples than the target count (determined by
+    ``target_quantile`` of the class-count distribution) are augmented.
+    Each synthetic sample applies ``perturbations_per_sample`` randomly chosen
+    perturbations sequentially to the original text.
+
+    Returns a new dataframe with the original rows plus any synthetic rows.
+    """
+    import random as _random
+
+    rng = _random.Random(seed)
+
+    if perturbation_names is None:
+        perturbation_names = list(PERTURBATION_REGISTRY.keys())
+
+    perturbation_fns = []
+    for name in perturbation_names:
+        if name not in PERTURBATION_REGISTRY:
+            available = ", ".join(sorted(PERTURBATION_REGISTRY.keys()))
+            raise ValueError(
+                f"Unknown perturbation '{name}'. Available: {available}."
+            )
+        perturbation_fns.append(PERTURBATION_REGISTRY[name])
+
+    if not perturbation_fns:
+        return df
+
+    class_counts = df[label_column].value_counts()
+    target_count = int(class_counts.quantile(target_quantile))
+
+    if target_count <= 0:
+        return df
+
+    synthetic_rows: list[dict[str, Any]] = []
+    for label, count in class_counts.items():
+        if count >= target_count:
+            continue
+        class_rows = df[df[label_column] == label]
+        needed = target_count - count
+        for _ in range(needed):
+            source_row = class_rows.iloc[rng.randint(0, len(class_rows) - 1)]
+            new_row = source_row.to_dict()
+            text = str(new_row.get(text_column, ""))
+            # Only perturb the cod: segment, not age/sex metadata
+            parts = text.split(" | ")
+            cod_part = None
+            cod_idx = None
+            for pi, part in enumerate(parts):
+                if part.startswith("cod: "):
+                    cod_part = part[len("cod: "):]
+                    cod_idx = pi
+                    break
+            if cod_part is not None and cod_idx is not None:
+                for _ in range(perturbations_per_sample):
+                    fn = rng.choice(perturbation_fns)
+                    cod_part = fn(cod_part)
+                parts[cod_idx] = f"cod: {cod_part}"
+                text = " | ".join(parts)
+            new_row[text_column] = text
+            synthetic_rows.append(new_row)
+
+    if not synthetic_rows:
+        return df
+
+    synthetic_df = pd.DataFrame(synthetic_rows, columns=df.columns)
+    return pd.concat([df, synthetic_df], ignore_index=True)
+
 
 class DataHandler:
     """Handle processed-data lifecycle and train/val/test splitting."""
@@ -330,7 +423,18 @@ class DataHandler:
         """Return train/validation/test splits from processed data."""
         processed_df = self.ensure_processed(force_reprocess=force_reprocess)
         sampled_df = self._apply_dataset_size(processed_df)
-        return self.split_dataframe(sampled_df)
+        splits = self.split_dataframe(sampled_df)
+        if self.cfg.balance_strategy == "upsample" and not splits.train.empty:
+            splits.train = upsample_minority_classes(
+                df=splits.train,
+                text_column=self.cfg.dataset_text_column,
+                label_column=self.cfg.dataset_label_column,
+                target_quantile=self.cfg.balance_target_quantile,
+                perturbation_names=self.cfg.balance_perturbations,
+                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
+                seed=self._resolved_data_seed(),
+            )
+        return splits
 
     def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
         """Split a dataframe into train, validation, and test sets."""
