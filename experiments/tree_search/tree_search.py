@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from openai import OpenAI
 
 from experiments.tree_search.icd10h_tree import NodeLevel, TreeNode
 
@@ -111,6 +110,8 @@ class LLMClient:
 
     def __init__(self, config: TreeSearchConfig) -> None:
         self.config = config
+        from openai import OpenAI
+
         self.client = OpenAI(
             base_url=config.llm_base_url,
             api_key=config.llm_api_key,
