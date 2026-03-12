@@ -40,6 +40,35 @@ def _precision_recall_f1(
     return {"precision": precision, "recall": recall, "f1": f1}
 
 
+def _macro_recall(
+    predictions: list[set[str]], labels: list[set[str]]
+) -> float:
+    """Compute macro-averaged recall: average per-class recall across all classes.
+
+    Each unique code in the label sets is treated as a class. For each class,
+    recall = (times correctly predicted) / (times it appears in labels).
+    The macro recall is the unweighted mean across all classes, giving equal
+    weight to rare and frequent classes.
+    """
+    class_tp: dict[str, int] = {}
+    class_total: dict[str, int] = {}
+    for predicted_codes, label_codes in zip(predictions, labels):
+        for code in label_codes:
+            class_total[code] = class_total.get(code, 0) + 1
+            if code in predicted_codes:
+                class_tp[code] = class_tp.get(code, 0) + 1
+
+    if not class_total:
+        return 0.0
+
+    per_class_recalls = []
+    for code, total in class_total.items():
+        tp = class_tp.get(code, 0)
+        per_class_recalls.append(tp / total)
+
+    return float(np.mean(per_class_recalls))
+
+
 def build_exact_match_accuracy_metric(
     tokenizer: Any,
     label_separator: str = ",",
@@ -89,6 +118,7 @@ def build_exact_match_accuracy_metric(
             _split_predicted_codes(text, label_separator) for text in normalized_labels
         ]
         overlap_metrics = _precision_recall_f1(predicted_code_sets, label_code_sets)
-        return {"accuracy": accuracy, **overlap_metrics}
+        macro_recall_score = _macro_recall(predicted_code_sets, label_code_sets)
+        return {"accuracy": accuracy, **overlap_metrics, "macro_recall": macro_recall_score}
 
     return compute_metrics
