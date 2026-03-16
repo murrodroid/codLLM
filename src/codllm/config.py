@@ -258,8 +258,20 @@ def _parse_training_input(raw_value: str) -> list[TrainingInput]:
 
 
 def config_from_env(base: Optional[Config] = None) -> Config:
-    """Create runtime config with environment overrides for HPC and reproducibility."""
+    """Create runtime config with environment overrides for training, HPC, and reproducibility."""
     cfg = deepcopy(base) if base is not None else Config()
+
+    hf_model = os.getenv("CODLLM_HF_MODEL")
+    if hf_model is not None and hf_model.strip() != "":
+        cfg.hf_model = hf_model.strip()
+
+    hf_token = os.getenv("CODLLM_HF_TOKEN")
+    if hf_token is not None and hf_token.strip() != "":
+        cfg.hf_token = hf_token.strip()
+
+    trust_remote_code = _parse_env_bool("CODLLM_TRUST_REMOTE_CODE")
+    if trust_remote_code is not None:
+        cfg.trust_remote_code = trust_remote_code
 
     seed = _parse_env_int("CODLLM_SEED")
     if seed is not None:
@@ -287,11 +299,53 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_NUM_TRAIN_EPOCHS must be at least 1.")
         cfg.num_train_epochs = num_train_epochs
 
+    per_device_train_batch_size = _parse_env_int("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE")
+    if per_device_train_batch_size is not None:
+        if per_device_train_batch_size < 1:
+            raise ValueError("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE must be at least 1.")
+        cfg.per_device_train_batch_size = per_device_train_batch_size
+
+    per_device_eval_batch_size = _parse_env_int("CODLLM_PER_DEVICE_EVAL_BATCH_SIZE")
+    if per_device_eval_batch_size is not None:
+        if per_device_eval_batch_size < 1:
+            raise ValueError("CODLLM_PER_DEVICE_EVAL_BATCH_SIZE must be at least 1.")
+        cfg.per_device_eval_batch_size = per_device_eval_batch_size
+
+    gradient_accumulation_steps = _parse_env_int("CODLLM_GRADIENT_ACCUMULATION_STEPS")
+    if gradient_accumulation_steps is not None:
+        if gradient_accumulation_steps < 1:
+            raise ValueError("CODLLM_GRADIENT_ACCUMULATION_STEPS must be at least 1.")
+        cfg.gradient_accumulation_steps = gradient_accumulation_steps
+
+    logging_steps = _parse_env_int("CODLLM_LOGGING_STEPS")
+    if logging_steps is not None:
+        if logging_steps < 1:
+            raise ValueError("CODLLM_LOGGING_STEPS must be at least 1.")
+        cfg.logging_steps = logging_steps
+
+    eval_steps = _parse_env_int("CODLLM_EVAL_STEPS")
+    if eval_steps is not None:
+        if eval_steps < 1:
+            raise ValueError("CODLLM_EVAL_STEPS must be at least 1.")
+        cfg.eval_steps = eval_steps
+
+    save_steps = _parse_env_int("CODLLM_SAVE_STEPS")
+    if save_steps is not None:
+        if save_steps < 1:
+            raise ValueError("CODLLM_SAVE_STEPS must be at least 1.")
+        cfg.save_steps = save_steps
+
     max_label_count = _parse_env_int("CODLLM_MAX_LABEL_COUNT")
     if max_label_count is not None:
         if max_label_count < 1:
             raise ValueError("CODLLM_MAX_LABEL_COUNT must be at least 1.")
         cfg.max_label_count = max_label_count
+
+    max_source_length = _parse_env_int("CODLLM_MAX_SOURCE_LENGTH")
+    if max_source_length is not None:
+        if max_source_length < 1:
+            raise ValueError("CODLLM_MAX_SOURCE_LENGTH must be at least 1.")
+        cfg.max_source_length = max_source_length
 
     max_target_length = _parse_env_int("CODLLM_MAX_TARGET_LENGTH")
     if max_target_length is not None:
@@ -333,6 +387,16 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if load_in_8bit is not None:
         cfg.load_in_8bit = load_in_8bit
 
+    use_safetensors = _parse_env_bool("CODLLM_USE_SAFETENSORS")
+    if use_safetensors is not None:
+        cfg.use_safetensors = use_safetensors
+
+    disable_safetensors_conversion = _parse_env_bool(
+        "CODLLM_DISABLE_SAFETENSORS_CONVERSION"
+    )
+    if disable_safetensors_conversion is not None:
+        cfg.disable_safetensors_conversion = disable_safetensors_conversion
+
     verbose = _parse_env_bool("CODLLM_VERBOSE")
     if verbose is not None:
         cfg.verbose = verbose
@@ -345,6 +409,24 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             allowed = ", ".join(sorted(allowed_torch_dtypes))
             raise ValueError(f"CODLLM_TORCH_DTYPE must be one of: {allowed}.")
         cfg.torch_dtype = cast(TorchDType, normalized_torch_dtype)
+
+    eval_strategy = os.getenv("CODLLM_EVAL_STRATEGY")
+    if eval_strategy is not None and eval_strategy.strip() != "":
+        normalized_eval_strategy = eval_strategy.strip().lower()
+        allowed_eval_strategies = {"no", "steps", "epoch"}
+        if normalized_eval_strategy not in allowed_eval_strategies:
+            allowed = ", ".join(sorted(allowed_eval_strategies))
+            raise ValueError(f"CODLLM_EVAL_STRATEGY must be one of: {allowed}.")
+        cfg.eval_strategy = normalized_eval_strategy
+
+    save_strategy = os.getenv("CODLLM_SAVE_STRATEGY")
+    if save_strategy is not None and save_strategy.strip() != "":
+        normalized_save_strategy = save_strategy.strip().lower()
+        allowed_save_strategies = {"no", "steps", "epoch", "best"}
+        if normalized_save_strategy not in allowed_save_strategies:
+            allowed = ", ".join(sorted(allowed_save_strategies))
+            raise ValueError(f"CODLLM_SAVE_STRATEGY must be one of: {allowed}.")
+        cfg.save_strategy = normalized_save_strategy
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:
@@ -464,6 +546,31 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             allowed = ", ".join(sorted(allowed_wandb_log_models))
             raise ValueError(f"CODLLM_WANDB_LOG_MODEL must be one of: {allowed}.")
         cfg.wandb.log_model = cast(WandbLogModel, normalized_wandb_log_model)
+
+    wandb_enabled = _parse_env_bool("CODLLM_WANDB_ENABLED")
+    if wandb_enabled is not None:
+        cfg.wandb.enabled = wandb_enabled
+
+    wandb_mode = os.getenv("CODLLM_WANDB_MODE")
+    if wandb_mode is not None and wandb_mode.strip() != "":
+        normalized_wandb_mode = wandb_mode.strip().lower()
+        allowed_wandb_modes = {"auto", "online", "offline", "disabled"}
+        if normalized_wandb_mode not in allowed_wandb_modes:
+            allowed = ", ".join(sorted(allowed_wandb_modes))
+            raise ValueError(f"CODLLM_WANDB_MODE must be one of: {allowed}.")
+        cfg.wandb.mode = cast(WandbMode, normalized_wandb_mode)
+
+    wandb_project = os.getenv("CODLLM_WANDB_PROJECT")
+    if wandb_project is not None and wandb_project.strip() != "":
+        cfg.wandb.project = wandb_project.strip()
+
+    wandb_entity = os.getenv("CODLLM_WANDB_ENTITY")
+    if wandb_entity is not None and wandb_entity.strip() != "":
+        cfg.wandb.entity = wandb_entity.strip()
+
+    wandb_run_name = os.getenv("CODLLM_WANDB_RUN_NAME")
+    if wandb_run_name is not None and wandb_run_name.strip() != "":
+        cfg.wandb.run_name = wandb_run_name.strip()
 
     return cfg
 

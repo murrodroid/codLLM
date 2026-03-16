@@ -10,8 +10,11 @@ def _create_fake_uv(tmp_path: Path) -> None:
     fake_uv.write_text(
         "#!/usr/bin/env bash\n"
         'echo "FAKE_UV_ARGS:$*"\n'
+        'echo "ENV_CODLLM_HF_MODEL:${CODLLM_HF_MODEL:-}"\n'
         'echo "ENV_CODLLM_LR:${CODLLM_LR:-}"\n'
         'echo "ENV_CODLLM_NUM_TRAIN_EPOCHS:${CODLLM_NUM_TRAIN_EPOCHS:-}"\n'
+        'echo "ENV_CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE:${CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE:-}"\n'
+        'echo "ENV_CODLLM_PER_DEVICE_EVAL_BATCH_SIZE:${CODLLM_PER_DEVICE_EVAL_BATCH_SIZE:-}"\n'
         'echo "ENV_CODLLM_WEIGHT_DECAY:${CODLLM_WEIGHT_DECAY:-}"\n'
         'echo "ENV_CODLLM_TRAINING_INPUT:${CODLLM_TRAINING_INPUT:-}"\n'
         'echo "ENV_CODLLM_DATA_PROCESSED_DIR:${CODLLM_DATA_PROCESSED_DIR:-}"\n'
@@ -29,8 +32,11 @@ def test_train_script_loads_job_config_file(tmp_path: Path) -> None:
 
     job_config_file = tmp_path / "job.env"
     job_config_file.write_text(
+        "CODLLM_HF_MODEL=google/flan-t5-base\n"
         "CODLLM_LR=9e-5\n"
         "CODLLM_NUM_TRAIN_EPOCHS=9\n"
+        "CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE=3\n"
+        "CODLLM_PER_DEVICE_EVAL_BATCH_SIZE=2\n"
         "CODLLM_WEIGHT_DECAY=0.123\n"
         "CODLLM_TRAINING_INPUT=cod,age\n"
         "CODLLM_DATA_PROCESSED_DIR=/tmp/custom-processed\n"
@@ -56,8 +62,11 @@ def test_train_script_loads_job_config_file(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Loading job config file" in result.stdout
     assert "FAKE_UV_ARGS:run python -m codllm.train" in result.stdout
+    assert "ENV_CODLLM_HF_MODEL:google/flan-t5-base" in result.stdout
     assert "ENV_CODLLM_LR:9e-5" in result.stdout
     assert "ENV_CODLLM_NUM_TRAIN_EPOCHS:9" in result.stdout
+    assert "ENV_CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE:3" in result.stdout
+    assert "ENV_CODLLM_PER_DEVICE_EVAL_BATCH_SIZE:2" in result.stdout
     assert "ENV_CODLLM_WEIGHT_DECAY:0.123" in result.stdout
     assert "ENV_CODLLM_TRAINING_INPUT:cod,age" in result.stdout
     assert "ENV_CODLLM_DATA_PROCESSED_DIR:/tmp/custom-processed" in result.stdout
@@ -75,9 +84,7 @@ def test_train_script_resolves_job_config_from_jobs_configs_dir(tmp_path: Path) 
     config_dir = project_dir / "jobs" / "configs"
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "example.env").write_text(
-        "CODLLM_LR=7e-5\n"
-        "CODLLM_NUM_TRAIN_EPOCHS=7\n"
-        "SYNC_ENV=0\n"
+        "CODLLM_LR=7e-5\nCODLLM_NUM_TRAIN_EPOCHS=7\nSYNC_ENV=0\n"
     )
 
     repo_root = Path(__file__).resolve().parents[1]

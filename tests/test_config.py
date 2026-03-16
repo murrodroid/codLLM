@@ -4,11 +4,23 @@ from codllm.config import Config, config_from_env
 
 
 ENV_KEYS = [
+    "CODLLM_HF_MODEL",
+    "CODLLM_HF_TOKEN",
+    "CODLLM_TRUST_REMOTE_CODE",
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
+    "CODLLM_MAX_SOURCE_LENGTH",
     "CODLLM_WARMUP_STEPS",
     "CODLLM_NUM_TRAIN_EPOCHS",
+    "CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE",
+    "CODLLM_PER_DEVICE_EVAL_BATCH_SIZE",
+    "CODLLM_GRADIENT_ACCUMULATION_STEPS",
+    "CODLLM_LOGGING_STEPS",
+    "CODLLM_EVAL_STEPS",
+    "CODLLM_SAVE_STEPS",
+    "CODLLM_EVAL_STRATEGY",
+    "CODLLM_SAVE_STRATEGY",
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
@@ -22,6 +34,8 @@ ENV_KEYS = [
     "CODLLM_CUDNN_DETERMINISTIC",
     "CODLLM_CUDNN_BENCHMARK",
     "CODLLM_LOAD_IN_8BIT",
+    "CODLLM_USE_SAFETENSORS",
+    "CODLLM_DISABLE_SAFETENSORS_CONVERSION",
     "CODLLM_VERBOSE",
     "CODLLM_TORCH_DTYPE",
     "CODLLM_LR",
@@ -36,6 +50,11 @@ ENV_KEYS = [
     "CODLLM_DATASET_LABEL_COLUMN",
     "CODLLM_DEVICE",
     "CODLLM_DEVICE_MAP",
+    "CODLLM_WANDB_ENABLED",
+    "CODLLM_WANDB_MODE",
+    "CODLLM_WANDB_PROJECT",
+    "CODLLM_WANDB_ENTITY",
+    "CODLLM_WANDB_RUN_NAME",
     "CODLLM_WANDB_LOG_MODEL",
 ]
 
@@ -51,11 +70,23 @@ def test_config_from_env_applies_runtime_overrides(
 ) -> None:
     """Environment variables should override reproducibility and path settings."""
     _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_HF_MODEL", "google/flan-t5-base")
+    monkeypatch.setenv("CODLLM_HF_TOKEN", "test-token")
+    monkeypatch.setenv("CODLLM_TRUST_REMOTE_CODE", "true")
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
+    monkeypatch.setenv("CODLLM_MAX_SOURCE_LENGTH", "300")
     monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
     monkeypatch.setenv("CODLLM_NUM_TRAIN_EPOCHS", "6")
+    monkeypatch.setenv("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE", "6")
+    monkeypatch.setenv("CODLLM_PER_DEVICE_EVAL_BATCH_SIZE", "5")
+    monkeypatch.setenv("CODLLM_GRADIENT_ACCUMULATION_STEPS", "3")
+    monkeypatch.setenv("CODLLM_LOGGING_STEPS", "12")
+    monkeypatch.setenv("CODLLM_EVAL_STEPS", "50")
+    monkeypatch.setenv("CODLLM_SAVE_STEPS", "60")
+    monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "steps")
+    monkeypatch.setenv("CODLLM_SAVE_STRATEGY", "best")
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
@@ -69,6 +100,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
     monkeypatch.setenv("CODLLM_CUDNN_BENCHMARK", "true")
     monkeypatch.setenv("CODLLM_LOAD_IN_8BIT", "true")
+    monkeypatch.setenv("CODLLM_USE_SAFETENSORS", "true")
+    monkeypatch.setenv("CODLLM_DISABLE_SAFETENSORS_CONVERSION", "false")
     monkeypatch.setenv("CODLLM_VERBOSE", "true")
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "float32")
     monkeypatch.setenv("CODLLM_LR", "5e-5")
@@ -83,16 +116,33 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_DATASET_LABEL_COLUMN", "target")
     monkeypatch.setenv("CODLLM_DEVICE", "cpu")
     monkeypatch.setenv("CODLLM_DEVICE_MAP", "none")
+    monkeypatch.setenv("CODLLM_WANDB_ENABLED", "false")
+    monkeypatch.setenv("CODLLM_WANDB_MODE", "offline")
+    monkeypatch.setenv("CODLLM_WANDB_PROJECT", "codllm-tests")
+    monkeypatch.setenv("CODLLM_WANDB_ENTITY", "unit-tests")
+    monkeypatch.setenv("CODLLM_WANDB_RUN_NAME", "run-123")
     monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "checkpoint")
 
     base = Config(seed=42, data_seed=None, output_dir="./runs", load_in_8bit=False)
     cfg = config_from_env(base)
 
+    assert cfg.hf_model == "google/flan-t5-base"
+    assert cfg.hf_token == "test-token"
+    assert cfg.trust_remote_code is True
     assert cfg.seed == 101
     assert cfg.data_seed == 202
     assert cfg.dataloader_num_workers == 3
+    assert cfg.max_source_length == 300
     assert cfg.warmup_steps == 500
     assert cfg.num_train_epochs == 6
+    assert cfg.per_device_train_batch_size == 6
+    assert cfg.per_device_eval_batch_size == 5
+    assert cfg.gradient_accumulation_steps == 3
+    assert cfg.logging_steps == 12
+    assert cfg.eval_steps == 50
+    assert cfg.save_steps == 60
+    assert cfg.eval_strategy == "steps"
+    assert cfg.save_strategy == "best"
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
@@ -106,6 +156,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.cudnn_deterministic is False
     assert cfg.cudnn_benchmark is True
     assert cfg.load_in_8bit is True
+    assert cfg.use_safetensors is True
+    assert cfg.disable_safetensors_conversion is False
     assert cfg.verbose is True
     assert cfg.torch_dtype == "float32"
     assert cfg.lr == 5e-5
@@ -120,6 +172,11 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.dataset_label_column == "target"
     assert cfg.device.type == "cpu"
     assert cfg.device_map is None
+    assert cfg.wandb.enabled is False
+    assert cfg.wandb.mode == "offline"
+    assert cfg.wandb.project == "codllm-tests"
+    assert cfg.wandb.entity == "unit-tests"
+    assert cfg.wandb.run_name == "run-123"
     assert cfg.wandb.log_model == "checkpoint"
     assert base.seed == 42
     assert base.output_dir == "./runs"
@@ -165,6 +222,16 @@ def test_config_from_env_rejects_non_positive_num_train_epochs(
         config_from_env()
 
 
+def test_config_from_env_rejects_non_positive_train_batch_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-device train batch size should be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
 def test_config_from_env_rejects_non_positive_learning_rate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -181,6 +248,16 @@ def test_config_from_env_rejects_invalid_torch_dtype(
     """Torch dtype override should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "fp8")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_eval_strategy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Eval strategy override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "batch")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -231,6 +308,16 @@ def test_config_from_env_rejects_invalid_wandb_log_model(
     """W&B log-model override should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "always")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_wandb_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W&B mode override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_WANDB_MODE", "local")
     with pytest.raises(ValueError):
         config_from_env()
 
