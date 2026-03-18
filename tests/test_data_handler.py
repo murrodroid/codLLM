@@ -17,6 +17,9 @@ from codllm.data_handler import (
     build_processed_dataset,
     load_dataset,
     load_source_dataset,
+    manipulate_classes,
+    select_upsample_targets,
+    upsample,
 )
 
 
@@ -66,6 +69,21 @@ def _processed_df(num_rows: int) -> pd.DataFrame:
     )
 
 
+def _balance_df() -> pd.DataFrame:
+    """Build a small class-imbalanced dataframe for balancing tests."""
+    return pd.DataFrame(
+        {
+            "text": [
+                "cod: alpha | age: 1 | sex: male",
+                "cod: beta | age: 2 | sex: male",
+                "cod: gamma | age: 3 | sex: female",
+                "cod: delta | age: 4 | sex: female",
+            ],
+            "label": ["A00", "A00", "B00", "C00"],
+        }
+    )
+
+
 class TestBuildText:
     def test_build_text_uses_configured_training_input_order(self) -> None:
         """Text should respect feature order from training_input."""
@@ -80,6 +98,18 @@ class TestBuildText:
         row = _row(None, "A00", "", None, None, "RID-001")
         result = _build_text(row, mapping, ["cod", "age", "sex"])
         assert result == "cod: unknown | age: unknown | sex: unknown"
+
+    def test_build_text_uses_configured_field_separator(self) -> None:
+        """Text should use the configured separator between input fields."""
+        mapping = _make_mapping()
+        row = _row("cholera", "A00", "", "1", "2.4", "RID-001")
+        result = _build_text(
+            row,
+            mapping,
+            ["cod", "age", "sex"],
+            field_separator=" || ",
+        )
+        assert result == "cod: cholera || age: 2.4 || sex: male"
 
 
 class TestBuildY:
@@ -302,6 +332,102 @@ class TestLoaders:
 
 
 class TestDataHandler:
+    def test_select_upsample_targets_returns_quantile_minority_targets(self) -> None:
+        """Minority selector should return per-label target counts."""
+        targets = select_upsample_targets(
+            _balance_df(),
+            label_column="label",
+            target_quantile=1.0,
+            inverse_power=1.0,
+            budget_ratio=1.0,
+        )
+        assert targets == {"B00": 2, "C00": 2}
+
+    def test_upsample_adds_rows_for_targeted_class(self) -> None:
+        """Upsample should append synthetic rows until target count is reached."""
+        cfg = Config(text_field_separator=" | ")
+        balanced = upsample(
+            cfg=cfg,
+            df=_balance_df(),
+            text_column="text",
+            label_column="label",
+            target_counts={"B00": 2},
+            perturbation_names=["delete_random_char"],
+            perturbations_per_sample=1,
+            seed=3,
+        )
+        counts = balanced["label"].value_counts().to_dict()
+        assert counts["B00"] == 2
+        assert len(balanced) == 5
+        assert balanced.iloc[-1]["text"].endswith(" | age: 3 | sex: female")
+
+    def test_upsample_respects_perturbation_rate(self) -> None:
+        """Upsample should keep synthetic texts unchanged when perturbation_rate is zero."""
+        cfg = Config(text_field_separator=" | ")
+        balanced = upsample(
+            cfg=cfg,
+            df=_balance_df(),
+            text_column="text",
+            label_column="label",
+            target_counts={"B00": 2},
+            perturbation_names=["delete_random_char"],
+            perturbations_per_sample=1,
+            perturbation_rate=0.0,
+            seed=3,
+        )
+        assert len(balanced) == 5
+        assert balanced.iloc[-1]["text"] == "cod: gamma | age: 3 | sex: female"
+
+    def test_select_upsample_targets_supports_dynamic_inverse_scaling(self) -> None:
+        """Dynamic upsampling should preserve minority class ordering and cap at q."""
+        df = pd.DataFrame(
+            {
+                "text": ["cod: t | age: 1 | sex: male"] * 1101,
+                "label": ["major"] * 1000 + ["mid"] * 100 + ["rare"],
+            }
+        )
+        targets = select_upsample_targets(
+            df,
+            label_column="label",
+            target_quantile=1.0,
+            inverse_power=1.0,
+            budget_ratio=1.0,
+        )
+        assert targets["mid"] > targets["rare"]
+        assert targets["mid"] <= 1000
+        assert targets["rare"] <= 1000
+
+    def test_manipulate_classes_perturbs_targets_without_changing_row_count(
+        self,
+    ) -> None:
+        """Manipulation-only mode should mutate selected labels in place."""
+        cfg = Config(text_field_separator=" | ")
+        source = _balance_df()
+        manipulated = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=["A00"],
+            perturbation_names=["delete_random_char"],
+            perturbations_per_sample=1,
+            sample_fraction=1.0,
+            seed=9,
+        )
+        assert len(manipulated) == len(source)
+        assert (
+            manipulated[manipulated["label"] == "A00"]["text"].tolist()
+            != source[source["label"] == "A00"]["text"].tolist()
+        )
+        assert (
+            manipulated[manipulated["label"] == "B00"]["text"].tolist()
+            == source[source["label"] == "B00"]["text"].tolist()
+        )
+        assert (
+            manipulated[manipulated["label"] == "C00"]["text"].tolist()
+            == source[source["label"] == "C00"]["text"].tolist()
+        )
+
     def test_split_dataframe_uses_configured_sizes(self) -> None:
         """Split sizes should be respected for train/validation/test output."""
         cfg = Config(train_size=0.6, val_size=0.2, test_size=0.2)
@@ -486,6 +612,53 @@ class TestDataHandler:
         assert len(splits.train) == 8
         assert len(splits.val) == 1
         assert len(splits.test) == 1
+
+    def test_get_splits_applies_base_perturbation_to_non_minority_labels(
+        self, tmp_path: Path
+    ) -> None:
+        """Base perturbation should affect only non-minority labels."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.DataFrame(
+            {
+                "source_id": ["src"] * 3,
+                "record_id": ["RID-001", "RID-002", "RID-003"],
+                "source_path": ["sample.csv"] * 3,
+                "text": [
+                    "cod: alpha | age: 1 | sex: male",
+                    "cod: beta | age: 2 | sex: male",
+                    "cod: gamma | age: 3 | sex: female",
+                ],
+                "y_codes": [["A00"], ["A00"], ["B00"]],
+                "label": ["A00", "A00", "B00"],
+            }
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+            dataset_size=1.0,
+            data_sources=[],
+            balance_strategy="none",
+            balance_target_quantile=1.0,
+            balance_perturbations=["delete_random_char"],
+            balance_base_perturbation_rate=1.0,
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        source_text_by_id = source_df.set_index("record_id")["text"].to_dict()
+        train_text_by_id = splits.train.set_index("record_id")["text"].to_dict()
+        assert len(splits.train) == len(source_df)
+        assert train_text_by_id["RID-001"] != source_text_by_id["RID-001"]
+        assert train_text_by_id["RID-002"] != source_text_by_id["RID-002"]
+        assert train_text_by_id["RID-003"] == source_text_by_id["RID-003"]
 
     def test_get_splits_rejects_processed_data_with_empty_labels(
         self, tmp_path: Path
