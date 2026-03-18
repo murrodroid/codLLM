@@ -2,10 +2,10 @@
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
 #BSUB -q gpuh100
-#BSUB -W 10:00
-#BSUB -n 9
+#BSUB -W 6:00
+#BSUB -n 17
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8GB]"
+#BSUB -R "rusage[mem=4GB]"
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -env "all"
 #BSUB -u s234805@dtu.dk
