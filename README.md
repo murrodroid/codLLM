@@ -69,7 +69,7 @@ Environment variables are supported, but only if they are explicitly read by the
 
 - `jobs/train.sh` reads a fixed set of variables and runs on HPC.
 - The Python training code reads `HUGGINGFACE_HUB_TOKEN` (or `HF_TOKEN`) and `WANDB_API_KEY`.
-- Reproducibility controls are read from `CODLLM_*` env vars (listed below).
+- Training and reproducibility controls are read from `CODLLM_*` env vars (listed below).
 - Arbitrary env vars are ignored unless the code references them.
 
 ## Reproducibility Defaults
@@ -80,7 +80,7 @@ The training runtime uses config-driven reproducibility defaults:
 - data split/sampler seed (`data_seed`, defaults to `seed`)
 - deterministic torch algorithms
 - deterministic CuDNN mode
-- fixed dataloader worker count (`0` by default)
+- fixed dataloader worker count (`4` by default)
 - dynamic target-length floor for labels
 
 You can override these at runtime without editing code:
@@ -88,7 +88,10 @@ You can override these at runtime without editing code:
 ```bash
 export CODLLM_SEED=42
 export CODLLM_DATA_SEED=42
-export CODLLM_DATALOADER_NUM_WORKERS=0
+export CODLLM_DATALOADER_NUM_WORKERS=4
+export CODLLM_HF_MODEL=google/flan-t5-small
+export CODLLM_MAX_SOURCE_LENGTH=256
+export CODLLM_MAX_TARGET_LENGTH=32
 export CODLLM_DETERMINISTIC_ALGORITHMS=true
 export CODLLM_CUDNN_DETERMINISTIC=true
 export CODLLM_CUDNN_BENCHMARK=false
@@ -98,12 +101,19 @@ export CODLLM_TORCH_DTYPE=auto
 export CODLLM_WANDB_LOG_MODEL=end
 export CODLLM_WARMUP_STEPS=1000
 export CODLLM_NUM_TRAIN_EPOCHS=4
+export CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE=8
+export CODLLM_PER_DEVICE_EVAL_BATCH_SIZE=8
+export CODLLM_GRADIENT_ACCUMULATION_STEPS=2
+export CODLLM_LOGGING_STEPS=25
+export CODLLM_EVAL_STEPS=200
+export CODLLM_SAVE_STEPS=5000
+export CODLLM_EVAL_STRATEGY=epoch
+export CODLLM_SAVE_STRATEGY=epoch
 export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
 export CODLLM_TRAINING_INPUT="cod,age,sex"
 export CODLLM_MAX_LABEL_COUNT=2
-export CODLLM_MAX_TARGET_LENGTH=16
 export CODLLM_LABEL_CODE_LENGTH=7
 export CODLLM_LABEL_SEPARATOR=" | "
 export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
@@ -183,6 +193,8 @@ bsub -env "all,JOB_CONFIG_FILE=jobs/configs/example.env,REQUIRE_JOB_CONFIG_FILE=
 
 `JOB_CONFIG_FILE` accepts simple shell `KEY=value` lines (comments with `#` are allowed).
 See `jobs/configs/example.env`.
+You can define model selection and all training knobs here, for example
+`CODLLM_HF_MODEL`, `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE`, and `CODLLM_GRADIENT_ACCUMULATION_STEPS`.
 
 For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
 You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
@@ -215,9 +227,20 @@ tail -f logs/<job_id>.out
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `CODLLM_VERBOSE` (`1`/`0`, default: `1`; prints resolved setup before training)
 - `CODLLM_TORCH_DTYPE` (`auto`, `float16`, `bfloat16`, `float32`)
+- `CODLLM_HF_MODEL` (default: `google/flan-t5-small`)
+- `CODLLM_MAX_SOURCE_LENGTH` (default: `256`)
+- `CODLLM_MAX_TARGET_LENGTH` (default: `32`)
 - `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)
 - `CODLLM_WARMUP_STEPS` (default: `1000`)
 - `CODLLM_NUM_TRAIN_EPOCHS` (default: `4`)
+- `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE` (default: `8`)
+- `CODLLM_PER_DEVICE_EVAL_BATCH_SIZE` (default: `8`)
+- `CODLLM_GRADIENT_ACCUMULATION_STEPS` (default: `2`)
+- `CODLLM_LOGGING_STEPS` (default: `25`)
+- `CODLLM_EVAL_STEPS` (default: `200`)
+- `CODLLM_SAVE_STEPS` (default: `5000`)
+- `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
+- `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
 - `CODLLM_LR` (default: `3e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)

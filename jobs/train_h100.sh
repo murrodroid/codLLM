@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
-#BSUB -q gpuv100
+#BSUB -q gpuh100
 #BSUB -W 10:00
-#BSUB -n 4
+#BSUB -n 9
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=6GB]"
-#BSUB -R "select[gpu32gb]"
+#BSUB -R "rusage[mem=8GB]"
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -env "all"
 #BSUB -u s234805@dtu.dk
