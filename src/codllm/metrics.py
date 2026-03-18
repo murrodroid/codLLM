@@ -18,10 +18,10 @@ def _split_predicted_codes(text: str, label_separator: str) -> set[str]:
     return {token.strip() for token in tokens if token.strip()}
 
 
-def _precision_recall_f1(
+def _micro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
 ) -> dict[str, float]:
-    """Compute micro precision/recall/F1 over per-example code sets."""
+    """Compute micro-averaged precision/recall/F1 over per-example code sets."""
     tp = 0
     fp = 0
     fn = 0
@@ -37,47 +37,75 @@ def _precision_recall_f1(
         if (precision + recall) > 0
         else 0.0
     )
-    return {"precision": precision, "recall": recall, "f1": f1}
+    return {
+        "micro_precision": precision,
+        "micro_recall": recall,
+        "micro_f1": f1,
+    }
 
 
-def _macro_recall(
+def _macro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
-) -> float:
-    """Compute macro-averaged recall: average per-class recall across all classes.
+) -> dict[str, float]:
+    """Compute macro-averaged precision/recall/F1 across all classes.
 
-    Each unique code in the label sets is treated as a class. For each class,
-    recall = (times correctly predicted) / (times it appears in labels).
-    The macro recall is the unweighted mean across all classes, giving equal
+    Each unique code in the label or prediction sets is treated as a class.
+    Per-class metrics are computed independently, then averaged with equal
     weight to rare and frequent classes.
     """
     class_tp: dict[str, int] = {}
-    class_total: dict[str, int] = {}
+    class_label_total: dict[str, int] = {}
+    class_pred_total: dict[str, int] = {}
     for predicted_codes, label_codes in zip(predictions, labels):
         for code in label_codes:
-            class_total[code] = class_total.get(code, 0) + 1
+            class_label_total[code] = class_label_total.get(code, 0) + 1
             if code in predicted_codes:
                 class_tp[code] = class_tp.get(code, 0) + 1
+        for code in predicted_codes:
+            class_pred_total[code] = class_pred_total.get(code, 0) + 1
 
-    if not class_total:
-        return 0.0
+    all_classes = set(class_label_total) | set(class_pred_total)
+    if not all_classes:
+        return {"macro_precision": 0.0, "macro_recall": 0.0, "macro_f1": 0.0}
 
-    per_class_recalls = []
-    for code, total in class_total.items():
+    per_class_precision = []
+    per_class_recall = []
+    per_class_f1 = []
+    for code in all_classes:
         tp = class_tp.get(code, 0)
-        per_class_recalls.append(tp / total)
+        pred_total = class_pred_total.get(code, 0)
+        label_total = class_label_total.get(code, 0)
 
-    return float(np.mean(per_class_recalls))
+        p = tp / pred_total if pred_total > 0 else 0.0
+        r = tp / label_total if label_total > 0 else 0.0
+        f = (2 * p * r) / (p + r) if (p + r) > 0 else 0.0
+
+        per_class_precision.append(p)
+        per_class_recall.append(r)
+        per_class_f1.append(f)
+
+    return {
+        "macro_precision": float(np.mean(per_class_precision)),
+        "macro_recall": float(np.mean(per_class_recall)),
+        "macro_f1": float(np.mean(per_class_f1)),
+    }
 
 
 def build_exact_match_accuracy_metric(
     tokenizer: Any,
     label_separator: str = ",",
+    max_label_count: int = 1,
 ) -> Callable[[Any], dict[str, float]]:
-    """Build a compute_metrics callback with exact-match and overlap metrics."""
+    """Build a compute_metrics callback with exact-match and overlap metrics.
+
+    When max_label_count is 1 (single-label), micro metrics are skipped because
+    they are mathematically identical to accuracy in that regime.
+    """
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    multi_label = max_label_count > 1
 
     def compute_metrics(eval_pred: Any) -> dict[str, float]:
-        """Compute exact-match accuracy and micro precision/recall/F1."""
+        """Compute exact-match accuracy and class-level metrics."""
         if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
             predictions = eval_pred.predictions
             labels = eval_pred.label_ids
@@ -117,8 +145,11 @@ def build_exact_match_accuracy_metric(
         label_code_sets = [
             _split_predicted_codes(text, label_separator) for text in normalized_labels
         ]
-        overlap_metrics = _precision_recall_f1(predicted_code_sets, label_code_sets)
-        macro_recall_score = _macro_recall(predicted_code_sets, label_code_sets)
-        return {"accuracy": accuracy, **overlap_metrics, "macro_recall": macro_recall_score}
+
+        result: dict[str, float] = {"accuracy": accuracy}
+        if multi_label:
+            result.update(_micro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        return result
 
     return compute_metrics

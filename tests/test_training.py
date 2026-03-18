@@ -203,6 +203,7 @@ def test_exact_match_accuracy_is_one_for_identical_predictions() -> None:
     labels = np.array([[1, -100, -100], [2, -100, -100]])
     metrics = metric_fn((predictions, labels))
     assert metrics["accuracy"] == 1.0
+    assert "micro_precision" not in metrics
 
 
 def test_exact_match_accuracy_reports_partial_match() -> None:
@@ -212,20 +213,21 @@ def test_exact_match_accuracy_reports_partial_match() -> None:
     labels = np.array([[1, -100, -100], [2, -100, -100]])
     metrics = metric_fn((predictions, labels))
     assert metrics["accuracy"] == 0.5
+    assert "micro_precision" not in metrics
 
 
-def test_exact_match_metric_reports_precision_recall_f1() -> None:
-    """Metric callback should expose precision/recall/F1 alongside accuracy."""
+def test_exact_match_metric_reports_micro_for_multi_label() -> None:
+    """Metric callback should expose micro metrics only in multi-label mode."""
     metric_fn = metrics_module.build_exact_match_accuracy_metric(
-        DummyDecodeTokenizer(), label_separator=" "
+        DummyDecodeTokenizer(), label_separator=" ", max_label_count=2
     )
     predictions = np.array([[1, 2, 0], [3, 0, 0]])
     labels = np.array([[1, 2, -100], [2, -100, -100]])
     metrics = metric_fn((predictions, labels))
     assert metrics["accuracy"] == 0.5
-    assert metrics["precision"] == pytest.approx(2 / 3)
-    assert metrics["recall"] == pytest.approx(2 / 3)
-    assert metrics["f1"] == pytest.approx(2 / 3)
+    assert metrics["micro_precision"] == pytest.approx(2 / 3)
+    assert metrics["micro_recall"] == pytest.approx(2 / 3)
+    assert metrics["micro_f1"] == pytest.approx(2 / 3)
 
 
 def test_build_training_args_auto_dtype_disables_fp16_without_bf16_support(
