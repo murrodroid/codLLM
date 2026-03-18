@@ -204,6 +204,13 @@ export CODLLM_DATA_SEED=42
 bsub < jobs/train.sh
 ```
 
+Note: save variables permanently in shell with this logic:
+
+```bash
+echo 'export MY_VAR="my_value"' >> ~/.zshrc
+source ~/.zshrc
+```
+
 Some clusters do not forward temporary `VAR=value bsub ...` values unless `-env` is used.
 Use `-env "all"` to make forwarding explicit.
 
