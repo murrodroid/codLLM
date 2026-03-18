@@ -149,6 +149,73 @@ def test_build_training_args_disables_fp16_when_requested(
     assert args.fp16 is False
 
 
+def test_build_training_args_best_save_strategy_sets_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should configure the best-model metric and direction."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        eval_strategy="epoch",
+        save_strategy="best",
+        save_strategy_best_metric="macro_f1",
+    )
+    args = build_training_args(cfg, has_eval=True)
+    assert args.save_strategy.value == "best"
+    assert args.metric_for_best_model == "macro_f1"
+    assert args.greater_is_better is True
+
+
+def test_build_training_args_best_loss_metric_uses_lower_is_better(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should minimize loss metrics."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(save_strategy="best", save_strategy_best_metric="loss")
+    args = build_training_args(cfg, has_eval=True)
+    assert args.metric_for_best_model == "loss"
+    assert args.greater_is_better is False
+
+
+def test_build_training_args_best_save_strategy_requires_eval_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should fail fast when no eval split is available."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(save_strategy="best")
+    with pytest.raises(ValueError, match="requires validation data"):
+        build_training_args(cfg, has_eval=False)
+
+
+def test_build_training_args_best_micro_metric_requires_multi_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should reject micro metrics for single-label runs."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        save_strategy="best",
+        save_strategy_best_metric="micro_f1",
+        max_label_count=1,
+    )
+    with pytest.raises(ValueError, match="max_label_count > 1"):
+        build_training_args(cfg, has_eval=True)
+
+
 def test_print_training_configuration_emits_summary_when_verbose(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

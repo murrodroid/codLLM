@@ -109,6 +109,7 @@ export CODLLM_EVAL_STEPS=200
 export CODLLM_SAVE_STEPS=5000
 export CODLLM_EVAL_STRATEGY=epoch
 export CODLLM_SAVE_STRATEGY=epoch
+export CODLLM_SAVE_STRATEGY_BEST_METRIC=macro_f1
 export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
@@ -270,6 +271,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `accuracy`)
 - `CODLLM_LR` (default: `3e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
