@@ -78,6 +78,7 @@ class Config:
     """Configuration for Hugging Face seq2seq training experiments."""
 
     DEFAULT_LABEL_SEPARATOR: ClassVar[str] = ","
+    DEFAULT_TEXT_FIELD_SEPARATOR: ClassVar[str] = " | "
     DEFAULT_DATASET_TEXT_COLUMN: ClassVar[str] = "text"
     DEFAULT_DATASET_LABEL_COLUMN: ClassVar[str] = "label"
     DEFAULT_DATA_RAW_DIR: ClassVar[str] = "data/raw"
@@ -95,6 +96,7 @@ class Config:
     max_source_length: int = 256
     max_target_length: int = 32
     label_separator: str = DEFAULT_LABEL_SEPARATOR
+    text_field_separator: str = DEFAULT_TEXT_FIELD_SEPARATOR
     label_code_length: int = 7
     max_target_length_buffer: int = 4
     dataset_text_column: str = DEFAULT_DATASET_TEXT_COLUMN
@@ -140,11 +142,11 @@ class Config:
     max_label_count: int = 1
 
     dataset_size: float = 0.5
-    train_size: float = 0.8
-    val_size: float = 0.1
-    test_size: float = 0.1
+    train_size: float = 0.9
+    val_size: float = 0.05
+    test_size: float = 0.05
 
-    balance_strategy: BalanceStrategy = "none"
+    balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
         default_factory=lambda: [
@@ -155,6 +157,10 @@ class Config:
         ]
     )
     balance_perturbations_per_sample: int = 1
+    balance_upsample_labels: list[str] = field(default_factory=list)
+    balance_upsample_inverse_power: float = 0.5
+    balance_upsample_budget_ratio: float = 0.1
+    balance_base_perturbation_rate: float = 0.0
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
@@ -470,6 +476,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if label_separator is not None:
         cfg.label_separator = label_separator
 
+    text_field_separator = os.getenv("CODLLM_TEXT_FIELD_SEPARATOR")
+    if text_field_separator is not None:
+        cfg.text_field_separator = text_field_separator
+
     dataset_text_column = os.getenv("CODLLM_DATASET_TEXT_COLUMN")
     if dataset_text_column is not None and dataset_text_column.strip() != "":
         cfg.dataset_text_column = dataset_text_column.strip()
@@ -537,6 +547,44 @@ def config_from_env(base: Optional[Config] = None) -> Config:
                 "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE must be at least 1."
             )
         cfg.balance_perturbations_per_sample = balance_perturbations_per_sample
+
+    balance_upsample_labels = os.getenv("CODLLM_BALANCE_UPSAMPLE_LABELS")
+    if balance_upsample_labels is not None and balance_upsample_labels.strip() != "":
+        cfg.balance_upsample_labels = [
+            label.strip()
+            for label in balance_upsample_labels.split(",")
+            if label.strip()
+        ]
+
+    balance_upsample_inverse_power = _parse_env_float(
+        "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER"
+    )
+    if balance_upsample_inverse_power is not None:
+        if balance_upsample_inverse_power <= 0 or balance_upsample_inverse_power > 1:
+            raise ValueError(
+                "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER must be in the interval (0, 1]."
+            )
+        cfg.balance_upsample_inverse_power = balance_upsample_inverse_power
+
+    balance_upsample_budget_ratio = _parse_env_float(
+        "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO"
+    )
+    if balance_upsample_budget_ratio is not None:
+        if balance_upsample_budget_ratio < 0 or balance_upsample_budget_ratio > 1:
+            raise ValueError(
+                "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO must be between 0 and 1."
+            )
+        cfg.balance_upsample_budget_ratio = balance_upsample_budget_ratio
+
+    balance_base_perturbation_rate = _parse_env_float(
+        "CODLLM_BALANCE_BASE_PERTURBATION_RATE"
+    )
+    if balance_base_perturbation_rate is not None:
+        if balance_base_perturbation_rate < 0 or balance_base_perturbation_rate > 1:
+            raise ValueError(
+                "CODLLM_BALANCE_BASE_PERTURBATION_RATE must be between 0 and 1."
+            )
+        cfg.balance_base_perturbation_rate = balance_base_perturbation_rate
 
     wandb_log_model = os.getenv("CODLLM_WANDB_LOG_MODEL")
     if wandb_log_model is not None and wandb_log_model.strip() != "":
