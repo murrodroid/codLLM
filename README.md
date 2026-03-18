@@ -158,17 +158,18 @@ Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 - `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling.
 - `balance_target_quantile`: quantile used to compute the target class count for upsampling.
 - `balance_upsample_labels`: optional allow-list of labels that may be upsampled (empty = all eligible minority labels).
-- `balance_upsample_perturbation_rate`: rate (`0..1`) for perturbing newly created synthetic upsample rows.
 - `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
 - `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale upsampling dynamically.
 - `balance_perturbations`: augmentation functions applied to the `cod:` text segment.
 - `balance_perturbations_per_sample`: number of perturbations chained per affected sample.
-- `balance_base_perturbation_rate`: chance/rate (`0..1`) to perturb rows from labels at or above the quantile target (non-minority labels).
+- `balance_base_perturbation_rate`: chance/rate (`0..1`) to perturb all training rows after upsampling.
 
 Typical setups:
 
-- Minority upsampling: set `balance_strategy="upsample"` and tune `balance_target_quantile`, `balance_upsample_inverse_power`, and `balance_upsample_budget_ratio`.
-- Perturb larger classes without upsampling: set `balance_strategy="none"` and set `balance_base_perturbation_rate > 0`.
+- Minority upsampling + global perturbation: set `balance_strategy="upsample"` and tune `balance_target_quantile`, `balance_upsample_inverse_power`, `balance_upsample_budget_ratio`, and `balance_base_perturbation_rate`.
+- Global perturbation without upsampling: set `balance_strategy="none"` and `balance_base_perturbation_rate > 0`.
+
+Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows.
 
 ## HPC Usage (LSF, No Docker)
 

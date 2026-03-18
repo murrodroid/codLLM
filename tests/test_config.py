@@ -35,7 +35,6 @@ ENV_KEYS = [
     "CODLLM_BALANCE_PERTURBATIONS",
     "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE",
     "CODLLM_BALANCE_UPSAMPLE_LABELS",
-    "CODLLM_BALANCE_UPSAMPLE_PERTURBATION_RATE",
     "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER",
     "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO",
     "CODLLM_BALANCE_BASE_PERTURBATION_RATE",
@@ -111,7 +110,6 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS", "delete_random_char")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE", "2")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_LABELS", "A00,A01")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_PERTURBATION_RATE", "0.75")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0.6")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "0.25")
     monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "0.5")
@@ -177,7 +175,6 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.balance_perturbations == ["delete_random_char"]
     assert cfg.balance_perturbations_per_sample == 2
     assert cfg.balance_upsample_labels == ["A00", "A01"]
-    assert cfg.balance_upsample_perturbation_rate == 0.75
     assert cfg.balance_upsample_inverse_power == 0.6
     assert cfg.balance_upsample_budget_ratio == 0.25
     assert cfg.balance_base_perturbation_rate == 0.5
@@ -368,16 +365,6 @@ def test_config_from_env_rejects_invalid_balance_base_perturbation_rate(
     """Base perturbation rate should stay inside [0, 1]."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "1.5")
-    with pytest.raises(ValueError):
-        config_from_env()
-
-
-def test_config_from_env_rejects_invalid_upsample_perturbation_rate(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Upsample perturbation rate should stay inside [0, 1]."""
-    _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_PERTURBATION_RATE", "-0.1")
     with pytest.raises(ValueError):
         config_from_env()
 

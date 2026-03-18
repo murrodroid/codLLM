@@ -142,11 +142,11 @@ class Config:
     max_label_count: int = 1
 
     dataset_size: float = 0.5
-    train_size: float = 0.8
-    val_size: float = 0.1
-    test_size: float = 0.1
+    train_size: float = 0.9
+    val_size: float = 0.05
+    test_size: float = 0.05
 
-    balance_strategy: BalanceStrategy = "none"
+    balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
         default_factory=lambda: [
@@ -158,7 +158,6 @@ class Config:
     )
     balance_perturbations_per_sample: int = 1
     balance_upsample_labels: list[str] = field(default_factory=list)
-    balance_upsample_perturbation_rate: float = 1.0
     balance_upsample_inverse_power: float = 0.5
     balance_upsample_budget_ratio: float = 0.1
     balance_base_perturbation_rate: float = 0.0
@@ -556,19 +555,6 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             for label in balance_upsample_labels.split(",")
             if label.strip()
         ]
-
-    balance_upsample_perturbation_rate = _parse_env_float(
-        "CODLLM_BALANCE_UPSAMPLE_PERTURBATION_RATE"
-    )
-    if balance_upsample_perturbation_rate is not None:
-        if (
-            balance_upsample_perturbation_rate < 0
-            or balance_upsample_perturbation_rate > 1
-        ):
-            raise ValueError(
-                "CODLLM_BALANCE_UPSAMPLE_PERTURBATION_RATE must be between 0 and 1."
-            )
-        cfg.balance_upsample_perturbation_rate = balance_upsample_perturbation_rate
 
     balance_upsample_inverse_power = _parse_env_float(
         "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER"

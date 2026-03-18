@@ -345,15 +345,10 @@ class TestDataHandler:
 
     def test_upsample_adds_rows_for_targeted_class(self) -> None:
         """Upsample should append synthetic rows until target count is reached."""
-        cfg = Config(text_field_separator=" | ")
         balanced = upsample(
-            cfg=cfg,
             df=_balance_df(),
-            text_column="text",
             label_column="label",
             target_counts={"B00": 2},
-            perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
             seed=3,
         )
         counts = balanced["label"].value_counts().to_dict()
@@ -361,22 +356,31 @@ class TestDataHandler:
         assert len(balanced) == 5
         assert balanced.iloc[-1]["text"].endswith(" | age: 3 | sex: female")
 
-    def test_upsample_respects_perturbation_rate(self) -> None:
-        """Upsample should keep synthetic texts unchanged when perturbation_rate is zero."""
-        cfg = Config(text_field_separator=" | ")
+    def test_upsample_samples_class_rows_before_repeating(self) -> None:
+        """Upsample should draw from all available class rows before repeating."""
+        source = pd.DataFrame(
+            {
+                "text": [
+                    "cod: major-1 | age: 1 | sex: male",
+                    "cod: major-2 | age: 2 | sex: male",
+                    "cod: minor-a | age: 3 | sex: female",
+                    "cod: minor-b | age: 4 | sex: female",
+                ],
+                "label": ["A00", "A00", "B00", "B00"],
+            }
+        )
         balanced = upsample(
-            cfg=cfg,
-            df=_balance_df(),
-            text_column="text",
+            df=source,
             label_column="label",
-            target_counts={"B00": 2},
-            perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
-            perturbation_rate=0.0,
+            target_counts={"B00": 4},
             seed=3,
         )
-        assert len(balanced) == 5
-        assert balanced.iloc[-1]["text"] == "cod: gamma | age: 3 | sex: female"
+        synthetic_rows = balanced.iloc[len(source) :]
+        assert len(synthetic_rows) == 2
+        assert set(synthetic_rows["text"].tolist()) == {
+            "cod: minor-a | age: 3 | sex: female",
+            "cod: minor-b | age: 4 | sex: female",
+        }
 
     def test_select_upsample_targets_supports_dynamic_inverse_scaling(self) -> None:
         """Dynamic upsampling should preserve minority class ordering and cap at q."""
@@ -492,6 +496,64 @@ class TestDataHandler:
         handler = DataHandler(cfg)
         handler._write_processing_metadata(handler._build_processing_metadata())
         splits = handler.get_splits()
+        assert len(splits.train) == 14
+        assert len(splits.val) == 4
+        assert len(splits.test) == 2
+
+    def test_get_splits_ignores_balance_only_metadata_changes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Balance-only config changes should not invalidate processed cache."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        _processed_df(num_rows=20).to_csv(processed_path, index=False)
+
+        cfg_base = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+            balance_strategy="upsample",
+            balance_target_quantile=0.6,
+            balance_upsample_budget_ratio=0.25,
+            balance_base_perturbation_rate=0.2,
+        )
+        handler_base = DataHandler(cfg_base)
+        legacy_like_metadata = handler_base._build_processing_metadata()
+        legacy_like_metadata["balance_strategy"] = "upsample"
+        legacy_like_metadata["balance_target_quantile"] = 0.6
+        legacy_like_metadata["balance_upsample_budget_ratio"] = 0.25
+        legacy_like_metadata["balance_base_perturbation_rate"] = 0.2
+        handler_base._write_processing_metadata(legacy_like_metadata)
+
+        monkeypatch.setattr(
+            data_handler_module,
+            "build_processed_dataset",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Processed data should not be rebuilt.")
+            ),
+        )
+
+        cfg_changed = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+            balance_strategy="none",
+            balance_target_quantile=0.9,
+            balance_upsample_budget_ratio=0.0,
+            balance_base_perturbation_rate=0.0,
+        )
+        handler_changed = DataHandler(cfg_changed)
+        splits = handler_changed.get_splits()
+
         assert len(splits.train) == 14
         assert len(splits.val) == 4
         assert len(splits.test) == 2
@@ -613,10 +675,10 @@ class TestDataHandler:
         assert len(splits.val) == 1
         assert len(splits.test) == 1
 
-    def test_get_splits_applies_base_perturbation_to_non_minority_labels(
+    def test_get_splits_applies_base_perturbation_to_all_labels(
         self, tmp_path: Path
     ) -> None:
-        """Base perturbation should affect only non-minority labels."""
+        """Base perturbation should affect all labels after balancing."""
         processed_dir = tmp_path / "processed"
         processed_dir.mkdir(parents=True, exist_ok=True)
         processed_path = processed_dir / "training.csv"
@@ -658,7 +720,7 @@ class TestDataHandler:
         assert len(splits.train) == len(source_df)
         assert train_text_by_id["RID-001"] != source_text_by_id["RID-001"]
         assert train_text_by_id["RID-002"] != source_text_by_id["RID-002"]
-        assert train_text_by_id["RID-003"] == source_text_by_id["RID-003"]
+        assert train_text_by_id["RID-003"] != source_text_by_id["RID-003"]
 
     def test_get_splits_rejects_processed_data_with_empty_labels(
         self, tmp_path: Path

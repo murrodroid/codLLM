@@ -30,6 +30,19 @@ from codllm.preprocess import build_preprocess_fn
 UNKNOWN_VALUE = "unknown"
 PROCESSING_METADATA_VERSION = 7
 DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
+NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "balance_strategy",
+        "balance_target_quantile",
+        "balance_perturbations",
+        "balance_perturbations_per_sample",
+        "balance_upsample_labels",
+        "balance_upsample_perturbation_rate",
+        "balance_upsample_inverse_power",
+        "balance_upsample_budget_ratio",
+        "balance_base_perturbation_rate",
+    }
+)
 
 
 def _processed_columns(text_column: str, label_column: str) -> list[str]:
@@ -42,6 +55,14 @@ def _processed_columns(text_column: str, label_column: str) -> list[str]:
         "y_codes",
         label_column,
     ]
+
+
+def _normalize_processing_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop metadata keys that do not affect processed dataset content."""
+    normalized = dict(metadata)
+    for key in NON_PROCESSING_METADATA_KEYS:
+        normalized.pop(key, None)
+    return normalized
 
 
 @dataclass
@@ -334,37 +355,33 @@ def select_upsample_targets(
     return selected_targets
 
 
-def select_non_minority_labels(
-    df: pd.DataFrame, label_column: str, target_quantile: float = 0.5
-) -> list[Any]:
-    """Select labels at or above the quantile-derived upsampling target count."""
-    class_counts = df[label_column].value_counts()
-    target_count = _quantile_target_count(class_counts, target_quantile)
-    if target_count <= 0:
-        return class_counts.index.tolist()
-    return [
-        label for label, count in class_counts.items() if int(count) >= target_count
-    ]
+def _sample_upsample_rows(
+    class_rows: pd.DataFrame, needed: int, rng: random.Random
+) -> list[dict[str, Any]]:
+    """Sample class rows with shuffled cycles to avoid repeatedly duplicating one row."""
+    if needed <= 0 or class_rows.empty:
+        return []
+
+    source_rows = class_rows.to_dict(orient="records")
+    sampled_rows: list[dict[str, Any]] = []
+    while len(sampled_rows) < needed:
+        shuffled_rows = list(source_rows)
+        rng.shuffle(shuffled_rows)
+        take = min(needed - len(sampled_rows), len(shuffled_rows))
+        sampled_rows.extend(dict(row) for row in shuffled_rows[:take])
+    return sampled_rows
 
 
 def upsample(
-    cfg: Config,
     df: pd.DataFrame,
-    text_column: str,
     label_column: str,
     target_counts: Mapping[Any, int],
-    perturbation_names: Sequence[str] | None = None,
-    perturbations_per_sample: int = 1,
-    perturbation_rate: float = 1.0,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Upsample classes to target counts by appending sampled rows."""
+    """Upsample classes to target counts by appending sampled rows without perturbation."""
     if not target_counts:
         return df
-    if perturbation_rate < 0 or perturbation_rate > 1:
-        raise ValueError("perturbation_rate must be between 0 and 1.")
 
-    perturbation_fns = _resolve_perturbation_functions(perturbation_names)
     rng = random.Random(seed)
     class_counts = df[label_column].value_counts()
 
@@ -379,20 +396,7 @@ def upsample(
 
         class_rows = df[df[label_column] == label]
         needed = target_count - current_count
-        for _ in range(needed):
-            source_row = class_rows.iloc[rng.randint(0, len(class_rows) - 1)]
-            new_row = source_row.to_dict()
-            text = str(new_row.get(text_column, ""))
-            if rng.random() < perturbation_rate:
-                text = _perturb_cod_segment(
-                    cfg=cfg,
-                    text=text,
-                    perturbation_fns=perturbation_fns,
-                    perturbations_per_sample=perturbations_per_sample,
-                    rng=rng,
-                )
-            new_row[text_column] = text
-            synthetic_rows.append(new_row)
+        synthetic_rows.extend(_sample_upsample_rows(class_rows, needed=needed, rng=rng))
 
     if not synthetic_rows:
         return df
@@ -402,14 +406,9 @@ def upsample(
 
 
 def upsample_minority_classes(
-    cfg: Config,
     df: pd.DataFrame,
-    text_column: str,
     label_column: str,
     target_quantile: float = 0.5,
-    perturbation_names: Sequence[str] | None = None,
-    perturbations_per_sample: int = 1,
-    perturbation_rate: float = 1.0,
     inverse_power: float = 0.5,
     budget_ratio: float = 0.1,
     seed: int = 42,
@@ -423,14 +422,9 @@ def upsample_minority_classes(
         budget_ratio=budget_ratio,
     )
     return upsample(
-        cfg=cfg,
         df=df,
-        text_column=text_column,
         label_column=label_column,
         target_counts=target_counts,
-        perturbation_names=perturbation_names,
-        perturbations_per_sample=perturbations_per_sample,
-        perturbation_rate=perturbation_rate,
         seed=seed,
     )
 
@@ -440,21 +434,24 @@ def manipulate_classes(
     df: pd.DataFrame,
     text_column: str,
     label_column: str,
-    target_labels: Sequence[str],
+    target_labels: Sequence[str] | None = None,
     perturbation_names: Sequence[str] | None = None,
     perturbations_per_sample: int = 1,
     sample_fraction: float = 1.0,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Perturb selected classes in-place without changing class counts."""
+    """Perturb selected rows in-place without changing class counts."""
     if sample_fraction <= 0 or sample_fraction > 1:
         raise ValueError("sample_fraction must be in the interval (0, 1].")
-    if not target_labels:
+    if target_labels is not None and not target_labels:
         return df
 
     perturbation_fns = _resolve_perturbation_functions(perturbation_names)
-    selected_mask = df[label_column].isin(set(target_labels))
-    selected_indices = df.index[selected_mask].tolist()
+    if target_labels is None:
+        selected_indices = df.index.tolist()
+    else:
+        selected_mask = df[label_column].isin(set(target_labels))
+        selected_indices = df.index[selected_mask].tolist()
     if not selected_indices:
         return df
 
@@ -567,15 +564,6 @@ class DataHandler:
             "max_label_count": self.cfg.max_label_count,
             "label_separator": self.cfg.label_separator,
             "text_field_separator": self.cfg.text_field_separator,
-            "balance_strategy": self.cfg.balance_strategy,
-            "balance_target_quantile": self.cfg.balance_target_quantile,
-            "balance_perturbations": list(self.cfg.balance_perturbations),
-            "balance_perturbations_per_sample": self.cfg.balance_perturbations_per_sample,
-            "balance_upsample_labels": list(self.cfg.balance_upsample_labels),
-            "balance_upsample_perturbation_rate": self.cfg.balance_upsample_perturbation_rate,
-            "balance_upsample_inverse_power": self.cfg.balance_upsample_inverse_power,
-            "balance_upsample_budget_ratio": self.cfg.balance_upsample_budget_ratio,
-            "balance_base_perturbation_rate": self.cfg.balance_base_perturbation_rate,
             "sources": source_metadata,
         }
 
@@ -607,7 +595,9 @@ class DataHandler:
         if saved is None:
             return False
         current = self._build_processing_metadata()
-        return saved == current
+        return _normalize_processing_metadata(saved) == _normalize_processing_metadata(
+            current
+        )
 
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
         """Load processed data, or build and save it when missing."""
@@ -646,52 +636,31 @@ class DataHandler:
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Apply optional upsampling and manipulation rules to the training split."""
         balanced_train_df = train_df
-        all_minority_targets = select_upsample_targets(
-            df=train_df,
-            label_column=self.cfg.dataset_label_column,
-            target_quantile=self.cfg.balance_target_quantile,
-            inverse_power=self.cfg.balance_upsample_inverse_power,
-            budget_ratio=self.cfg.balance_upsample_budget_ratio,
-        )
-        minority_labels = set(all_minority_targets.keys())
 
         if self.cfg.balance_strategy == "upsample":
             upsample_candidates = self.cfg.balance_upsample_labels or None
-            target_counts = all_minority_targets
-            if upsample_candidates is not None:
-                allowed_labels = set(upsample_candidates)
-                target_counts = {
-                    label: count
-                    for label, count in target_counts.items()
-                    if label in allowed_labels
-                }
+            target_counts = select_upsample_targets(
+                df=train_df,
+                label_column=self.cfg.dataset_label_column,
+                target_quantile=self.cfg.balance_target_quantile,
+                candidate_labels=upsample_candidates,
+                inverse_power=self.cfg.balance_upsample_inverse_power,
+                budget_ratio=self.cfg.balance_upsample_budget_ratio,
+            )
             balanced_train_df = upsample(
-                cfg=self.cfg,
                 df=balanced_train_df,
-                text_column=self.cfg.dataset_text_column,
                 label_column=self.cfg.dataset_label_column,
                 target_counts=target_counts,
-                perturbation_names=self.cfg.balance_perturbations,
-                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
-                perturbation_rate=self.cfg.balance_upsample_perturbation_rate,
                 seed=self.cfg.resolved_data_seed(),
             )
 
         if self.cfg.balance_base_perturbation_rate > 0:
-            non_minority_labels = select_non_minority_labels(
-                df=train_df,
-                label_column=self.cfg.dataset_label_column,
-                target_quantile=self.cfg.balance_target_quantile,
-            )
-            perturbation_labels = [
-                label for label in non_minority_labels if label not in minority_labels
-            ]
             balanced_train_df = manipulate_classes(
                 cfg=self.cfg,
+                label_column=self.cfg.dataset_label_column,
                 df=balanced_train_df,
                 text_column=self.cfg.dataset_text_column,
-                label_column=self.cfg.dataset_label_column,
-                target_labels=perturbation_labels,
+                target_labels=None,
                 perturbation_names=self.cfg.balance_perturbations,
                 perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
                 sample_fraction=self.cfg.balance_base_perturbation_rate,
