@@ -415,7 +415,9 @@ def _train_from_datasets(
         processing_class=tokenizer,
         compute_metrics=(
             build_exact_match_accuracy_metric(
-                tokenizer, label_separator=cfg.label_separator
+                tokenizer,
+                label_separator=cfg.label_separator,
+                max_label_count=cfg.max_label_count,
             )
             if processed_eval_ds is not None
             else None
