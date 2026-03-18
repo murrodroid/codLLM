@@ -159,8 +159,8 @@ class Config:
     balance_perturbations_per_sample: int = 1
     balance_upsample_labels: list[str] = field(default_factory=list)
     balance_upsample_inverse_power: float = 0.5
-    balance_upsample_budget_ratio: float = 0.1
-    balance_base_perturbation_rate: float = 0.0
+    balance_upsample_budget_ratio: float = 0.4
+    balance_base_perturbation_rate: float = 0.05
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
