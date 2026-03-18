@@ -82,6 +82,11 @@ def _default_data_sources() -> list[DataSourceConfig]:
             mapping_id="amsterdam",
             sep=";",
         ),
+        DataSourceConfig(
+            source_id="copenhagen_may2025",
+            path="Copenhagen_burials_all_May2025.csv",
+            mapping_id="copenhagen",
+        ),
     ]
 
 

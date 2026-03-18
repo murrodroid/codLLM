@@ -436,3 +436,13 @@ def test_resolved_data_seed_uses_explicit_value() -> None:
     """Data seed helper should use explicit data_seed when configured."""
     cfg = Config(seed=123, data_seed=456)
     assert cfg.resolved_data_seed() == 456
+
+
+def test_default_data_sources_include_copenhagen_dataset() -> None:
+    """Default source list should include the Danish Copenhagen dataset."""
+    cfg = Config()
+    by_source_id = {source.source_id: source for source in cfg.data_sources}
+    assert "copenhagen_may2025" in by_source_id
+    copenhagen = by_source_id["copenhagen_may2025"]
+    assert copenhagen.path == "Copenhagen_burials_all_May2025.csv"
+    assert copenhagen.mapping_id == "copenhagen"
