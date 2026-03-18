@@ -8,9 +8,11 @@ from sklearn.model_selection import train_test_split
 
 import codllm.data_handler as data_handler_module
 from codllm.config import Config, DataSourceConfig
+from codllm.dataset_input import COPENHAGEN_MAPPING
 from codllm.data_handler import (
     DataHandler,
     DatasetMapping,
+    MAPPING_REGISTRY,
     _build_text,
     _build_y,
     build_and_save_processed_dataset,
@@ -51,6 +53,23 @@ def _sample_df() -> pd.DataFrame:
             ["typhus", "A01", "J18", "2", "40", "RID-002"],
         ]
     )
+
+
+def _copenhagen_row(
+    record_id: str,
+    cod_text: str,
+    icd10h_code: str | None,
+    sex: str = "Mand",
+    age: str = "35",
+) -> list[str | None]:
+    """Build one Copenhagen-style row with required positional columns populated."""
+    row: list[str | None] = [""] * 40
+    row[0] = record_id
+    row[12] = age
+    row[23] = sex
+    row[37] = cod_text
+    row[39] = icd10h_code
+    return row
 
 
 def _processed_df(num_rows: int) -> pd.DataFrame:
@@ -164,6 +183,65 @@ class TestLoaders:
         assert result.iloc[0]["source_id"] == "test_source"
         assert result.iloc[0]["record_id"] == "RID-001"
         assert result.iloc[0]["label"] == "A00"
+
+    def test_load_source_dataset_drops_nan_like_codes_before_dataset_assembly(
+        self, tmp_path: Path
+    ) -> None:
+        """Rows with NaN-like label placeholders should be removed before assembly."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                ["cholera", "nan", "", "1", "2.4", "RID-001"],
+                ["typhus", "A01", "", "2", "40", "RID-002"],
+            ]
+        ).to_csv(csv_path, index=False)
+        source = DataSourceConfig(
+            source_id="test_source", path=str(csv_path), mapping_id="test_mapping"
+        )
+        mapping = _make_mapping(multi_code_cols=[])
+        result = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=["cod", "age", "sex"],
+            max_labels=1,
+            data_raw_dir="",
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["record_id"] == "RID-002"
+        assert result.iloc[0]["label"] == "A01"
+
+    def test_build_processed_dataset_supports_copenhagen_mapping(
+        self, tmp_path: Path
+    ) -> None:
+        """Copenhagen mapping should load and drop rows without valid ICD10h codes."""
+        csv_path = tmp_path / "copenhagen.csv"
+        pd.DataFrame(
+            [
+                _copenhagen_row("CPH-001", "tekst-1", None),
+                _copenhagen_row("CPH-002", "tekst-2", "A00.000"),
+                _copenhagen_row("CPH-003", "tekst-3", "B01.001"),
+            ]
+        ).to_csv(csv_path, index=False)
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="copenhagen_source",
+                    path="copenhagen.csv",
+                    mapping_id="copenhagen",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+        )
+        assert "copenhagen" in MAPPING_REGISTRY
+        assert COPENHAGEN_MAPPING.multi_code_cols == []
+
+        result = build_processed_dataset(cfg)
+        assert len(result) == 2
+        assert result["record_id"].tolist() == ["CPH-002", "CPH-003"]
+        assert result["label"].tolist() == ["A00.000", "B01.001"]
 
     def test_build_processed_dataset_combines_sources(self, tmp_path: Path) -> None:
         """Processed dataset should concatenate all configured sources."""

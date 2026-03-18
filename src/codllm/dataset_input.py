@@ -15,6 +15,7 @@ from codllm.data_augmentation import (
 from codllm.path_utils import resolve_source_path
 
 UNKNOWN_VALUE = "unknown"
+MISSING_VALUE_MARKERS: frozenset[str] = frozenset({"nan", "<na>", "none", "null"})
 
 
 @dataclass
@@ -59,9 +60,21 @@ AMSTERDAM_MAPPING = DatasetMapping(
     record_id_col=0,
 )
 
+COPENHAGEN_MAPPING = DatasetMapping(
+    text_col=37,
+    single_code_col=39,
+    multi_code_cols=[],
+    sex_col=23,
+    sex_map={"Mand": "male", "Kvinde": "female"},
+    age_col=12,
+    record_id_col=0,
+    skip_rows=[0],
+)
+
 MAPPING_REGISTRY: dict[str, DatasetMapping] = {
     "belgium": BELGIUM_MAPPING,
     "amsterdam": AMSTERDAM_MAPPING,
+    "copenhagen": COPENHAGEN_MAPPING,
 }
 
 PERTURBATION_REGISTRY: dict[str, Any] = {
@@ -113,6 +126,8 @@ def _get(row: pd.Series, col: int) -> str | None:
         return None
     text = str(value).strip()
     if not text:
+        return None
+    if text.lower() in MISSING_VALUE_MARKERS:
         return None
     return text
 
@@ -173,7 +188,7 @@ def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
     """Collect code values from multi-code columns first, then single-code fallback."""
     codes: list[str] = []
     seen_codes: set[str] = set()
-    for col in mapping.multi_code_cols:
+    for col in mapping.multi_code_cols or []:
         code = _get(row, col)
         if code and code not in seen_codes:
             codes.append(code)
@@ -218,6 +233,26 @@ def _read_raw_dataframe(path: Path, source: DataSourceConfig) -> pd.DataFrame:
     )
 
 
+def _select_rows_with_valid_labels(
+    raw_df: pd.DataFrame,
+    mapping: DatasetMapping,
+    max_labels: int,
+    drop_missing_label: bool,
+) -> tuple[pd.DataFrame, pd.Series, list[int]]:
+    """Filter raw rows before dataset assembly based on resolved label availability."""
+    y_codes = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
+    label_counts = y_codes.apply(len)
+    keep_mask = label_counts <= max_labels
+    if drop_missing_label:
+        keep_mask = keep_mask & (label_counts > 0)
+
+    filtered_raw_df = raw_df.loc[keep_mask].copy()
+    source_row_indices = filtered_raw_df.index.tolist()
+    filtered_raw_df = filtered_raw_df.reset_index(drop=True)
+    filtered_y_codes = y_codes.loc[keep_mask].reset_index(drop=True)
+    return filtered_raw_df, filtered_y_codes, source_row_indices
+
+
 def load_source_dataset(
     source: DataSourceConfig,
     mapping: DatasetMapping,
@@ -241,23 +276,33 @@ def load_source_dataset(
         raw_df = raw_df.drop(index=combined_skip_rows, errors="ignore").reset_index(
             drop=True
         )
+    filtered_raw_df, filtered_y_codes, source_row_indices = (
+        _select_rows_with_valid_labels(
+            raw_df=raw_df,
+            mapping=mapping,
+            max_labels=max_labels,
+            drop_missing_label=drop_missing_label,
+        )
+    )
 
     result = pd.DataFrame()
-    result["source_id"] = [source.source_id] * len(raw_df)
+    result["source_id"] = [source.source_id] * len(filtered_raw_df)
     if mapping.record_id_col is None:
         result["record_id"] = [
-            f"{source.source_id}:{idx}" for idx in range(len(raw_df))
+            f"{source.source_id}:{source_idx}" for source_idx in source_row_indices
         ]
     else:
-        extracted_ids = raw_df.apply(
+        extracted_ids = filtered_raw_df.apply(
             lambda row: _get(row, mapping.record_id_col), axis=1
         )
         result["record_id"] = [
-            record_id if record_id is not None else f"{source.source_id}:{idx}"
-            for idx, record_id in enumerate(extracted_ids.tolist())
+            record_id if record_id is not None else f"{source.source_id}:{source_idx}"
+            for source_idx, record_id in zip(
+                source_row_indices, extracted_ids.tolist(), strict=True
+            )
         ]
-    result["source_path"] = [str(source_path)] * len(raw_df)
-    result[text_column] = raw_df.apply(
+    result["source_path"] = [str(source_path)] * len(filtered_raw_df)
+    result[text_column] = filtered_raw_df.apply(
         lambda row: _build_text(
             row,
             mapping,
@@ -266,15 +311,10 @@ def load_source_dataset(
         ),
         axis=1,
     )
-    result["y_codes"] = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
-    result["label_count"] = result["y_codes"].apply(len)
-    result = result[result["label_count"] <= max_labels].reset_index(drop=True)
-    result = result.drop(columns=["label_count"])
+    result["y_codes"] = filtered_y_codes
     result[label_column] = result["y_codes"].apply(
         lambda codes: _build_label(codes, separator=label_separator)
     )
-    if drop_missing_label:
-        result = result[result[label_column] != ""].reset_index(drop=True)
     return result
 
 
