@@ -21,6 +21,7 @@ ENV_KEYS = [
     "CODLLM_SAVE_STEPS",
     "CODLLM_EVAL_STRATEGY",
     "CODLLM_SAVE_STRATEGY",
+    "CODLLM_SAVE_STRATEGY_BEST_METRIC",
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
@@ -96,6 +97,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_SAVE_STEPS", "60")
     monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "steps")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY", "best")
+    monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "macro_f1")
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
@@ -161,6 +163,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.save_steps == 60
     assert cfg.eval_strategy == "steps"
     assert cfg.save_strategy == "best"
+    assert cfg.save_strategy_best_metric == "macro_f1"
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
@@ -285,6 +288,16 @@ def test_config_from_env_rejects_invalid_eval_strategy(
     """Eval strategy override should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "batch")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_save_strategy_best_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best-save metric override should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "bleu")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -423,3 +436,13 @@ def test_resolved_data_seed_uses_explicit_value() -> None:
     """Data seed helper should use explicit data_seed when configured."""
     cfg = Config(seed=123, data_seed=456)
     assert cfg.resolved_data_seed() == 456
+
+
+def test_default_data_sources_include_copenhagen_dataset() -> None:
+    """Default source list should include the Danish Copenhagen dataset."""
+    cfg = Config()
+    by_source_id = {source.source_id: source for source in cfg.data_sources}
+    assert "copenhagen_may2025" in by_source_id
+    copenhagen = by_source_id["copenhagen_may2025"]
+    assert copenhagen.path == "Copenhagen_burials_all_May2025.csv"
+    assert copenhagen.mapping_id == "copenhagen"

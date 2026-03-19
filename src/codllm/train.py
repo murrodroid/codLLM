@@ -47,6 +47,12 @@ def _run_dir_lock_timeout_seconds() -> float:
     return timeout_seconds
 
 
+def _metric_greater_is_better(metric_name: str) -> bool:
+    """Return whether higher metric values indicate better checkpoints."""
+    normalized_metric = metric_name.strip().lower()
+    return not normalized_metric.endswith("loss")
+
+
 def _next_local_run_number(base_output_dir: Path) -> int:
     """Return the next available local run number in the output root."""
     max_number = 0
@@ -247,6 +253,20 @@ def build_training_args(
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
+    if cfg.save_strategy == "best" and eval_strategy == "no":
+        raise ValueError(
+            "save_strategy='best' requires validation data and eval_strategy "
+            "set to 'steps' or 'epoch'."
+        )
+    if (
+        cfg.save_strategy == "best"
+        and cfg.save_strategy_best_metric.startswith("micro_")
+        and cfg.max_label_count <= 1
+    ):
+        raise ValueError(
+            "save_strategy_best_metric with a 'micro_' prefix requires "
+            "max_label_count > 1."
+        )
     using_cuda = cfg.uses_cuda()
     bf16_supported = cfg.bf16_amp_supported()
     requested_dtype = cfg.torch_dtype
@@ -299,6 +319,11 @@ def build_training_args(
         "data_seed": data_seed,
         "dataloader_num_workers": cfg.dataloader_num_workers,
     }
+    if cfg.save_strategy == "best":
+        training_kwargs["metric_for_best_model"] = cfg.save_strategy_best_metric
+        training_kwargs["greater_is_better"] = _metric_greater_is_better(
+            cfg.save_strategy_best_metric
+        )
     if cfg.warmup_steps is not None:
         training_kwargs["warmup_steps"] = cfg.warmup_steps
     return Seq2SeqTrainingArguments(**training_kwargs)

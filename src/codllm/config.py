@@ -11,6 +11,18 @@ BalanceStrategy = Literal["none", "upsample"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
+EvalStrategy = Literal["no", "steps", "epoch"]
+SaveStrategy = Literal["no", "steps", "epoch", "best"]
+SaveStrategyBestMetric = Literal[
+    "loss",
+    "accuracy",
+    "micro_precision",
+    "micro_recall",
+    "micro_f1",
+    "macro_precision",
+    "macro_recall",
+    "macro_f1",
+]
 
 
 def _default_device() -> torch.device:
@@ -70,6 +82,11 @@ def _default_data_sources() -> list[DataSourceConfig]:
             mapping_id="amsterdam",
             sep=";",
         ),
+        DataSourceConfig(
+            source_id="copenhagen_may2025",
+            path="Copenhagen_burials_all_May2025.csv",
+            mapping_id="copenhagen",
+        ),
     ]
 
 
@@ -87,6 +104,18 @@ class Config:
         "cod",
         "age",
         "sex",
+    )
+    SUPPORTED_SAVE_STRATEGY_BEST_METRICS: ClassVar[
+        tuple[SaveStrategyBestMetric, ...]
+    ] = (
+        "loss",
+        "accuracy",
+        "micro_precision",
+        "micro_recall",
+        "micro_f1",
+        "macro_precision",
+        "macro_recall",
+        "macro_f1",
     )
 
     hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
@@ -114,8 +143,9 @@ class Config:
     logging_steps: int = 25
     eval_steps: int = 200
     save_steps: int = 5000
-    eval_strategy: str = "epoch"
-    save_strategy: str = "epoch"
+    eval_strategy: EvalStrategy = "epoch"
+    save_strategy: SaveStrategy = "epoch"
+    save_strategy_best_metric: SaveStrategyBestMetric = "accuracy"
     verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
@@ -423,7 +453,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if normalized_eval_strategy not in allowed_eval_strategies:
             allowed = ", ".join(sorted(allowed_eval_strategies))
             raise ValueError(f"CODLLM_EVAL_STRATEGY must be one of: {allowed}.")
-        cfg.eval_strategy = normalized_eval_strategy
+        cfg.eval_strategy = cast(EvalStrategy, normalized_eval_strategy)
 
     save_strategy = os.getenv("CODLLM_SAVE_STRATEGY")
     if save_strategy is not None and save_strategy.strip() != "":
@@ -432,7 +462,23 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if normalized_save_strategy not in allowed_save_strategies:
             allowed = ", ".join(sorted(allowed_save_strategies))
             raise ValueError(f"CODLLM_SAVE_STRATEGY must be one of: {allowed}.")
-        cfg.save_strategy = normalized_save_strategy
+        cfg.save_strategy = cast(SaveStrategy, normalized_save_strategy)
+
+    save_strategy_best_metric = os.getenv("CODLLM_SAVE_STRATEGY_BEST_METRIC")
+    if (
+        save_strategy_best_metric is not None
+        and save_strategy_best_metric.strip() != ""
+    ):
+        normalized_best_metric = save_strategy_best_metric.strip().lower()
+        allowed_best_metrics = set(Config.SUPPORTED_SAVE_STRATEGY_BEST_METRICS)
+        if normalized_best_metric not in allowed_best_metrics:
+            allowed = ", ".join(sorted(allowed_best_metrics))
+            raise ValueError(
+                f"CODLLM_SAVE_STRATEGY_BEST_METRIC must be one of: {allowed}."
+            )
+        cfg.save_strategy_best_metric = cast(
+            SaveStrategyBestMetric, normalized_best_metric
+        )
 
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:
