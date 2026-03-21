@@ -285,6 +285,52 @@ def select_upsample_targets(
     return selected_targets
 
 
+def select_floor_upsample_targets(
+    df: pd.DataFrame,
+    label_column: str,
+    floor: int = 10,
+    decay: float = 0.1,
+) -> dict[Any, int]:
+    """Select per-class target counts by enforcing a minimum sample floor.
+
+    Classes below the floor are brought up towards it, with a gentle
+    log-decay so that the rarest classes get less boost and classes
+    closer to the floor get nearly the full floor. Classes at or above
+    the floor are untouched. Original ordering by class size is always
+    preserved.
+
+    Parameters
+    ----------
+    floor : int
+        Every class gets at least this many samples (before decay).
+    decay : float
+        Maximum fractional reduction for the smallest classes.
+        0.0 = no decay (all below-floor classes get exactly ``floor``).
+        0.1 = smallest classes get 10% less than ``floor``.
+    """
+    import math
+
+    if floor < 1:
+        raise ValueError("floor must be at least 1.")
+    if decay < 0 or decay > 1:
+        raise ValueError("decay must be between 0 and 1.")
+
+    class_counts = df[label_column].value_counts()
+    targets: dict[Any, int] = {}
+    for label, count in class_counts.items():
+        original = int(count)
+        if original >= floor:
+            continue
+        # t in [0, 1]: 0 = just below floor (biggest minority), 1 = smallest class
+        t = 1.0 - (original - 1) / max(floor - 1, 1)
+        # log curve: smallest classes lose up to `decay` of the floor
+        scale = 1.0 - decay * (math.log1p(t) / math.log(2))
+        target = max(original, round(floor * scale))
+        if target > original:
+            targets[label] = target
+    return targets
+
+
 def _sample_upsample_rows(
     class_rows: pd.DataFrame, needed: int, rng: random.Random
 ) -> list[dict[str, Any]]:
@@ -576,6 +622,19 @@ class DataHandler:
                 candidate_labels=upsample_candidates,
                 inverse_power=self.cfg.balance_upsample_inverse_power,
                 budget_ratio=self.cfg.balance_upsample_budget_ratio,
+            )
+            balanced_train_df = upsample(
+                df=balanced_train_df,
+                label_column=self.cfg.dataset_label_column,
+                target_counts=target_counts,
+                seed=self.cfg.resolved_data_seed(),
+            )
+        elif self.cfg.balance_strategy == "sqrt":
+            target_counts = select_floor_upsample_targets(
+                df=train_df,
+                label_column=self.cfg.dataset_label_column,
+                floor=self.cfg.balance_sqrt_floor,
+                decay=self.cfg.balance_sqrt_decay,
             )
             balanced_train_df = upsample(
                 df=balanced_train_df,
