@@ -353,8 +353,17 @@ def upsample(
     label_column: str,
     target_counts: Mapping[Any, int],
     seed: int = 42,
+    text_column: str | None = None,
+    perturbation_fns: Sequence[Any] | None = None,
+    perturbations_per_sample: int = 1,
+    text_field_separator: str = " | ",
 ) -> pd.DataFrame:
-    """Upsample classes to target counts by appending sampled rows without perturbation."""
+    """Upsample classes to target counts, perturbing synthetic rows proportionally.
+
+    When perturbation functions are provided, each synthetic row is perturbed
+    with probability proportional to the duplication ratio: a class going from
+    1→200 perturbs ~99.5% of copies, while 180→200 perturbs ~10%.
+    """
     if not target_counts:
         return df
 
@@ -372,7 +381,22 @@ def upsample(
 
         class_rows = df[df[label_column] == label]
         needed = target_count - current_count
-        synthetic_rows.extend(_sample_upsample_rows(class_rows, needed=needed, rng=rng))
+        new_rows = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
+
+        # Perturb synthetic rows proportional to duplication ratio
+        if text_column and perturbation_fns and new_rows:
+            perturb_rate = 1.0 - (current_count / target_count)
+            for row in new_rows:
+                if rng.random() < perturb_rate:
+                    text = str(row[text_column])
+                    for _ in range(perturbations_per_sample):
+                        fn = rng.choice(perturbation_fns)
+                        text = _apply_perturbation_with_seed(
+                            fn, text, seed=rng.randint(0, 2_147_483_647)
+                        )
+                    row[text_column] = text
+
+        synthetic_rows.extend(new_rows)
 
     if not synthetic_rows:
         return df
@@ -636,11 +660,18 @@ class DataHandler:
                 floor=self.cfg.balance_sqrt_floor,
                 decay=self.cfg.balance_sqrt_decay,
             )
+            perturbation_fns = _resolve_perturbation_functions(
+                self.cfg.balance_perturbations
+            )
             balanced_train_df = upsample(
                 df=balanced_train_df,
                 label_column=self.cfg.dataset_label_column,
                 target_counts=target_counts,
                 seed=self.cfg.resolved_data_seed(),
+                text_column=self.cfg.dataset_text_column,
+                perturbation_fns=perturbation_fns,
+                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
+                text_field_separator=self.cfg.text_field_separator,
             )
 
         if self.cfg.balance_base_perturbation_rate > 0:
