@@ -49,7 +49,7 @@ else
   echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
 fi
 
-STORAGE_FOLDER="${STORAGE_FOLDER:-$HOME/codllm-storage}"
+STORAGE_FOLDER="${STORAGE_FOLDER:-/dtu/blackhole/1e/205502}"
 RUN_STORAGE_DIR="${RUN_STORAGE_DIR:-$STORAGE_FOLDER/codllm}"
 
 HF_HOME="${HF_HOME:-$RUN_STORAGE_DIR/cache/huggingface}"
