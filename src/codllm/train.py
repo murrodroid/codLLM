@@ -431,6 +431,18 @@ def _train_from_datasets(
     )
     _print_training_configuration(cfg, args, run_data_metadata)
 
+    # Extract training class set for seen/unseen metric split
+    train_classes: set[str] | None = None
+    if hasattr(train_ds, "columns") and cfg.dataset_label_column in train_ds.columns:
+        train_classes = set(
+            train_ds[cfg.dataset_label_column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .loc[lambda s: s != ""]
+            .unique()
+        )
+
     trainer = Seq2SeqTrainer(
         model=model,
         args=args,
@@ -443,6 +455,7 @@ def _train_from_datasets(
                 tokenizer,
                 label_separator=cfg.label_separator,
                 max_label_count=cfg.max_label_count,
+                train_classes=train_classes,
             )
             if processed_eval_ds is not None
             else None
