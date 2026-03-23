@@ -33,6 +33,24 @@ def has_wandb_credentials() -> bool:
     return False
 
 
+def _auto_run_name(cfg: Config) -> str:
+    """Build a descriptive W&B run name from the config."""
+    model_short = cfg.hf_model.split("/")[-1]
+    parts = [model_short]
+    if cfg.balance_strategy == "none":
+        parts.append("no-upsample")
+    elif cfg.balance_strategy == "sqrt":
+        parts.append(f"floor{cfg.balance_sqrt_floor}")
+        if cfg.balance_sqrt_decay > 0:
+            parts.append(f"decay{cfg.balance_sqrt_decay}")
+    elif cfg.balance_strategy == "upsample":
+        parts.append("upsample-legacy")
+    parts.append(f"{cfg.num_train_epochs}ep")
+    inputs = ",".join(cfg.training_input)
+    parts.append(inputs)
+    return "_".join(parts)
+
+
 def resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], str | None]:
     """Resolve Trainer reporting settings and runtime environment for W&B."""
     wandb_cfg = cfg.wandb
@@ -47,12 +65,14 @@ def resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], str | None]:
         os.environ["WANDB_ENTITY"] = wandb_cfg.entity
     os.environ["WANDB_LOG_MODEL"] = wandb_cfg.log_model
 
+    run_name = wandb_cfg.run_name or _auto_run_name(cfg)
+
     if wandb_cfg.mode in ("online", "offline"):
         os.environ["WANDB_MODE"] = wandb_cfg.mode
-        return ["wandb"], wandb_cfg.run_name
+        return ["wandb"], run_name
 
     if has_wandb_credentials():
-        return ["wandb"], wandb_cfg.run_name
+        return ["wandb"], run_name
 
     os.environ["WANDB_MODE"] = "disabled"
     os.environ["WANDB_LOG_MODEL"] = "false"
@@ -253,6 +273,21 @@ def log_wandb_run_metadata(
 
     if getattr(wandb, "run", None) is None:
         return
+
+    # Define epoch as a step metric so eval metrics can be plotted against it
+    wandb.define_metric("epoch")
+    wandb.define_metric("eval/*", step_metric="epoch")
+    wandb.define_metric("test/*", step_metric="epoch")
+    # Pin key metrics to summary for easy comparison across runs
+    for key in [
+        "eval/accuracy",
+        "eval/macro_f1",
+        "eval/macro_precision",
+        "eval/macro_recall",
+        "eval/seen_macro_f1",
+        "eval/unseen_macro_f1",
+    ]:
+        wandb.define_metric(key, summary="max")
 
     sanitized_metadata = _sanitize_for_wandb(dict(metadata))
     wandb.config.update(sanitized_metadata, allow_val_change=True)
