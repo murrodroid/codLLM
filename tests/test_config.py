@@ -22,6 +22,7 @@ ENV_KEYS = [
     "CODLLM_EVAL_STRATEGY",
     "CODLLM_SAVE_STRATEGY",
     "CODLLM_SAVE_STRATEGY_BEST_METRIC",
+    "CODLLM_LR_SCHEDULER_TYPE",
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
@@ -59,6 +60,7 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
     "CODLLM_PRETRAIN_LEARNING_RATE",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
+    "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -104,6 +106,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "steps")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY", "best")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "macro_f1")
+    monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "cosine")
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
@@ -143,6 +146,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
+    monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -178,6 +182,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.eval_strategy == "steps"
     assert cfg.save_strategy == "best"
     assert cfg.save_strategy_best_metric == "macro_f1"
+    assert cfg.lr_scheduler_type == "cosine"
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
@@ -215,6 +220,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_num_train_epochs == 2
     assert cfg.pretrain_learning_rate == 8e-6
     assert cfg.pretrain_eval_every_n_epochs == 10
+    assert cfg.pretrain_lr_scheduler_type == "linear"
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"
@@ -448,6 +454,26 @@ def test_config_from_env_rejects_invalid_pretrain_eval_every_n_epochs(
     """Pretraining eval interval must be at least one epoch."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_lr_scheduler_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LR scheduler type should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "invalid")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_lr_scheduler_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining LR scheduler type should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "invalid")
     with pytest.raises(ValueError):
         config_from_env()
 

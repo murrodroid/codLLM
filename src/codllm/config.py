@@ -13,6 +13,16 @@ WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 EvalStrategy = Literal["no", "steps", "epoch"]
 SaveStrategy = Literal["no", "steps", "epoch", "best"]
+LRSchedulerType = Literal[
+    "linear",
+    "cosine",
+    "cosine_with_restarts",
+    "polynomial",
+    "constant",
+    "constant_with_warmup",
+    "inverse_sqrt",
+    "reduce_lr_on_plateau",
+]
 SaveStrategyBestMetric = Literal[
     "loss",
     "accuracy",
@@ -117,6 +127,16 @@ class Config:
         "macro_recall",
         "macro_f1",
     )
+    SUPPORTED_LR_SCHEDULER_TYPES: ClassVar[tuple[LRSchedulerType, ...]] = (
+        "linear",
+        "cosine",
+        "cosine_with_restarts",
+        "polynomial",
+        "constant",
+        "constant_with_warmup",
+        "inverse_sqrt",
+        "reduce_lr_on_plateau",
+    )
 
     hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
@@ -146,6 +166,7 @@ class Config:
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
     save_strategy_best_metric: SaveStrategyBestMetric = "accuracy"
+    lr_scheduler_type: LRSchedulerType = "linear"
     verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
@@ -181,6 +202,7 @@ class Config:
     pretrain_num_train_epochs: int = 1
     pretrain_learning_rate: float | None = None
     pretrain_eval_every_n_epochs: int = 1
+    pretrain_lr_scheduler_type: LRSchedulerType = "linear"
 
     balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
@@ -486,6 +508,15 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             SaveStrategyBestMetric, normalized_best_metric
         )
 
+    lr_scheduler_type = os.getenv("CODLLM_LR_SCHEDULER_TYPE")
+    if lr_scheduler_type is not None and lr_scheduler_type.strip() != "":
+        normalized_lr_scheduler_type = lr_scheduler_type.strip().lower()
+        allowed_lr_schedulers = set(Config.SUPPORTED_LR_SCHEDULER_TYPES)
+        if normalized_lr_scheduler_type not in allowed_lr_schedulers:
+            allowed = ", ".join(sorted(allowed_lr_schedulers))
+            raise ValueError(f"CODLLM_LR_SCHEDULER_TYPE must be one of: {allowed}.")
+        cfg.lr_scheduler_type = cast(LRSchedulerType, normalized_lr_scheduler_type)
+
     dataset_size = _parse_env_float("CODLLM_DATASET_SIZE")
     if dataset_size is not None:
         cfg.dataset_size = dataset_size
@@ -556,6 +587,23 @@ def config_from_env(base: Optional[Config] = None) -> Config:
                 "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS must be at least 1."
             )
         cfg.pretrain_eval_every_n_epochs = pretrain_eval_every_n_epochs
+
+    pretrain_lr_scheduler_type = os.getenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE")
+    if (
+        pretrain_lr_scheduler_type is not None
+        and pretrain_lr_scheduler_type.strip() != ""
+    ):
+        normalized_pretrain_lr_scheduler_type = pretrain_lr_scheduler_type.strip().lower()
+        allowed_lr_schedulers = set(Config.SUPPORTED_LR_SCHEDULER_TYPES)
+        if normalized_pretrain_lr_scheduler_type not in allowed_lr_schedulers:
+            allowed = ", ".join(sorted(allowed_lr_schedulers))
+            raise ValueError(
+                "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE must be one of: "
+                f"{allowed}."
+            )
+        cfg.pretrain_lr_scheduler_type = cast(
+            LRSchedulerType, normalized_pretrain_lr_scheduler_type
+        )
 
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:

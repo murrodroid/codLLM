@@ -257,6 +257,7 @@ def build_training_args(
     num_train_epochs: Optional[int] = None,
     learning_rate: Optional[float] = None,
     warmup_steps: Optional[int] = None,
+    lr_scheduler_type: Optional[str] = None,
 ) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
@@ -304,9 +305,15 @@ def build_training_args(
     )
     resolved_learning_rate = cfg.lr if learning_rate is None else learning_rate
     resolved_warmup_steps = cfg.warmup_steps if warmup_steps is None else warmup_steps
+    resolved_lr_scheduler_type = (
+        cfg.lr_scheduler_type
+        if lr_scheduler_type is None
+        else lr_scheduler_type
+    )
     training_kwargs = {
         "output_dir": cfg.output_dir if output_dir is None else output_dir,
         "learning_rate": resolved_learning_rate,
+        "lr_scheduler_type": resolved_lr_scheduler_type,
         "weight_decay": cfg.weight_decay,
         "num_train_epochs": (
             cfg.num_train_epochs if num_train_epochs is None else num_train_epochs
@@ -503,6 +510,7 @@ def _with_training_stage_metadata(
     learning_rate: float | None = None,
     warmup_steps: int | None = None,
     eval_every_n_epochs: int | None = None,
+    lr_scheduler_type: str | None = None,
 ) -> dict[str, Any]:
     """Attach stage-level training metadata to the run payload."""
     stage_metadata = dict(run_data_metadata) if run_data_metadata is not None else {}
@@ -520,6 +528,8 @@ def _with_training_stage_metadata(
         stage_payload["warmup_steps"] = warmup_steps
     if eval_every_n_epochs is not None:
         stage_payload["eval_every_n_epochs"] = eval_every_n_epochs
+    if lr_scheduler_type is not None:
+        stage_payload["lr_scheduler_type"] = lr_scheduler_type
     stage_metadata["training_stage"] = stage_payload
     return stage_metadata
 
@@ -540,6 +550,7 @@ def _train_with_model(
     stage_learning_rate: float | None = None
     stage_warmup_steps: int | None = None
     stage_eval_every_n_epochs = 1
+    stage_lr_scheduler_type: str | None = None
     if isinstance(run_data_metadata, dict):
         stage = run_data_metadata.get("training_stage")
         if isinstance(stage, dict):
@@ -567,6 +578,12 @@ def _train_with_model(
                 and raw_stage_eval_every_n_epochs >= 1
             ):
                 stage_eval_every_n_epochs = raw_stage_eval_every_n_epochs
+            raw_stage_lr_scheduler_type = stage.get("lr_scheduler_type")
+            if (
+                isinstance(raw_stage_lr_scheduler_type, str)
+                and raw_stage_lr_scheduler_type.strip() != ""
+            ):
+                stage_lr_scheduler_type = raw_stage_lr_scheduler_type.strip()
 
     target_max_length = cfg.resolved_max_target_length()
     processed_train_ds = prepare_training_dataset(
@@ -588,6 +605,7 @@ def _train_with_model(
         num_train_epochs=stage_num_train_epochs,
         learning_rate=stage_learning_rate,
         warmup_steps=stage_warmup_steps,
+        lr_scheduler_type=stage_lr_scheduler_type,
     )
     fallback_data_metadata = {
         "split_rows": {
@@ -605,6 +623,11 @@ def _train_with_model(
                 cfg.warmup_steps if stage_warmup_steps is None else stage_warmup_steps
             ),
             "eval_every_n_epochs": stage_eval_every_n_epochs,
+            "lr_scheduler_type": (
+                cfg.lr_scheduler_type
+                if stage_lr_scheduler_type is None
+                else stage_lr_scheduler_type
+            ),
         },
     }
     training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
@@ -706,6 +729,7 @@ def _train_with_pretraining(
         learning_rate=pretrain_learning_rate,
         warmup_steps=0,
         eval_every_n_epochs=cfg.pretrain_eval_every_n_epochs,
+        lr_scheduler_type=cfg.pretrain_lr_scheduler_type,
     )
     pretrain_metadata["training_stage"]["output_dir"] = pretrain_output_dir
     _ = _train_with_model(
@@ -727,6 +751,7 @@ def _train_with_pretraining(
         num_train_epochs=cfg.num_train_epochs,
         learning_rate=cfg.lr,
         warmup_steps=cfg.warmup_steps,
+        lr_scheduler_type=cfg.lr_scheduler_type,
     )
     finetune_metadata["training_stage"]["output_dir"] = finetune_output_dir
     trainer = _train_with_model(
@@ -806,6 +831,7 @@ def train(
             "learning_rate": pretrain_learning_rate,
             "warmup_steps": 0,
             "eval_every_n_epochs": cfg.pretrain_eval_every_n_epochs,
+            "lr_scheduler_type": cfg.pretrain_lr_scheduler_type,
         }
         trainer, tokenizer = _train_with_pretraining(
             cfg=cfg,
