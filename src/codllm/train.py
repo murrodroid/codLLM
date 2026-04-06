@@ -249,6 +249,8 @@ def build_training_args(
     has_eval: bool,
     generation_max_length: Optional[int] = None,
     disable_fp16: bool = False,
+    output_dir: Optional[str] = None,
+    num_train_epochs: Optional[int] = None,
 ) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
@@ -295,10 +297,12 @@ def build_training_args(
         else generation_max_length
     )
     training_kwargs = {
-        "output_dir": cfg.output_dir,
+        "output_dir": cfg.output_dir if output_dir is None else output_dir,
         "learning_rate": cfg.lr,
         "weight_decay": cfg.weight_decay,
-        "num_train_epochs": cfg.num_train_epochs,
+        "num_train_epochs": (
+            cfg.num_train_epochs if num_train_epochs is None else num_train_epochs
+        ),
         "per_device_train_batch_size": cfg.per_device_train_batch_size,
         "per_device_eval_batch_size": cfg.per_device_eval_batch_size,
         "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
@@ -361,13 +365,8 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
     return True
 
 
-def _train_from_datasets(
-    cfg: Config,
-    train_ds: Any,
-    eval_ds: Optional[Any] = None,
-    run_data_metadata: Optional[dict[str, Any]] = None,
-) -> Tuple[Seq2SeqTrainer, Any]:
-    """Preprocess datasets and run a seq2seq fine-tuning job."""
+def _initialize_training_components(cfg: Config) -> tuple[Any, Any, bool]:
+    """Load model/tokenizer once and apply training-safety dtype guards."""
     configure_reproducibility(cfg)
     model, tokenizer = load_base_model(cfg)
     _validate_trainable_model(model)
@@ -389,8 +388,56 @@ def _train_from_datasets(
             ),
             stacklevel=2,
         )
-    target_max_length = cfg.resolved_max_target_length()
+    return model, tokenizer, disable_fp16
 
+
+def _with_training_stage_metadata(
+    run_data_metadata: Optional[dict[str, Any]],
+    stage_name: str,
+    train_ds: Any,
+    eval_ds: Optional[Any],
+    num_train_epochs: int,
+) -> dict[str, Any]:
+    """Attach stage-level training metadata to the run payload."""
+    stage_metadata = dict(run_data_metadata) if run_data_metadata is not None else {}
+    stage_metadata["training_stage"] = {
+        "name": stage_name,
+        "num_train_epochs": num_train_epochs,
+        "rows": {
+            "train": _dataset_row_count(train_ds),
+            "eval": _dataset_row_count(eval_ds),
+        },
+    }
+    return stage_metadata
+
+
+def _train_with_model(
+    cfg: Config,
+    model: Any,
+    tokenizer: Any,
+    disable_fp16: bool,
+    train_ds: Any,
+    eval_ds: Optional[Any] = None,
+    run_data_metadata: Optional[dict[str, Any]] = None,
+) -> Seq2SeqTrainer:
+    """Preprocess datasets and run one seq2seq training stage."""
+    stage_name = "train"
+    stage_output_dir = cfg.output_dir
+    stage_num_train_epochs = cfg.num_train_epochs
+    if isinstance(run_data_metadata, dict):
+        stage = run_data_metadata.get("training_stage")
+        if isinstance(stage, dict):
+            raw_stage_name = stage.get("name")
+            if isinstance(raw_stage_name, str) and raw_stage_name.strip():
+                stage_name = raw_stage_name.strip()
+            raw_stage_epochs = stage.get("num_train_epochs")
+            if isinstance(raw_stage_epochs, int):
+                stage_num_train_epochs = raw_stage_epochs
+            raw_stage_output_dir = stage.get("output_dir")
+            if isinstance(raw_stage_output_dir, str) and raw_stage_output_dir.strip():
+                stage_output_dir = raw_stage_output_dir.strip()
+
+    target_max_length = cfg.resolved_max_target_length()
     processed_train_ds = prepare_training_dataset(
         cfg, tokenizer, train_ds, target_max_length
     )
@@ -406,12 +453,19 @@ def _train_from_datasets(
         has_eval=processed_eval_ds is not None,
         generation_max_length=target_max_length,
         disable_fp16=disable_fp16,
+        output_dir=stage_output_dir,
+        num_train_epochs=stage_num_train_epochs,
     )
     fallback_data_metadata = {
         "split_rows": {
             "train": _dataset_row_count(train_ds),
             "eval": _dataset_row_count(eval_ds),
-        }
+        },
+        "training_stage": {
+            "name": stage_name,
+            "num_train_epochs": stage_num_train_epochs,
+            "output_dir": stage_output_dir,
+        },
     }
     training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
     metadata_payload = wandb_utils.build_experiment_metadata(
@@ -450,6 +504,75 @@ def _train_from_datasets(
     )
 
     trainer.train()
+    return trainer
+
+
+def _train_from_datasets(
+    cfg: Config,
+    train_ds: Any,
+    eval_ds: Optional[Any] = None,
+    run_data_metadata: Optional[dict[str, Any]] = None,
+) -> Tuple[Seq2SeqTrainer, Any]:
+    """Preprocess datasets and run a seq2seq fine-tuning job."""
+    model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
+    trainer = _train_with_model(
+        cfg=cfg,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=run_data_metadata,
+    )
+    return trainer, tokenizer
+
+
+def _train_with_pretraining(
+    cfg: Config,
+    pretrain_ds: Any,
+    train_ds: Any,
+    eval_ds: Optional[Any] = None,
+    run_data_metadata: Optional[dict[str, Any]] = None,
+) -> Tuple[Seq2SeqTrainer, Any]:
+    """Run optional pretraining first, then continue with regular fine-tuning."""
+    model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
+    pretrain_output_dir = str(Path(cfg.output_dir) / "pretrain")
+    pretrain_metadata = _with_training_stage_metadata(
+        run_data_metadata=run_data_metadata,
+        stage_name="pretrain",
+        train_ds=pretrain_ds,
+        eval_ds=eval_ds,
+        num_train_epochs=cfg.pretrain_num_train_epochs,
+    )
+    pretrain_metadata["training_stage"]["output_dir"] = pretrain_output_dir
+    _ = _train_with_model(
+        cfg=cfg,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=pretrain_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=pretrain_metadata,
+    )
+
+    finetune_output_dir = str(Path(cfg.output_dir) / "finetune")
+    finetune_metadata = _with_training_stage_metadata(
+        run_data_metadata=run_data_metadata,
+        stage_name="finetune",
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        num_train_epochs=cfg.num_train_epochs,
+    )
+    finetune_metadata["training_stage"]["output_dir"] = finetune_output_dir
+    trainer = _train_with_model(
+        cfg=cfg,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=finetune_metadata,
+    )
     return trainer, tokenizer
 
 
@@ -489,12 +612,43 @@ def train(
         force_reprocess=force_reprocess,
         handler=handler,
     )
-    trainer, tokenizer = _train_from_datasets(
-        cfg,
-        train_ds,
-        eval_ds,
-        run_data_metadata=run_data_metadata,
-    )
+    pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
+    pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    if cfg.pretrain_enabled and pretrain_loader is None:
+        raise AttributeError(
+            "Configured data_handler does not support pretraining datasets."
+        )
+    if cfg.pretrain_enabled and pretrain_ds is None:
+        raise ValueError(
+            "Pretraining is enabled but no pretraining dataset was returned."
+        )
+    if cfg.pretrain_enabled and pretrain_ds is not None:
+        if eval_ds is None:
+            raise ValueError(
+                "Pretraining requires a non-empty validation split from the regular dataset."
+            )
+        run_data_metadata["pretraining"] = {
+            "enabled": True,
+            "masterlist_path": str(Path(cfg.pretrain_masterlist_path).resolve()),
+            "sheet_name": cfg.pretrain_masterlist_sheet_name,
+            "train_rows": int(len(pretrain_ds)),
+            "num_train_epochs": cfg.pretrain_num_train_epochs,
+            "apply_balance": cfg.pretrain_apply_balance,
+        }
+        trainer, tokenizer = _train_with_pretraining(
+            cfg=cfg,
+            pretrain_ds=pretrain_ds,
+            train_ds=train_ds,
+            eval_ds=eval_ds,
+            run_data_metadata=run_data_metadata,
+        )
+    else:
+        trainer, tokenizer = _train_from_datasets(
+            cfg,
+            train_ds,
+            eval_ds,
+            run_data_metadata=run_data_metadata,
+        )
     _evaluate_test_split(
         cfg=cfg,
         trainer=trainer,
