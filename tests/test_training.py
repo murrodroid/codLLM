@@ -619,6 +619,121 @@ def test_train_uses_validation_split_from_data_handler(
     assert Path(captured["cfg"].output_dir).parent.name == "runs"
 
 
+def test_train_sequence_classification_builds_masterlist_label_space(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """train should derive classifier label mappings from masterlist labels."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        model_task="sequence_classification",
+        max_label_count=1,
+    )
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A00"]}),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A01"]}),
+    )
+
+    class DummyDataHandler:
+        """Stub data handler returning fixed splits and masterlist labels."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+        def get_masterlist_label_vocabulary(self) -> list[str]:
+            return ["A00", "A01", "A02"]
+
+    captured: dict[str, Any] = {}
+
+    def fake_train(
+        train_cfg: Config,
+        train_ds: Any,
+        eval_ds: Optional[Any] = None,
+        run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
+    ) -> tuple[str, str]:
+        captured["cfg"] = train_cfg
+        captured["train_ds"] = train_ds
+        captured["eval_ds"] = eval_ds
+        captured["run_data_metadata"] = run_data_metadata
+        captured["label2id"] = label2id
+        captured["id2label"] = id2label
+        return "trainer", "tokenizer"
+
+    captured_test_eval: dict[str, Any] = {}
+
+    def fake_evaluate_test_split(
+        cfg: Config,
+        trainer: Any,
+        tokenizer: Any,
+        test_ds: Any,
+        label2id: Optional[dict[str, int]] = None,
+    ) -> dict[str, float]:
+        captured_test_eval["cfg"] = cfg
+        captured_test_eval["trainer"] = trainer
+        captured_test_eval["tokenizer"] = tokenizer
+        captured_test_eval["test_ds"] = test_ds
+        captured_test_eval["label2id"] = label2id
+        return {"test_accuracy": 1.0}
+
+    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
+    monkeypatch.setattr(
+        train_module,
+        "_evaluate_test_split",
+        fake_evaluate_test_split,
+    )
+
+    trainer, tokenizer, returned_splits = train_module.train(
+        cfg, data_handler=DummyDataHandler()
+    )
+
+    assert trainer == "trainer"
+    assert tokenizer == "tokenizer"
+    assert returned_splits is splits
+    assert captured["train_ds"] is splits.train
+    assert captured["eval_ds"] is splits.val
+    assert captured["label2id"] == {"A00": 0, "A01": 1, "A02": 2}
+    assert captured["id2label"] == {0: "A00", 1: "A01", 2: "A02"}
+    assert captured["run_data_metadata"]["classification"]["num_labels"] == 3
+    assert captured_test_eval["test_ds"] is splits.test
+    assert captured_test_eval["label2id"] == {"A00": 0, "A01": 1, "A02": 2}
+
+
+def test_train_sequence_classification_requires_single_label_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Sequence classification should reject multi-label training mode."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        model_task="sequence_classification",
+        max_label_count=2,
+    )
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A02"]}),
+    )
+
+    class DummyDataHandler:
+        """Stub data handler returning fixed splits and masterlist labels."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+        def get_masterlist_label_vocabulary(self) -> list[str]:
+            return ["A00", "A01"]
+
+    monkeypatch.setattr(
+        train_module,
+        "_train_from_datasets",
+        lambda *args, **kwargs: ("trainer", "tokenizer"),
+    )
+
+    with pytest.raises(ValueError, match="max_label_count=1"):
+        train_module.train(cfg, data_handler=DummyDataHandler())
+
+
 def test_train_omits_eval_when_validation_is_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -932,6 +1047,42 @@ def test_evaluate_test_split_uses_test_metric_prefix() -> None:
     assert metrics == {"test_accuracy": 1.0, "test_f1": 1.0}
     assert trainer.called_with["metric_key_prefix"] == "test"
     assert trainer.called_with["length"] == 2
+
+
+def test_evaluate_test_split_sequence_classification_uses_label_mapping() -> None:
+    """Classification test evaluation should encode labels via label2id mapping."""
+    cfg = Config(model_task="sequence_classification")
+    test_ds = pd.DataFrame({"text": ["x1", "x2"], "label": ["A00", "A01"]})
+
+    class DummyTrainer:
+        """Trainer stub that captures evaluate calls."""
+
+        def __init__(self) -> None:
+            self.called_with: dict[str, Any] = {}
+
+        def evaluate(
+            self, eval_dataset: Any, metric_key_prefix: str
+        ) -> dict[str, float]:
+            self.called_with["length"] = len(eval_dataset)
+            self.called_with["metric_key_prefix"] = metric_key_prefix
+            self.called_with["labels"] = [
+                eval_dataset[idx]["labels"] for idx in range(len(eval_dataset))
+            ]
+            return {"test_accuracy": 1.0}
+
+    trainer = DummyTrainer()
+    metrics = train_module._evaluate_test_split(
+        cfg=cfg,
+        trainer=trainer,
+        tokenizer=DummyTokenizer(),
+        test_ds=test_ds,
+        label2id={"A00": 0, "A01": 1},
+    )
+
+    assert metrics == {"test_accuracy": 1.0}
+    assert trainer.called_with["metric_key_prefix"] == "test"
+    assert trainer.called_with["length"] == 2
+    assert trainer.called_with["labels"] == [0, 1]
 
 
 class _FakeWandbConfig:

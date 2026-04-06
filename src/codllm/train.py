@@ -10,7 +10,9 @@ import warnings
 from filelock import FileLock, Timeout
 import torch
 from transformers import (
+    DataCollatorWithPadding,
     DataCollatorForSeq2Seq,
+    Trainer,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     TrainerCallback,
@@ -25,9 +27,13 @@ from codllm.data_handler import (
     DataHandler,
     DataSplits,
     prepare_training_dataset,
+    prepare_sequence_classification_dataset,
     resolve_training_frames,
 )
-from codllm.metrics import build_exact_match_accuracy_metric
+from codllm.metrics import (
+    build_exact_match_accuracy_metric,
+    build_sequence_classification_metric,
+)
 from codllm.model_registry import load_base_model
 from codllm.reproducibility import configure_reproducibility
 
@@ -220,7 +226,7 @@ def _serialize_for_terminal(value: Any) -> Any:
 
 def _print_training_configuration(
     cfg: Config,
-    args: Seq2SeqTrainingArguments,
+    args: TrainingArguments,
     run_data_metadata: Optional[dict[str, Any]],
 ) -> None:
     """Print resolved run configuration and hyperparameters when verbosity is enabled."""
@@ -258,8 +264,8 @@ def build_training_args(
     learning_rate: Optional[float] = None,
     warmup_steps: Optional[int] = None,
     lr_scheduler_type: Optional[str] = None,
-) -> Seq2SeqTrainingArguments:
-    """Build Seq2Seq training arguments compatible with transformers v5."""
+) -> TrainingArguments:
+    """Build training arguments for seq2seq or sequence-classification stages."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
     if cfg.save_strategy == "best" and eval_strategy == "no":
@@ -310,7 +316,7 @@ def build_training_args(
         if lr_scheduler_type is None
         else lr_scheduler_type
     )
-    training_kwargs = {
+    training_kwargs: dict[str, Any] = {
         "output_dir": cfg.output_dir if output_dir is None else output_dir,
         "learning_rate": resolved_learning_rate,
         "lr_scheduler_type": resolved_lr_scheduler_type,
@@ -327,8 +333,6 @@ def build_training_args(
         "eval_steps": eval_steps,
         "save_strategy": cfg.save_strategy,
         "save_steps": cfg.save_steps,
-        "predict_with_generate": True,
-        "generation_max_length": resolved_generation_max_length,
         "fp16": fp16,
         "bf16": bf16,
         "report_to": report_to,
@@ -344,7 +348,11 @@ def build_training_args(
         )
     if resolved_warmup_steps is not None:
         training_kwargs["warmup_steps"] = resolved_warmup_steps
-    return Seq2SeqTrainingArguments(**training_kwargs)
+    if cfg.model_task == "seq2seq":
+        training_kwargs["predict_with_generate"] = True
+        training_kwargs["generation_max_length"] = resolved_generation_max_length
+        return Seq2SeqTrainingArguments(**training_kwargs)
+    return TrainingArguments(**training_kwargs)
 
 
 def _validate_trainable_model(model: Any) -> None:
@@ -475,10 +483,32 @@ class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
         super().log(scoped_logs, start_time=start_time)
 
 
-def _initialize_training_components(cfg: Config) -> tuple[Any, Any, bool]:
+class StageScopedTrainer(Trainer):
+    """Trainer variant that rewrites logged metric keys by stage."""
+
+    def __init__(
+        self,
+        *args: Any,
+        stage_name: str = "train",
+        **kwargs: Any,
+    ) -> None:
+        self.stage_name = stage_name
+        super().__init__(*args, **kwargs)
+
+    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
+        """Log stage-scoped metrics to callbacks/reporters."""
+        scoped_logs = _scope_metric_logs_for_stage(logs, self.stage_name)
+        super().log(scoped_logs, start_time=start_time)
+
+
+def _initialize_training_components(
+    cfg: Config,
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> tuple[Any, Any, bool]:
     """Load model/tokenizer once and apply training-safety dtype guards."""
     configure_reproducibility(cfg)
-    model, tokenizer = load_base_model(cfg)
+    model, tokenizer = load_base_model(cfg, label2id=label2id, id2label=id2label)
     _validate_trainable_model(model)
     upcasted_fp16_model = _upcast_trainable_fp16_params(model)
     disable_fp16 = _model_uses_trainable_fp16_params(model)
@@ -534,6 +564,16 @@ def _with_training_stage_metadata(
     return stage_metadata
 
 
+def _resolve_classifier_label_space(
+    handler: DataHandler,
+) -> tuple[dict[str, int], dict[int, str]]:
+    """Build classifier label mappings from the configured ICD10h masterlist."""
+    labels = handler.get_masterlist_label_vocabulary()
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+    return label2id, id2label
+
+
 def _train_with_model(
     cfg: Config,
     model: Any,
@@ -542,8 +582,10 @@ def _train_with_model(
     train_ds: Any,
     eval_ds: Optional[Any] = None,
     run_data_metadata: Optional[dict[str, Any]] = None,
-) -> Seq2SeqTrainer:
-    """Preprocess datasets and run one seq2seq training stage."""
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> Trainer:
+    """Preprocess datasets and run one training stage."""
     stage_name = "train"
     stage_output_dir = cfg.output_dir
     stage_num_train_epochs = cfg.num_train_epochs
@@ -586,16 +628,36 @@ def _train_with_model(
                 stage_lr_scheduler_type = raw_stage_lr_scheduler_type.strip()
 
     target_max_length = cfg.resolved_max_target_length()
-    processed_train_ds = prepare_training_dataset(
-        cfg, tokenizer, train_ds, target_max_length
-    )
-    processed_eval_ds = None
-    if eval_ds is not None:
-        processed_eval_ds = prepare_training_dataset(
-            cfg, tokenizer, eval_ds, target_max_length
+    if cfg.model_task == "sequence_classification":
+        if label2id is None or id2label is None:
+            raise ValueError(
+                "Sequence-classification training requires label mappings."
+            )
+        processed_train_ds = prepare_sequence_classification_dataset(
+            cfg=cfg,
+            tokenizer=tokenizer,
+            dataset=train_ds,
+            label2id=label2id,
         )
-
-    collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+        processed_eval_ds = None
+        if eval_ds is not None:
+            processed_eval_ds = prepare_sequence_classification_dataset(
+                cfg=cfg,
+                tokenizer=tokenizer,
+                dataset=eval_ds,
+                label2id=label2id,
+            )
+        collator: Any = DataCollatorWithPadding(tokenizer=tokenizer)
+    else:
+        processed_train_ds = prepare_training_dataset(
+            cfg, tokenizer, train_ds, target_max_length
+        )
+        processed_eval_ds = None
+        if eval_ds is not None:
+            processed_eval_ds = prepare_training_dataset(
+                cfg, tokenizer, eval_ds, target_max_length
+            )
+        collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
     args = build_training_args(
         cfg,
         has_eval=processed_eval_ds is not None,
@@ -661,25 +723,42 @@ def _train_with_model(
     ):
         callbacks.append(EvaluateEveryNEpochsCallback(stage_eval_every_n_epochs))
 
-    trainer = StageScopedSeq2SeqTrainer(
-        model=model,
-        args=args,
-        train_dataset=processed_train_ds,
-        eval_dataset=processed_eval_ds,
-        data_collator=collator,
-        processing_class=tokenizer,
-        stage_name=stage_name,
-        callbacks=callbacks or None,
-        compute_metrics=(
-            build_exact_match_accuracy_metric(
-                tokenizer,
-                label_separator=cfg.label_separator,
-                max_label_count=cfg.max_label_count,
-            )
-            if processed_eval_ds is not None
-            else None
-        ),
-    )
+    if cfg.model_task == "sequence_classification":
+        trainer = StageScopedTrainer(
+            model=model,
+            args=args,
+            train_dataset=processed_train_ds,
+            eval_dataset=processed_eval_ds,
+            data_collator=collator,
+            processing_class=tokenizer,
+            stage_name=stage_name,
+            callbacks=callbacks or None,
+            compute_metrics=(
+                build_sequence_classification_metric(id2label=id2label)
+                if processed_eval_ds is not None and id2label is not None
+                else None
+            ),
+        )
+    else:
+        trainer = StageScopedSeq2SeqTrainer(
+            model=model,
+            args=args,
+            train_dataset=processed_train_ds,
+            eval_dataset=processed_eval_ds,
+            data_collator=collator,
+            processing_class=tokenizer,
+            stage_name=stage_name,
+            callbacks=callbacks or None,
+            compute_metrics=(
+                build_exact_match_accuracy_metric(
+                    tokenizer,
+                    label_separator=cfg.label_separator,
+                    max_label_count=cfg.max_label_count,
+                )
+                if processed_eval_ds is not None
+                else None
+            ),
+        )
 
     trainer.train()
     return trainer
@@ -690,18 +769,32 @@ def _train_from_datasets(
     train_ds: Any,
     eval_ds: Optional[Any] = None,
     run_data_metadata: Optional[dict[str, Any]] = None,
-) -> Tuple[Seq2SeqTrainer, Any]:
-    """Preprocess datasets and run a seq2seq fine-tuning job."""
-    model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
-    trainer = _train_with_model(
-        cfg=cfg,
-        model=model,
-        tokenizer=tokenizer,
-        disable_fp16=disable_fp16,
-        train_ds=train_ds,
-        eval_ds=eval_ds,
-        run_data_metadata=run_data_metadata,
-    )
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> Tuple[Trainer, Any]:
+    """Preprocess datasets and run one fine-tuning job."""
+    if label2id is not None or id2label is not None:
+        model, tokenizer, disable_fp16 = _initialize_training_components(
+            cfg=cfg,
+            label2id=label2id,
+            id2label=id2label,
+        )
+    else:
+        model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
+
+    train_kwargs: dict[str, Any] = {
+        "cfg": cfg,
+        "model": model,
+        "tokenizer": tokenizer,
+        "disable_fp16": disable_fp16,
+        "train_ds": train_ds,
+        "eval_ds": eval_ds,
+        "run_data_metadata": run_data_metadata,
+    }
+    if label2id is not None and id2label is not None:
+        train_kwargs["label2id"] = label2id
+        train_kwargs["id2label"] = id2label
+    trainer = _train_with_model(**train_kwargs)
     return trainer, tokenizer
 
 
@@ -711,9 +804,18 @@ def _train_with_pretraining(
     train_ds: Any,
     eval_ds: Optional[Any] = None,
     run_data_metadata: Optional[dict[str, Any]] = None,
-) -> Tuple[Seq2SeqTrainer, Any]:
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> Tuple[Trainer, Any]:
     """Run optional pretraining first, then continue with regular fine-tuning."""
-    model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
+    if label2id is not None or id2label is not None:
+        model, tokenizer, disable_fp16 = _initialize_training_components(
+            cfg=cfg,
+            label2id=label2id,
+            id2label=id2label,
+        )
+    else:
+        model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
     pretrain_learning_rate = (
         cfg.pretrain_learning_rate
         if cfg.pretrain_learning_rate is not None
@@ -732,15 +834,19 @@ def _train_with_pretraining(
         lr_scheduler_type=cfg.pretrain_lr_scheduler_type,
     )
     pretrain_metadata["training_stage"]["output_dir"] = pretrain_output_dir
-    _ = _train_with_model(
-        cfg=cfg,
-        model=model,
-        tokenizer=tokenizer,
-        disable_fp16=disable_fp16,
-        train_ds=pretrain_ds,
-        eval_ds=eval_ds,
-        run_data_metadata=pretrain_metadata,
-    )
+    pretrain_kwargs: dict[str, Any] = {
+        "cfg": cfg,
+        "model": model,
+        "tokenizer": tokenizer,
+        "disable_fp16": disable_fp16,
+        "train_ds": pretrain_ds,
+        "eval_ds": eval_ds,
+        "run_data_metadata": pretrain_metadata,
+    }
+    if label2id is not None and id2label is not None:
+        pretrain_kwargs["label2id"] = label2id
+        pretrain_kwargs["id2label"] = id2label
+    _ = _train_with_model(**pretrain_kwargs)
 
     finetune_output_dir = str(Path(cfg.output_dir) / "finetune")
     finetune_metadata = _with_training_stage_metadata(
@@ -754,20 +860,28 @@ def _train_with_pretraining(
         lr_scheduler_type=cfg.lr_scheduler_type,
     )
     finetune_metadata["training_stage"]["output_dir"] = finetune_output_dir
-    trainer = _train_with_model(
-        cfg=cfg,
-        model=model,
-        tokenizer=tokenizer,
-        disable_fp16=disable_fp16,
-        train_ds=train_ds,
-        eval_ds=eval_ds,
-        run_data_metadata=finetune_metadata,
-    )
+    finetune_kwargs: dict[str, Any] = {
+        "cfg": cfg,
+        "model": model,
+        "tokenizer": tokenizer,
+        "disable_fp16": disable_fp16,
+        "train_ds": train_ds,
+        "eval_ds": eval_ds,
+        "run_data_metadata": finetune_metadata,
+    }
+    if label2id is not None and id2label is not None:
+        finetune_kwargs["label2id"] = label2id
+        finetune_kwargs["id2label"] = id2label
+    trainer = _train_with_model(**finetune_kwargs)
     return trainer, tokenizer
 
 
 def _evaluate_test_split(
-    cfg: Config, trainer: Any, tokenizer: Any, test_ds: Any
+    cfg: Config,
+    trainer: Any,
+    tokenizer: Any,
+    test_ds: Any,
+    label2id: dict[str, int] | None = None,
 ) -> dict[str, float] | None:
     """Run final evaluation on the test split and emit test-prefixed metrics."""
     if _dataset_row_count(test_ds) in (None, 0):
@@ -775,10 +889,22 @@ def _evaluate_test_split(
     if not hasattr(trainer, "evaluate"):
         return None
 
-    target_max_length = cfg.resolved_max_target_length()
-    processed_test_ds = prepare_training_dataset(
-        cfg, tokenizer, test_ds, target_max_length
-    )
+    if cfg.model_task == "sequence_classification":
+        if label2id is None:
+            raise ValueError(
+                "Sequence-classification test evaluation requires label mappings."
+            )
+        processed_test_ds = prepare_sequence_classification_dataset(
+            cfg=cfg,
+            tokenizer=tokenizer,
+            dataset=test_ds,
+            label2id=label2id,
+        )
+    else:
+        target_max_length = cfg.resolved_max_target_length()
+        processed_test_ds = prepare_training_dataset(
+            cfg, tokenizer, test_ds, target_max_length
+        )
     raw_metrics = trainer.evaluate(
         eval_dataset=processed_test_ds,
         metric_key_prefix="test",
@@ -790,7 +916,7 @@ def train(
     cfg: Config,
     data_handler: Optional[DataHandler] = None,
     force_reprocess: bool = False,
-) -> Tuple[Seq2SeqTrainer, Any, DataSplits]:
+) -> Tuple[Trainer, Any, DataSplits]:
     """Build/load data splits via DataHandler and launch training."""
     _prepare_run_output_dir(cfg)
     handler = data_handler or DataHandler(cfg)
@@ -802,6 +928,25 @@ def train(
         force_reprocess=force_reprocess,
         handler=handler,
     )
+    classifier_label2id: dict[str, int] | None = None
+    classifier_id2label: dict[int, str] | None = None
+    if cfg.model_task == "sequence_classification":
+        if cfg.max_label_count != 1:
+            raise ValueError(
+                "sequence_classification currently supports max_label_count=1 only."
+            )
+        classifier_label2id, classifier_id2label = _resolve_classifier_label_space(
+            handler=handler
+        )
+        run_data_metadata["classification"] = {
+            "num_labels": len(classifier_label2id),
+            "label_source": {
+                "masterlist_path": str(Path(cfg.pretrain_masterlist_path).resolve()),
+                "sheet_name": cfg.pretrain_masterlist_sheet_name,
+                "column": "ICD10h",
+            },
+        }
+
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
     if cfg.pretrain_enabled and pretrain_loader is None:
@@ -833,32 +978,62 @@ def train(
             "eval_every_n_epochs": cfg.pretrain_eval_every_n_epochs,
             "lr_scheduler_type": cfg.pretrain_lr_scheduler_type,
         }
-        trainer, tokenizer = _train_with_pretraining(
+        if classifier_label2id is not None and classifier_id2label is not None:
+            trainer, tokenizer = _train_with_pretraining(
+                cfg=cfg,
+                pretrain_ds=pretrain_ds,
+                train_ds=train_ds,
+                eval_ds=eval_ds,
+                run_data_metadata=run_data_metadata,
+                label2id=classifier_label2id,
+                id2label=classifier_id2label,
+            )
+        else:
+            trainer, tokenizer = _train_with_pretraining(
+                cfg=cfg,
+                pretrain_ds=pretrain_ds,
+                train_ds=train_ds,
+                eval_ds=eval_ds,
+                run_data_metadata=run_data_metadata,
+            )
+    else:
+        if classifier_label2id is not None and classifier_id2label is not None:
+            trainer, tokenizer = _train_from_datasets(
+                cfg,
+                train_ds,
+                eval_ds,
+                run_data_metadata=run_data_metadata,
+                label2id=classifier_label2id,
+                id2label=classifier_id2label,
+            )
+        else:
+            trainer, tokenizer = _train_from_datasets(
+                cfg,
+                train_ds,
+                eval_ds,
+                run_data_metadata=run_data_metadata,
+            )
+    if classifier_label2id is not None:
+        _evaluate_test_split(
             cfg=cfg,
-            pretrain_ds=pretrain_ds,
-            train_ds=train_ds,
-            eval_ds=eval_ds,
-            run_data_metadata=run_data_metadata,
+            trainer=trainer,
+            tokenizer=tokenizer,
+            test_ds=splits.test,
+            label2id=classifier_label2id,
         )
     else:
-        trainer, tokenizer = _train_from_datasets(
-            cfg,
-            train_ds,
-            eval_ds,
-            run_data_metadata=run_data_metadata,
+        _evaluate_test_split(
+            cfg=cfg,
+            trainer=trainer,
+            tokenizer=tokenizer,
+            test_ds=splits.test,
         )
-    _evaluate_test_split(
-        cfg=cfg,
-        trainer=trainer,
-        tokenizer=tokenizer,
-        test_ds=splits.test,
-    )
     return trainer, tokenizer, splits
 
 
 def _parse_args() -> argparse.Namespace:
-    """Parse CLI args for running fine-tuning from the command line."""
-    parser = argparse.ArgumentParser(description="Run seq2seq fine-tuning.")
+    """Parse CLI args for running training from the command line."""
+    parser = argparse.ArgumentParser(description="Run model training.")
     parser.add_argument(
         "--force-reprocess",
         action="store_true",
@@ -880,7 +1055,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Launch fine-tuning using the default project config."""
+    """Launch training using the default project config."""
     args = _parse_args()
     cfg = config_from_env()
     if args.seed is not None:

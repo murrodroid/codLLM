@@ -13,6 +13,7 @@ WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 EvalStrategy = Literal["no", "steps", "epoch"]
 SaveStrategy = Literal["no", "steps", "epoch", "best"]
+ModelTask = Literal["seq2seq", "sequence_classification"]
 LRSchedulerType = Literal[
     "linear",
     "cosine",
@@ -102,7 +103,7 @@ def _default_data_sources() -> list[DataSourceConfig]:
 
 @dataclass
 class Config:
-    """Configuration for Hugging Face seq2seq training experiments."""
+    """Configuration for Hugging Face training experiments."""
 
     DEFAULT_LABEL_SEPARATOR: ClassVar[str] = ","
     DEFAULT_TEXT_FIELD_SEPARATOR: ClassVar[str] = " | "
@@ -137,6 +138,10 @@ class Config:
         "inverse_sqrt",
         "reduce_lr_on_plateau",
     )
+    SUPPORTED_MODEL_TASKS: ClassVar[tuple[ModelTask, ...]] = (
+        "seq2seq",
+        "sequence_classification",
+    )
 
     hf_model: str = "google/flan-t5-small"  # google/flan-ul2, google/flan-t5-small
     hf_token: Optional[str] = None
@@ -166,6 +171,7 @@ class Config:
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
     save_strategy_best_metric: SaveStrategyBestMetric = "accuracy"
+    model_task: ModelTask = "seq2seq"
     lr_scheduler_type: LRSchedulerType = "linear"
     verbose: bool = False
     output_dir: str = "./runs"
@@ -507,6 +513,15 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         cfg.save_strategy_best_metric = cast(
             SaveStrategyBestMetric, normalized_best_metric
         )
+
+    model_task = os.getenv("CODLLM_MODEL_TASK")
+    if model_task is not None and model_task.strip() != "":
+        normalized_model_task = model_task.strip().lower()
+        allowed_model_tasks = set(Config.SUPPORTED_MODEL_TASKS)
+        if normalized_model_task not in allowed_model_tasks:
+            allowed = ", ".join(sorted(allowed_model_tasks))
+            raise ValueError(f"CODLLM_MODEL_TASK must be one of: {allowed}.")
+        cfg.model_task = cast(ModelTask, normalized_model_task)
 
     lr_scheduler_type = os.getenv("CODLLM_LR_SCHEDULER_TYPE")
     if lr_scheduler_type is not None and lr_scheduler_type.strip() != "":

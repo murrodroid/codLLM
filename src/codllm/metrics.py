@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import numpy as np
 
@@ -193,6 +193,57 @@ def build_exact_match_accuracy_metric(
             result.update(
                 _micro_precision_recall_f1(predicted_code_sets, label_code_sets)
             )
+        result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        return result
+
+    return compute_metrics
+
+
+def build_sequence_classification_metric(
+    id2label: Mapping[int, str],
+) -> Callable[[Any], dict[str, float]]:
+    """Build compute_metrics callback for single-label sequence classification."""
+    normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
+
+    def compute_metrics(eval_pred: Any) -> dict[str, float]:
+        """Compute accuracy and macro precision/recall/F1 from classifier logits."""
+        if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
+            predictions = eval_pred.predictions
+            labels = eval_pred.label_ids
+        else:
+            predictions, labels = eval_pred
+
+        if isinstance(predictions, tuple):
+            predictions = predictions[0]
+
+        prediction_array = np.asarray(predictions)
+        if prediction_array.ndim == 2:
+            predicted_ids = prediction_array.argmax(axis=-1)
+        else:
+            predicted_ids = prediction_array
+
+        label_ids = np.asarray(labels)
+        predicted_ids = predicted_ids.astype(np.int64, copy=False)
+        label_ids = label_ids.astype(np.int64, copy=False)
+
+        normalized_predictions = [
+            normalized_id2label.get(int(label_id), str(int(label_id)))
+            for label_id in predicted_ids.tolist()
+        ]
+        normalized_labels = [
+            normalized_id2label.get(int(label_id), str(int(label_id)))
+            for label_id in label_ids.tolist()
+        ]
+
+        matches = [
+            prediction == label
+            for prediction, label in zip(normalized_predictions, normalized_labels)
+        ]
+        accuracy = float(np.mean(matches)) if matches else 0.0
+
+        predicted_code_sets = [{label} for label in normalized_predictions]
+        label_code_sets = [{label} for label in normalized_labels]
+        result: dict[str, float] = {"accuracy": accuracy}
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
         return result
 

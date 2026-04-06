@@ -453,6 +453,24 @@ class TestDataHandler:
         assert pretrain_df.iloc[0]["text"] == "cod: description-0"
         assert pretrain_df.iloc[0]["label"] == "A00.000"
 
+    def test_get_masterlist_label_vocabulary_loads_sorted_unique_labels(
+        self, tmp_path: Path
+    ) -> None:
+        """Masterlist label vocabulary should expose sorted unique ICD10h labels."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=4)
+
+        cfg = Config(
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        labels = handler.get_masterlist_label_vocabulary()
+
+        assert labels == ["A00.000", "A01.000", "A02.000", "A03.000"]
+
     def test_select_upsample_targets_returns_quantile_minority_targets(self) -> None:
         """Minority selector should return per-label target counts."""
         targets = select_upsample_targets(

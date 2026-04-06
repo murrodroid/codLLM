@@ -22,6 +22,7 @@ ENV_KEYS = [
     "CODLLM_EVAL_STRATEGY",
     "CODLLM_SAVE_STRATEGY",
     "CODLLM_SAVE_STRATEGY_BEST_METRIC",
+    "CODLLM_MODEL_TASK",
     "CODLLM_LR_SCHEDULER_TYPE",
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
@@ -106,6 +107,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "steps")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY", "best")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "macro_f1")
+    monkeypatch.setenv("CODLLM_MODEL_TASK", "sequence_classification")
     monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "cosine")
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
@@ -182,6 +184,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.eval_strategy == "steps"
     assert cfg.save_strategy == "best"
     assert cfg.save_strategy_best_metric == "macro_f1"
+    assert cfg.model_task == "sequence_classification"
     assert cfg.lr_scheduler_type == "cosine"
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
@@ -464,6 +467,16 @@ def test_config_from_env_rejects_invalid_lr_scheduler_type(
     """LR scheduler type should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "invalid")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_model_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Model task should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MODEL_TASK", "invalid_task")
     with pytest.raises(ValueError):
         config_from_env()
 
