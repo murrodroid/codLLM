@@ -12,7 +12,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-from codllm.config import Config
+from codllm.config import Config, DataSourceConfig
 import codllm.dataset_input as dataset_input
 from codllm.path_utils import resolve_source_path
 from codllm.preprocess import build_preprocess_fn
@@ -563,6 +563,48 @@ class DataHandler:
             splits.train = self._apply_balance_policy(splits.train)
         return splits
 
+    def get_pretraining_train_dataframe(self) -> pd.DataFrame | None:
+        """Return optional masterlist dataframe used for pretraining."""
+        if not self.cfg.pretrain_enabled:
+            return None
+
+        pretrain_df = self._load_pretraining_source()
+        sampled_pretrain_df = self._apply_pretrain_dataset_size(pretrain_df)
+        if sampled_pretrain_df.empty:
+            raise ValueError("Pretraining dataframe is empty after sampling.")
+        if self.cfg.pretrain_apply_balance:
+            sampled_pretrain_df = self._apply_balance_policy(sampled_pretrain_df)
+        return sampled_pretrain_df
+
+    def _load_pretraining_source(self) -> pd.DataFrame:
+        """Load pretraining rows from the configured ICD10h masterlist source."""
+        source = DataSourceConfig(
+            source_id="masterlist_pretrain",
+            path=self.cfg.pretrain_masterlist_path,
+            mapping_id="masterlist",
+            sheet_name=self.cfg.pretrain_masterlist_sheet_name,
+            enabled=True,
+        )
+        if source.mapping_id not in self.mapping_registry:
+            raise KeyError(
+                f"Unknown mapping_id '{source.mapping_id}' for pretraining source."
+            )
+        mapping = self.mapping_registry[source.mapping_id]
+        pretrain_df = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=self.cfg.training_input,
+            max_labels=self.cfg.max_label_count,
+            label_separator=self.cfg.label_separator,
+            text_field_separator=self.cfg.text_field_separator,
+            data_raw_dir=self.cfg.data_raw_dir,
+            text_column=self.cfg.dataset_text_column,
+            label_column=self.cfg.dataset_label_column,
+        )
+        self._validate_required_columns(pretrain_df)
+        self._validate_label_quality(pretrain_df)
+        return pretrain_df.reset_index(drop=True)
+
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Apply optional upsampling and manipulation rules to the training split."""
         balanced_train_df = train_df
@@ -670,11 +712,12 @@ class DataHandler:
         self._validate_label_quality(df)
         return df
 
-    def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Subsample dataframe for pilot runs according to cfg.dataset_size."""
-        size = self.cfg.dataset_size
+    def _sample_dataframe_by_fraction(
+        self, df: pd.DataFrame, size: float, setting_name: str
+    ) -> pd.DataFrame:
+        """Subsample dataframe rows according to a configured fractional size."""
         if size <= 0 or size > 1:
-            raise ValueError("dataset_size must be in the interval (0, 1].")
+            raise ValueError(f"{setting_name} must be in the interval (0, 1].")
         if size == 1:
             return df.reset_index(drop=True)
 
@@ -686,6 +729,22 @@ class DataHandler:
         return df.sample(
             n=sample_count, random_state=data_seed, replace=False
         ).reset_index(drop=True)
+
+    def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Subsample dataframe for pilot runs according to cfg.dataset_size."""
+        return self._sample_dataframe_by_fraction(
+            df=df,
+            size=self.cfg.dataset_size,
+            setting_name="dataset_size",
+        )
+
+    def _apply_pretrain_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Subsample pretraining dataframe according to cfg.pretrain_dataset_size."""
+        return self._sample_dataframe_by_fraction(
+            df=df,
+            size=self.cfg.pretrain_dataset_size,
+            setting_name="pretrain_dataset_size",
+        )
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:
         """Ensure configured text/label columns exist in the dataframe."""

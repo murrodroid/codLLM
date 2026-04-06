@@ -71,10 +71,21 @@ COPENHAGEN_MAPPING = DatasetMapping(
     skip_rows=[0],
 )
 
+MASTERLIST_MAPPING = DatasetMapping(
+    text_col=5,
+    single_code_col=1,
+    multi_code_cols=[],
+    sex_col=None,
+    sex_map={},
+    age_col=None,
+    record_id_col=0,
+)
+
 MAPPING_REGISTRY: dict[str, DatasetMapping] = {
     "belgium": BELGIUM_MAPPING,
     "amsterdam": AMSTERDAM_MAPPING,
     "copenhagen": COPENHAGEN_MAPPING,
+    "masterlist": MASTERLIST_MAPPING,
 }
 
 PERTURBATION_REGISTRY: dict[str, Any] = {
