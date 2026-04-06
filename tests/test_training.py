@@ -169,6 +169,28 @@ def test_build_training_args_disables_fp16_when_requested(
     assert args.fp16 is False
 
 
+def test_metric_namespace_for_pretrain_stage() -> None:
+    """Pretraining stage should map to the dedicated metric namespace."""
+    assert train_module._metric_namespace_for_stage("pretrain") == "pretraining"
+
+
+def test_metric_namespace_for_non_pretrain_stage() -> None:
+    """Non-pretraining stages should keep default metric names."""
+    assert train_module._metric_namespace_for_stage("finetune") is None
+
+
+def test_namespace_metric_logs_prefixes_pretraining_keys() -> None:
+    """Pretraining logs should be namespaced while preserving epoch."""
+    logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
+    namespaced = train_module._namespace_metric_logs(logs, "pretraining")
+
+    assert namespaced["pretraining/loss"] == 1.2
+    assert namespaced["pretraining/eval_loss"] == 0.9
+    assert namespaced["epoch"] == 1.0
+    assert "loss" not in namespaced
+    assert "eval_loss" not in namespaced
+
+
 def test_build_training_args_best_save_strategy_sets_metric(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -365,6 +365,53 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
     return True
 
 
+def _metric_namespace_for_stage(stage_name: str) -> str | None:
+    """Return W&B metric namespace for a training stage."""
+    normalized_stage_name = stage_name.strip().lower()
+    if normalized_stage_name == "pretrain":
+        return "pretraining"
+    return None
+
+
+def _namespace_metric_logs(
+    logs: Mapping[str, Any],
+    metric_namespace: str | None,
+) -> dict[str, Any]:
+    """Prefix trainer metric keys so W&B charts are stage-scoped."""
+    if metric_namespace is None:
+        return dict(logs)
+
+    namespace = metric_namespace.strip().strip("/")
+    if namespace == "":
+        return dict(logs)
+
+    namespaced_logs: dict[str, Any] = {}
+    for key, value in logs.items():
+        if key == "epoch":
+            namespaced_logs[key] = value
+        else:
+            namespaced_logs[f"{namespace}/{key}"] = value
+    return namespaced_logs
+
+
+class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
+    """Seq2SeqTrainer variant that prefixes logged metrics by stage."""
+
+    def __init__(
+        self,
+        *args: Any,
+        metric_namespace: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.metric_namespace = metric_namespace
+        super().__init__(*args, **kwargs)
+
+    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
+        """Log stage-scoped metrics to callbacks/reporters."""
+        namespaced_logs = _namespace_metric_logs(logs, self.metric_namespace)
+        super().log(namespaced_logs, start_time=start_time)
+
+
 def _initialize_training_components(cfg: Config) -> tuple[Any, Any, bool]:
     """Load model/tokenizer once and apply training-safety dtype guards."""
     configure_reproducibility(cfg)
@@ -436,6 +483,7 @@ def _train_with_model(
             raw_stage_output_dir = stage.get("output_dir")
             if isinstance(raw_stage_output_dir, str) and raw_stage_output_dir.strip():
                 stage_output_dir = raw_stage_output_dir.strip()
+    metric_namespace = _metric_namespace_for_stage(stage_name)
 
     target_max_length = cfg.resolved_max_target_length()
     processed_train_ds = prepare_training_dataset(
@@ -485,13 +533,14 @@ def _train_with_model(
     )
     _print_training_configuration(cfg, args, run_data_metadata)
 
-    trainer = Seq2SeqTrainer(
+    trainer = StageScopedSeq2SeqTrainer(
         model=model,
         args=args,
         train_dataset=processed_train_ds,
         eval_dataset=processed_eval_ds,
         data_collator=collator,
         processing_class=tokenizer,
+        metric_namespace=metric_namespace,
         compute_metrics=(
             build_exact_match_accuracy_metric(
                 tokenizer,
