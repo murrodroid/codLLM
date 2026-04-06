@@ -694,7 +694,7 @@ def test_train_uses_pretraining_dataset_when_available(
 
     monkeypatch.setattr(
         train_module,
-        "_train_with_optional_pretraining",
+        "_train_with_pretraining",
         fake_train_with_optional_pretraining,
     )
     monkeypatch.setattr(train_module, "_evaluate_test_split", lambda **_: {"test": 1.0})
@@ -739,7 +739,7 @@ def test_train_pretraining_requires_validation_split(
 
     monkeypatch.setattr(
         train_module,
-        "_train_with_optional_pretraining",
+        "_train_with_pretraining",
         lambda *args, **kwargs: ("trainer", "tokenizer"),
     )
 

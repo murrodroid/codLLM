@@ -57,8 +57,6 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_MASTERLIST_PATH",
     "CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME",
     "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
-    "CODLLM_PRETRAIN_DATASET_SIZE",
-    "CODLLM_PRETRAIN_APPLY_BALANCE",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -141,8 +139,6 @@ def test_config_from_env_applies_runtime_overrides(
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME", "Masterlist")
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
-    monkeypatch.setenv("CODLLM_PRETRAIN_DATASET_SIZE", "0.8")
-    monkeypatch.setenv("CODLLM_PRETRAIN_APPLY_BALANCE", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -213,8 +209,6 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_masterlist_path == "data/raw/ICD10h_Masterlist_2024.xlsx"
     assert cfg.pretrain_masterlist_sheet_name == "Masterlist"
     assert cfg.pretrain_num_train_epochs == 2
-    assert cfg.pretrain_dataset_size == 0.8
-    assert cfg.pretrain_apply_balance is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"
@@ -428,16 +422,6 @@ def test_config_from_env_rejects_invalid_pretrain_num_train_epochs(
     """Pretraining epochs must be at least one."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "0")
-    with pytest.raises(ValueError):
-        config_from_env()
-
-
-def test_config_from_env_rejects_invalid_pretrain_dataset_size(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Pretraining dataset fraction should stay inside (0, 1]."""
-    _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_PRETRAIN_DATASET_SIZE", "0")
     with pytest.raises(ValueError):
         config_from_env()
 

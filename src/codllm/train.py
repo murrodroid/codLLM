@@ -633,7 +633,6 @@ def train(
             "sheet_name": cfg.pretrain_masterlist_sheet_name,
             "train_rows": int(len(pretrain_ds)),
             "num_train_epochs": cfg.pretrain_num_train_epochs,
-            "apply_balance": cfg.pretrain_apply_balance,
         }
         trainer, tokenizer = _train_with_pretraining(
             cfg=cfg,

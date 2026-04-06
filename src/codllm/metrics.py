@@ -148,7 +148,9 @@ def build_exact_match_accuracy_metric(
 
         result: dict[str, float] = {"accuracy": accuracy}
         if multi_label:
-            result.update(_micro_precision_recall_f1(predicted_code_sets, label_code_sets))
+            result.update(
+                _micro_precision_recall_f1(predicted_code_sets, label_code_sets)
+            )
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
         return result
 

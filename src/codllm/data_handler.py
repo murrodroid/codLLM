@@ -569,12 +569,9 @@ class DataHandler:
             return None
 
         pretrain_df = self._load_pretraining_source()
-        sampled_pretrain_df = self._apply_pretrain_dataset_size(pretrain_df)
-        if sampled_pretrain_df.empty:
-            raise ValueError("Pretraining dataframe is empty after sampling.")
-        if self.cfg.pretrain_apply_balance:
-            sampled_pretrain_df = self._apply_balance_policy(sampled_pretrain_df)
-        return sampled_pretrain_df
+        if pretrain_df.empty:
+            raise ValueError("Pretraining dataframe is empty.")
+        return pretrain_df
 
     def _load_pretraining_source(self) -> pd.DataFrame:
         """Load pretraining rows from the configured ICD10h masterlist source."""
@@ -736,14 +733,6 @@ class DataHandler:
             df=df,
             size=self.cfg.dataset_size,
             setting_name="dataset_size",
-        )
-
-    def _apply_pretrain_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Subsample pretraining dataframe according to cfg.pretrain_dataset_size."""
-        return self._sample_dataframe_by_fraction(
-            df=df,
-            size=self.cfg.pretrain_dataset_size,
-            setting_name="pretrain_dataset_size",
         )
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:

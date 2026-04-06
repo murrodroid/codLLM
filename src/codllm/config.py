@@ -179,8 +179,6 @@ class Config:
     pretrain_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
     pretrain_masterlist_sheet_name: str = "Masterlist"
     pretrain_num_train_epochs: int = 1
-    pretrain_dataset_size: float = 1.0
-    pretrain_apply_balance: bool = False
 
     balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
@@ -540,18 +538,6 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if pretrain_num_train_epochs < 1:
             raise ValueError("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS must be at least 1.")
         cfg.pretrain_num_train_epochs = pretrain_num_train_epochs
-
-    pretrain_dataset_size = _parse_env_float("CODLLM_PRETRAIN_DATASET_SIZE")
-    if pretrain_dataset_size is not None:
-        if pretrain_dataset_size <= 0 or pretrain_dataset_size > 1:
-            raise ValueError(
-                "CODLLM_PRETRAIN_DATASET_SIZE must be in the interval (0, 1]."
-            )
-        cfg.pretrain_dataset_size = pretrain_dataset_size
-
-    pretrain_apply_balance = _parse_env_bool("CODLLM_PRETRAIN_APPLY_BALANCE")
-    if pretrain_apply_balance is not None:
-        cfg.pretrain_apply_balance = pretrain_apply_balance
 
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:

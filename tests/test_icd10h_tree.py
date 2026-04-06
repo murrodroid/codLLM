@@ -79,15 +79,21 @@ class TestTreeNode:
 
     def test_parent_is_not_leaf(self) -> None:
         parent = TreeNode(code="A", label="Chapter A", level=NodeLevel.CHAPTER)
-        child = TreeNode(code="A0", label="group", level=NodeLevel.BLOCK_GROUP, parent=parent)
+        child = TreeNode(
+            code="A0", label="group", level=NodeLevel.BLOCK_GROUP, parent=parent
+        )
         parent.children.append(child)
         assert parent.is_leaf is False
         assert parent.child_count == 1
 
     def test_get_child_options(self) -> None:
         parent = TreeNode(code="ROOT", label="root", level=NodeLevel.ROOT)
-        c1 = TreeNode(code="A", label="Infectious", level=NodeLevel.CHAPTER, parent=parent)
-        c2 = TreeNode(code="B", label="Other infectious", level=NodeLevel.CHAPTER, parent=parent)
+        c1 = TreeNode(
+            code="A", label="Infectious", level=NodeLevel.CHAPTER, parent=parent
+        )
+        c2 = TreeNode(
+            code="B", label="Other infectious", level=NodeLevel.CHAPTER, parent=parent
+        )
         parent.children = [c1, c2]
         opts = parent.get_child_options()
         assert opts == [("A", "Infectious"), ("B", "Other infectious")]
