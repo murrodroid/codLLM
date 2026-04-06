@@ -17,12 +17,18 @@
 set -euo pipefail
 
 trap 'code=$?;
-  printf "ERROR: jobs/train.sh failed at line %s with exit code %s\n" "$LINENO" "$code";
+  printf "ERROR: jobs/train_h100.sh failed at line %s with exit code %s\n" "$LINENO" "$code";
   exit "$code"' ERR
 
 PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
+
+SUBMIT_TO_LSF="${SUBMIT_TO_LSF:-0}"
+if [ "${1:-}" = "--submit" ]; then
+  SUBMIT_TO_LSF=1
+  shift
+fi
 
 JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-${1:-}}"
 REQUIRE_JOB_CONFIG_FILE="${REQUIRE_JOB_CONFIG_FILE:-0}"
@@ -47,6 +53,59 @@ if [ -n "$JOB_CONFIG_FILE" ]; then
   set +a
 else
   echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
+fi
+
+if [ "$SUBMIT_TO_LSF" = "1" ]; then
+  if ! command -v bsub >/dev/null 2>&1; then
+    echo "ERROR: bsub is not available in PATH."
+    exit 1
+  fi
+
+  JOB_NAME="${JOB_NAME:-codllm-train}"
+  QUEUE="${QUEUE:-gpuh100}"
+  RUNTIME="${RUNTIME:-10:00}"
+  N_CORES="${N_CORES:-17}"
+  MEMORY_GB="${MEMORY_GB:-4}"
+  GPU_REQUEST="${GPU_REQUEST:-num=1:mode=exclusive_process}"
+  LSF_SPAN_RESOURCE="${LSF_SPAN_RESOURCE:-span[hosts=1]}"
+  LSF_LOG_PATH="${LSF_LOG_PATH:-logs/%J.out}"
+  LSF_NOTIFY_EMAIL="${LSF_NOTIFY_EMAIL:-s234805@dtu.dk}"
+  LSF_NOTIFY_ON_BEGIN="${LSF_NOTIFY_ON_BEGIN:-1}"
+  LSF_NOTIFY_ON_END="${LSF_NOTIFY_ON_END:-1}"
+
+  mkdir -p "$(dirname "$LSF_LOG_PATH")"
+
+  bsub_env_export="all"
+  if [ -n "${resolved_job_config:-}" ]; then
+    bsub_env_export="all,JOB_CONFIG_FILE=${resolved_job_config},REQUIRE_JOB_CONFIG_FILE=1"
+  fi
+
+  bsub_cmd=(
+    bsub
+    -J "$JOB_NAME"
+    -q "$QUEUE"
+    -W "$RUNTIME"
+    -n "$N_CORES"
+    -R "$LSF_SPAN_RESOURCE"
+    -R "rusage[mem=${MEMORY_GB}GB]"
+    -gpu "$GPU_REQUEST"
+    -env "$bsub_env_export"
+    -oo "$LSF_LOG_PATH"
+  )
+
+  if [ -n "$LSF_NOTIFY_EMAIL" ]; then
+    bsub_cmd+=(-u "$LSF_NOTIFY_EMAIL")
+  fi
+  if [ "$LSF_NOTIFY_ON_BEGIN" = "1" ]; then
+    bsub_cmd+=(-B)
+  fi
+  if [ "$LSF_NOTIFY_ON_END" = "1" ]; then
+    bsub_cmd+=(-N)
+  fi
+
+  echo "Submitting LSF job with command: ${bsub_cmd[*]}"
+  "${bsub_cmd[@]}" < "$0"
+  exit 0
 fi
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"
