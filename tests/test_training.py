@@ -135,6 +135,26 @@ def test_build_training_args_honors_explicit_generation_max_length(
     assert args.generation_max_length == 19
 
 
+def test_build_training_args_honors_stage_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stage overrides should control output directory and epoch count."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(output_dir="/tmp/base-output", num_train_epochs=4)
+    args = build_training_args(
+        cfg,
+        has_eval=True,
+        output_dir="/tmp/stage-output",
+        num_train_epochs=2,
+    )
+    assert args.output_dir == "/tmp/stage-output"
+    assert args.num_train_epochs == 2
+
+
 def test_build_training_args_disables_fp16_when_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -627,6 +647,104 @@ def test_train_runs_final_test_evaluation(
     assert captured["trainer"] == "trainer"
     assert captured["tokenizer"] == "tokenizer"
     assert captured["test_ds"] is splits.test
+
+
+def test_train_uses_pretraining_dataset_when_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """train should route to two-stage training when pretraining data exists."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        pretrain_enabled=True,
+        pretrain_masterlist_path="data/raw/ICD10h_Masterlist_2024.xlsx",
+        pretrain_masterlist_sheet_name="Masterlist",
+        pretrain_num_train_epochs=2,
+    )
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A02"]}),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A03"]}),
+    )
+    pretrain_df = pd.DataFrame({"text": ["p1", "p2"], "label": ["A10", "A11"]})
+
+    class DummyDataHandler:
+        """Stub data handler returning regular and pretraining dataframes."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+        def get_pretraining_train_dataframe(self) -> pd.DataFrame:
+            return pretrain_df
+
+    captured: dict[str, Any] = {}
+
+    def fake_train_with_optional_pretraining(
+        cfg: Config,
+        pretrain_ds: Any,
+        train_ds: Any,
+        eval_ds: Optional[Any] = None,
+        run_data_metadata: Optional[dict[str, Any]] = None,
+    ) -> tuple[str, str]:
+        captured["cfg"] = cfg
+        captured["pretrain_ds"] = pretrain_ds
+        captured["train_ds"] = train_ds
+        captured["eval_ds"] = eval_ds
+        captured["run_data_metadata"] = run_data_metadata
+        return "trainer", "tokenizer"
+
+    monkeypatch.setattr(
+        train_module,
+        "_train_with_optional_pretraining",
+        fake_train_with_optional_pretraining,
+    )
+    monkeypatch.setattr(train_module, "_evaluate_test_split", lambda **_: {"test": 1.0})
+
+    trainer, tokenizer, returned_splits = train_module.train(
+        cfg, data_handler=DummyDataHandler()
+    )
+
+    assert trainer == "trainer"
+    assert tokenizer == "tokenizer"
+    assert returned_splits is splits
+    assert captured["pretrain_ds"] is pretrain_df
+    assert captured["train_ds"] is splits.train
+    assert captured["eval_ds"] is splits.val
+    assert captured["run_data_metadata"]["pretraining"]["enabled"] is True
+    assert captured["run_data_metadata"]["pretraining"]["train_rows"] == 2
+
+
+def test_train_pretraining_requires_validation_split(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Pretraining should fail fast when regular validation split is empty."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        pretrain_enabled=True,
+    )
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
+        val=pd.DataFrame(columns=["text", "label"]),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A01"]}),
+    )
+    pretrain_df = pd.DataFrame({"text": ["p1"], "label": ["A10"]})
+
+    class DummyDataHandler:
+        """Stub data handler returning empty validation and pretraining rows."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+        def get_pretraining_train_dataframe(self) -> pd.DataFrame:
+            return pretrain_df
+
+    monkeypatch.setattr(
+        train_module,
+        "_train_with_optional_pretraining",
+        lambda *args, **kwargs: ("trainer", "tokenizer"),
+    )
+
+    with pytest.raises(ValueError, match="requires a non-empty validation split"):
+        train_module.train(cfg, data_handler=DummyDataHandler())
 
 
 def test_evaluate_test_split_uses_test_metric_prefix() -> None:

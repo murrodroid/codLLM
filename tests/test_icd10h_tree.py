@@ -13,11 +13,10 @@ from experiments.tree_search.icd10h_tree import (
     _summarise_labels,
     build_tree,
     get_node_by_code,
-    load_masterlist_df,
     tree_stats,
 )
 
-MASTERLIST_PATH = Path("data/ICD10h_Masterlist_2024.xlsx")
+MASTERLIST_PATH = Path("data/raw/ICD10h_Masterlist_2024.xlsx")
 
 
 # ---------------------------------------------------------------------------

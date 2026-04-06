@@ -103,6 +103,27 @@ def _balance_df() -> pd.DataFrame:
     )
 
 
+def _write_masterlist(path: Path, num_rows: int = 4) -> None:
+    """Write a compact ICD10h masterlist-like workbook for pretraining tests."""
+    rows = []
+    for idx in range(num_rows):
+        rows.append(
+            {
+                "IDMasterlist": idx + 1,
+                "ICD10h": f"A{idx:02d}.000",
+                "ICD10": f"A{idx:02d}.0",
+                "icd10_2levelCATEGORY": "Category",
+                "ICD10_2levelCAUSE": f"Cause {idx}",
+                "ICD10h_DESCRIPTION": f"description-{idx}",
+                "HistCat": "Hist",
+                "DoNotUse": 0,
+                "NotForUnderlying": 0,
+                "GenderSpecific": 0,
+            }
+        )
+    pd.DataFrame(rows).to_excel(path, sheet_name="Masterlist", index=False)
+
+
 class TestBuildText:
     def test_build_text_uses_configured_training_input_order(self) -> None:
         """Text should respect feature order from training_input."""
@@ -410,6 +431,49 @@ class TestLoaders:
 
 
 class TestDataHandler:
+    def test_get_pretraining_train_dataframe_loads_masterlist(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining loader should map ICD10h description/text into training columns."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=3)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_dataset_size=1.0,
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+
+        assert pretrain_df is not None
+        assert len(pretrain_df) == 3
+        assert pretrain_df.iloc[0]["text"] == "cod: description-0"
+        assert pretrain_df.iloc[0]["label"] == "A00.000"
+
+    def test_get_pretraining_train_dataframe_applies_pretrain_dataset_size(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining loader should honor pretrain_dataset_size sampling."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=10)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_dataset_size=0.5,
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+
+        assert pretrain_df is not None
+        assert len(pretrain_df) == 5
+
     def test_select_upsample_targets_returns_quantile_minority_targets(self) -> None:
         """Minority selector should return per-label target counts."""
         targets = select_upsample_targets(
