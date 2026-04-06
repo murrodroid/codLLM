@@ -1,6 +1,11 @@
+import numpy as np
 import pytest
 
-from codllm.metrics import _micro_precision_recall_f1, _macro_precision_recall_f1
+from codllm.metrics import (
+    _macro_precision_recall_f1,
+    _micro_precision_recall_f1,
+    build_exact_match_accuracy_metric,
+)
 
 
 class TestMicroPrecisionRecallF1:
@@ -109,3 +114,53 @@ class TestMacroPrecisionRecallF1:
         assert result["macro_precision"] == 1.0
         assert result["macro_recall"] == 1.0
         assert result["macro_f1"] == 1.0
+
+
+class _StrictDecodeTokenizer:
+    """Tokenizer stub that raises on invalid token ids."""
+
+    pad_token_id = 0
+    vocab_size = 100
+
+    def batch_decode(
+        self,
+        sequences: list[list[int]],
+        skip_special_tokens: bool = True,
+    ) -> list[str]:
+        """Decode by validating token ids and joining them into strings."""
+        decoded: list[str] = []
+        for sequence in sequences:
+            for token_id in sequence:
+                if token_id < 0 or token_id > (2**32 - 1):
+                    raise OverflowError("out of range integral type conversion attempted")
+            if skip_special_tokens:
+                kept = [token_id for token_id in sequence if token_id != self.pad_token_id]
+            else:
+                kept = sequence
+            decoded.append(" ".join(str(token_id) for token_id in kept))
+        return decoded
+
+
+def test_build_exact_match_accuracy_metric_sanitizes_invalid_prediction_ids() -> None:
+    """Metric callback should sanitize invalid prediction ids before decoding."""
+    metric_fn = build_exact_match_accuracy_metric(_StrictDecodeTokenizer())
+    predictions = np.array(
+        [
+            [1, -100, 2],
+            [3, float("nan"), 0],
+            [4, 2**40, 0],
+        ],
+        dtype=np.float64,
+    )
+    labels = np.array(
+        [
+            [1, -100, 2],
+            [3, -100, 0],
+            [4, -100, 0],
+        ],
+        dtype=np.int64,
+    )
+
+    metrics = metric_fn((predictions, labels))
+
+    assert "accuracy" in metrics

@@ -13,6 +13,10 @@ from transformers import (
     DataCollatorForSeq2Seq,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
 )
 
 import codllm.wandb_utils as wandb_utils
@@ -251,6 +255,8 @@ def build_training_args(
     disable_fp16: bool = False,
     output_dir: Optional[str] = None,
     num_train_epochs: Optional[int] = None,
+    learning_rate: Optional[float] = None,
+    warmup_steps: Optional[int] = None,
 ) -> Seq2SeqTrainingArguments:
     """Build Seq2Seq training arguments compatible with transformers v5."""
     eval_strategy = cfg.eval_strategy if has_eval else "no"
@@ -296,9 +302,11 @@ def build_training_args(
         if generation_max_length is None
         else generation_max_length
     )
+    resolved_learning_rate = cfg.lr if learning_rate is None else learning_rate
+    resolved_warmup_steps = cfg.warmup_steps if warmup_steps is None else warmup_steps
     training_kwargs = {
         "output_dir": cfg.output_dir if output_dir is None else output_dir,
-        "learning_rate": cfg.lr,
+        "learning_rate": resolved_learning_rate,
         "weight_decay": cfg.weight_decay,
         "num_train_epochs": (
             cfg.num_train_epochs if num_train_epochs is None else num_train_epochs
@@ -307,7 +315,6 @@ def build_training_args(
         "per_device_eval_batch_size": cfg.per_device_eval_batch_size,
         "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
         "max_grad_norm": cfg.max_grad_norm,
-        "warmup_steps": cfg.warmup_steps,
         "logging_steps": cfg.logging_steps,
         "eval_strategy": eval_strategy,
         "eval_steps": eval_steps,
@@ -328,8 +335,8 @@ def build_training_args(
         training_kwargs["greater_is_better"] = _metric_greater_is_better(
             cfg.save_strategy_best_metric
         )
-    if cfg.warmup_steps is not None:
-        training_kwargs["warmup_steps"] = cfg.warmup_steps
+    if resolved_warmup_steps is not None:
+        training_kwargs["warmup_steps"] = resolved_warmup_steps
     return Seq2SeqTrainingArguments(**training_kwargs)
 
 
@@ -365,51 +372,100 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
     return True
 
 
-def _metric_namespace_for_stage(stage_name: str) -> str | None:
-    """Return W&B metric namespace for a training stage."""
-    normalized_stage_name = stage_name.strip().lower()
+def _normalize_stage_name(stage_name: str) -> str:
+    """Normalize arbitrary stage names to one lowercase token."""
+    return stage_name.strip().lower()
+
+
+def _rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
+    """Map trainer metric keys to train/val/test/pretrain W&B categories."""
+    if key == "epoch":
+        return key
+
+    normalized_stage_name = _normalize_stage_name(stage_name)
     if normalized_stage_name == "pretrain":
-        return "pretraining"
-    return None
+        if key.startswith("eval_"):
+            return f"pretrain/val/{key.removeprefix('eval_')}"
+        if key.startswith("test_"):
+            return f"pretrain/test/{key.removeprefix('test_')}"
+        if key.startswith("train_"):
+            return f"pretrain/{key.removeprefix('train_')}"
+        return f"pretrain/{key}"
+
+    if key.startswith("eval_"):
+        return f"val/{key.removeprefix('eval_')}"
+    if key.startswith("test_"):
+        return f"test/{key.removeprefix('test_')}"
+    if key.startswith("train_"):
+        return f"train/{key.removeprefix('train_')}"
+    return f"train/{key}"
 
 
-def _namespace_metric_logs(
-    logs: Mapping[str, Any],
-    metric_namespace: str | None,
+def _scope_metric_logs_for_stage(
+    logs: Mapping[str, Any], stage_name: str
 ) -> dict[str, Any]:
-    """Prefix trainer metric keys so W&B charts are stage-scoped."""
-    if metric_namespace is None:
-        return dict(logs)
-
-    namespace = metric_namespace.strip().strip("/")
-    if namespace == "":
-        return dict(logs)
-
-    namespaced_logs: dict[str, Any] = {}
+    """Rewrite one trainer log payload to stage-scoped W&B metric keys."""
+    scoped_logs: dict[str, Any] = {}
     for key, value in logs.items():
-        if key == "epoch":
-            namespaced_logs[key] = value
+        scoped_logs[_rewrite_metric_key_for_stage(key, stage_name)] = value
+    return scoped_logs
+
+
+class EvaluateEveryNEpochsCallback(TrainerCallback):
+    """Skip intermediate eval epochs and evaluate only every Nth epoch."""
+
+    def __init__(self, every_n_epochs: int) -> None:
+        if every_n_epochs < 1:
+            raise ValueError("every_n_epochs must be at least 1.")
+        self.every_n_epochs = every_n_epochs
+
+    def on_epoch_end(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: Any,
+    ) -> TrainerControl:
+        """Run eval only on Nth epochs and always on the final epoch."""
+        del args, kwargs
+        if not control.should_evaluate:
+            return control
+        if self.every_n_epochs <= 1:
+            return control
+        if state.epoch is None:
+            return control
+
+        completed_epochs = int(round(state.epoch))
+        if completed_epochs < 1:
+            return control
+        if state.num_train_epochs is None:
+            target_epochs = completed_epochs
         else:
-            namespaced_logs[f"{namespace}/{key}"] = value
-    return namespaced_logs
+            target_epochs = int(round(state.num_train_epochs))
+
+        is_interval_epoch = completed_epochs % self.every_n_epochs == 0
+        is_final_epoch = completed_epochs >= target_epochs
+        if not (is_interval_epoch or is_final_epoch):
+            control.should_evaluate = False
+        return control
 
 
 class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
-    """Seq2SeqTrainer variant that prefixes logged metrics by stage."""
+    """Seq2SeqTrainer variant that rewrites logged metric keys by stage."""
 
     def __init__(
         self,
         *args: Any,
-        metric_namespace: str | None = None,
+        stage_name: str = "train",
         **kwargs: Any,
     ) -> None:
-        self.metric_namespace = metric_namespace
+        self.stage_name = stage_name
         super().__init__(*args, **kwargs)
 
     def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
         """Log stage-scoped metrics to callbacks/reporters."""
-        namespaced_logs = _namespace_metric_logs(logs, self.metric_namespace)
-        super().log(namespaced_logs, start_time=start_time)
+        scoped_logs = _scope_metric_logs_for_stage(logs, self.stage_name)
+        super().log(scoped_logs, start_time=start_time)
 
 
 def _initialize_training_components(cfg: Config) -> tuple[Any, Any, bool]:
@@ -444,10 +500,13 @@ def _with_training_stage_metadata(
     train_ds: Any,
     eval_ds: Optional[Any],
     num_train_epochs: int,
+    learning_rate: float | None = None,
+    warmup_steps: int | None = None,
+    eval_every_n_epochs: int | None = None,
 ) -> dict[str, Any]:
     """Attach stage-level training metadata to the run payload."""
     stage_metadata = dict(run_data_metadata) if run_data_metadata is not None else {}
-    stage_metadata["training_stage"] = {
+    stage_payload: dict[str, Any] = {
         "name": stage_name,
         "num_train_epochs": num_train_epochs,
         "rows": {
@@ -455,6 +514,13 @@ def _with_training_stage_metadata(
             "eval": _dataset_row_count(eval_ds),
         },
     }
+    if learning_rate is not None:
+        stage_payload["learning_rate"] = learning_rate
+    if warmup_steps is not None:
+        stage_payload["warmup_steps"] = warmup_steps
+    if eval_every_n_epochs is not None:
+        stage_payload["eval_every_n_epochs"] = eval_every_n_epochs
+    stage_metadata["training_stage"] = stage_payload
     return stage_metadata
 
 
@@ -471,6 +537,9 @@ def _train_with_model(
     stage_name = "train"
     stage_output_dir = cfg.output_dir
     stage_num_train_epochs = cfg.num_train_epochs
+    stage_learning_rate: float | None = None
+    stage_warmup_steps: int | None = None
+    stage_eval_every_n_epochs = 1
     if isinstance(run_data_metadata, dict):
         stage = run_data_metadata.get("training_stage")
         if isinstance(stage, dict):
@@ -483,7 +552,21 @@ def _train_with_model(
             raw_stage_output_dir = stage.get("output_dir")
             if isinstance(raw_stage_output_dir, str) and raw_stage_output_dir.strip():
                 stage_output_dir = raw_stage_output_dir.strip()
-    metric_namespace = _metric_namespace_for_stage(stage_name)
+            raw_stage_learning_rate = stage.get("learning_rate")
+            if (
+                isinstance(raw_stage_learning_rate, (int, float))
+                and raw_stage_learning_rate > 0
+            ):
+                stage_learning_rate = float(raw_stage_learning_rate)
+            raw_stage_warmup_steps = stage.get("warmup_steps")
+            if isinstance(raw_stage_warmup_steps, int) and raw_stage_warmup_steps >= 0:
+                stage_warmup_steps = raw_stage_warmup_steps
+            raw_stage_eval_every_n_epochs = stage.get("eval_every_n_epochs")
+            if (
+                isinstance(raw_stage_eval_every_n_epochs, int)
+                and raw_stage_eval_every_n_epochs >= 1
+            ):
+                stage_eval_every_n_epochs = raw_stage_eval_every_n_epochs
 
     target_max_length = cfg.resolved_max_target_length()
     processed_train_ds = prepare_training_dataset(
@@ -503,6 +586,8 @@ def _train_with_model(
         disable_fp16=disable_fp16,
         output_dir=stage_output_dir,
         num_train_epochs=stage_num_train_epochs,
+        learning_rate=stage_learning_rate,
+        warmup_steps=stage_warmup_steps,
     )
     fallback_data_metadata = {
         "split_rows": {
@@ -513,6 +598,13 @@ def _train_with_model(
             "name": stage_name,
             "num_train_epochs": stage_num_train_epochs,
             "output_dir": stage_output_dir,
+            "learning_rate": (
+                cfg.lr if stage_learning_rate is None else stage_learning_rate
+            ),
+            "warmup_steps": (
+                cfg.warmup_steps if stage_warmup_steps is None else stage_warmup_steps
+            ),
+            "eval_every_n_epochs": stage_eval_every_n_epochs,
         },
     }
     training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
@@ -533,6 +625,19 @@ def _train_with_model(
     )
     _print_training_configuration(cfg, args, run_data_metadata)
 
+    callbacks: list[TrainerCallback] = []
+    eval_strategy_value = (
+        args.eval_strategy.value
+        if hasattr(args.eval_strategy, "value")
+        else str(args.eval_strategy)
+    )
+    if (
+        processed_eval_ds is not None
+        and eval_strategy_value == "epoch"
+        and stage_eval_every_n_epochs > 1
+    ):
+        callbacks.append(EvaluateEveryNEpochsCallback(stage_eval_every_n_epochs))
+
     trainer = StageScopedSeq2SeqTrainer(
         model=model,
         args=args,
@@ -540,7 +645,8 @@ def _train_with_model(
         eval_dataset=processed_eval_ds,
         data_collator=collator,
         processing_class=tokenizer,
-        metric_namespace=metric_namespace,
+        stage_name=stage_name,
+        callbacks=callbacks or None,
         compute_metrics=(
             build_exact_match_accuracy_metric(
                 tokenizer,
@@ -585,6 +691,11 @@ def _train_with_pretraining(
 ) -> Tuple[Seq2SeqTrainer, Any]:
     """Run optional pretraining first, then continue with regular fine-tuning."""
     model, tokenizer, disable_fp16 = _initialize_training_components(cfg)
+    pretrain_learning_rate = (
+        cfg.pretrain_learning_rate
+        if cfg.pretrain_learning_rate is not None
+        else cfg.lr
+    )
     pretrain_output_dir = str(Path(cfg.output_dir) / "pretrain")
     pretrain_metadata = _with_training_stage_metadata(
         run_data_metadata=run_data_metadata,
@@ -592,6 +703,9 @@ def _train_with_pretraining(
         train_ds=pretrain_ds,
         eval_ds=eval_ds,
         num_train_epochs=cfg.pretrain_num_train_epochs,
+        learning_rate=pretrain_learning_rate,
+        warmup_steps=0,
+        eval_every_n_epochs=cfg.pretrain_eval_every_n_epochs,
     )
     pretrain_metadata["training_stage"]["output_dir"] = pretrain_output_dir
     _ = _train_with_model(
@@ -611,6 +725,8 @@ def _train_with_pretraining(
         train_ds=train_ds,
         eval_ds=eval_ds,
         num_train_epochs=cfg.num_train_epochs,
+        learning_rate=cfg.lr,
+        warmup_steps=cfg.warmup_steps,
     )
     finetune_metadata["training_stage"]["output_dir"] = finetune_output_dir
     trainer = _train_with_model(
@@ -676,12 +792,20 @@ def train(
             raise ValueError(
                 "Pretraining requires a non-empty validation split from the regular dataset."
             )
+        pretrain_learning_rate = (
+            cfg.pretrain_learning_rate
+            if cfg.pretrain_learning_rate is not None
+            else cfg.lr
+        )
         run_data_metadata["pretraining"] = {
             "enabled": True,
             "masterlist_path": str(Path(cfg.pretrain_masterlist_path).resolve()),
             "sheet_name": cfg.pretrain_masterlist_sheet_name,
             "train_rows": int(len(pretrain_ds)),
             "num_train_epochs": cfg.pretrain_num_train_epochs,
+            "learning_rate": pretrain_learning_rate,
+            "warmup_steps": 0,
+            "eval_every_n_epochs": cfg.pretrain_eval_every_n_epochs,
         }
         trainer, tokenizer = _train_with_pretraining(
             cfg=cfg,

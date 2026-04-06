@@ -91,6 +91,32 @@ def _macro_precision_recall_f1(
     }
 
 
+def _sanitize_token_ids_for_decoding(
+    token_ids: np.ndarray,
+    *,
+    pad_token_id: int,
+    max_token_id: int | None = None,
+) -> np.ndarray:
+    """Return token ids safe for tokenizer.decode/batch_decode.
+
+    Tokenizer decoders can fail on invalid integral values (for example negative
+    ids, NaN/Inf values cast from floating tensors, or very large out-of-range ids).
+    This helper maps those invalid ids to the configured pad token id.
+    """
+    sanitized = np.asarray(token_ids)
+    if not np.issubdtype(sanitized.dtype, np.integer):
+        finite_mask = np.isfinite(sanitized)
+        sanitized = np.where(finite_mask, sanitized, pad_token_id)
+        sanitized = np.rint(sanitized).astype(np.int64, copy=False)
+    else:
+        sanitized = sanitized.astype(np.int64, copy=False)
+
+    sanitized = np.where(sanitized < 0, pad_token_id, sanitized)
+    if max_token_id is not None:
+        sanitized = np.where(sanitized > max_token_id, pad_token_id, sanitized)
+    return sanitized
+
+
 def build_exact_match_accuracy_metric(
     tokenizer: Any,
     label_separator: str = ",",
@@ -102,6 +128,12 @@ def build_exact_match_accuracy_metric(
     they are mathematically identical to accuracy in that regime.
     """
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    raw_vocab_size = getattr(tokenizer, "vocab_size", None)
+    max_token_id = (
+        int(raw_vocab_size) - 1
+        if isinstance(raw_vocab_size, int) and raw_vocab_size > 0
+        else None
+    )
     multi_label = max_label_count > 1
 
     def compute_metrics(eval_pred: Any) -> dict[str, float]:
@@ -121,7 +153,17 @@ def build_exact_match_accuracy_metric(
         if prediction_ids.ndim == 3:
             prediction_ids = prediction_ids.argmax(axis=-1)
 
+        prediction_ids = _sanitize_token_ids_for_decoding(
+            prediction_ids,
+            pad_token_id=pad_token_id,
+            max_token_id=max_token_id,
+        )
         label_ids = np.where(label_ids == -100, pad_token_id, label_ids)
+        label_ids = _sanitize_token_ids_for_decoding(
+            label_ids,
+            pad_token_id=pad_token_id,
+            max_token_id=max_token_id,
+        )
         decoded_predictions = tokenizer.batch_decode(
             prediction_ids.tolist(), skip_special_tokens=True
         )

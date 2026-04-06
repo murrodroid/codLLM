@@ -138,21 +138,25 @@ def test_build_training_args_honors_explicit_generation_max_length(
 def test_build_training_args_honors_stage_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stage overrides should control output directory and epoch count."""
+    """Stage overrides should control output, epochs, lr, and warmup."""
     monkeypatch.setattr(
         train_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
-    cfg = Config(output_dir="/tmp/base-output", num_train_epochs=4)
+    cfg = Config(output_dir="/tmp/base-output", num_train_epochs=4, lr=1e-5, warmup_steps=100)
     args = build_training_args(
         cfg,
         has_eval=True,
         output_dir="/tmp/stage-output",
         num_train_epochs=2,
+        learning_rate=3e-5,
+        warmup_steps=0,
     )
     assert args.output_dir == "/tmp/stage-output"
     assert args.num_train_epochs == 2
+    assert args.learning_rate == pytest.approx(3e-5)
+    assert args.warmup_steps == 0
 
 
 def test_build_training_args_disables_fp16_when_requested(
@@ -169,26 +173,72 @@ def test_build_training_args_disables_fp16_when_requested(
     assert args.fp16 is False
 
 
-def test_metric_namespace_for_pretrain_stage() -> None:
-    """Pretraining stage should map to the dedicated metric namespace."""
-    assert train_module._metric_namespace_for_stage("pretrain") == "pretraining"
-
-
-def test_metric_namespace_for_non_pretrain_stage() -> None:
-    """Non-pretraining stages should keep default metric names."""
-    assert train_module._metric_namespace_for_stage("finetune") is None
-
-
-def test_namespace_metric_logs_prefixes_pretraining_keys() -> None:
-    """Pretraining logs should be namespaced while preserving epoch."""
+def test_scope_metric_logs_for_pretrain_stage() -> None:
+    """Pretraining metrics should be logged under the pretrain category."""
     logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
-    namespaced = train_module._namespace_metric_logs(logs, "pretraining")
+    scoped = train_module._scope_metric_logs_for_stage(logs, "pretrain")
 
-    assert namespaced["pretraining/loss"] == 1.2
-    assert namespaced["pretraining/eval_loss"] == 0.9
-    assert namespaced["epoch"] == 1.0
-    assert "loss" not in namespaced
-    assert "eval_loss" not in namespaced
+    assert scoped["pretrain/loss"] == 1.2
+    assert scoped["pretrain/val/loss"] == 0.9
+    assert scoped["epoch"] == 1.0
+    assert "loss" not in scoped
+    assert "eval_loss" not in scoped
+
+
+def test_scope_metric_logs_for_finetune_stage() -> None:
+    """Fine-tuning metrics should route to train/val/test categories."""
+    logs = {"loss": 1.2, "eval_accuracy": 0.8, "test_f1": 0.7}
+    scoped = train_module._scope_metric_logs_for_stage(logs, "finetune")
+
+    assert scoped["train/loss"] == 1.2
+    assert scoped["val/accuracy"] == 0.8
+    assert scoped["test/f1"] == 0.7
+
+
+def test_evaluate_every_n_epochs_callback_skips_non_interval_epoch(
+    tmp_path: Path,
+) -> None:
+    """Eval callback should skip intermediate epochs outside the interval."""
+    callback = train_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
+    args = train_module.TrainingArguments(output_dir=str(tmp_path / "out"))
+    state = train_module.TrainerState()
+    state.epoch = 9.0
+    state.num_train_epochs = 20
+    control = train_module.TrainerControl(should_evaluate=True)
+
+    updated = callback.on_epoch_end(args=args, state=state, control=control)
+
+    assert updated.should_evaluate is False
+
+
+def test_evaluate_every_n_epochs_callback_runs_on_interval_and_final_epoch(
+    tmp_path: Path,
+) -> None:
+    """Eval callback should evaluate on interval epochs and final epoch."""
+    callback = train_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
+    args = train_module.TrainingArguments(output_dir=str(tmp_path / "out"))
+
+    interval_state = train_module.TrainerState()
+    interval_state.epoch = 10.0
+    interval_state.num_train_epochs = 20
+    interval_control = train_module.TrainerControl(should_evaluate=True)
+    interval_updated = callback.on_epoch_end(
+        args=args,
+        state=interval_state,
+        control=interval_control,
+    )
+    assert interval_updated.should_evaluate is True
+
+    final_state = train_module.TrainerState()
+    final_state.epoch = 11.0
+    final_state.num_train_epochs = 11
+    final_control = train_module.TrainerControl(should_evaluate=True)
+    final_updated = callback.on_epoch_end(
+        args=args,
+        state=final_state,
+        control=final_control,
+    )
+    assert final_updated.should_evaluate is True
 
 
 def test_build_training_args_best_save_strategy_sets_metric(
@@ -681,6 +731,8 @@ def test_train_uses_pretraining_dataset_when_available(
         pretrain_masterlist_path="data/raw/ICD10h_Masterlist_2024.xlsx",
         pretrain_masterlist_sheet_name="Masterlist",
         pretrain_num_train_epochs=2,
+        pretrain_learning_rate=7e-6,
+        pretrain_eval_every_n_epochs=10,
     )
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
@@ -733,6 +785,74 @@ def test_train_uses_pretraining_dataset_when_available(
     assert captured["eval_ds"] is splits.val
     assert captured["run_data_metadata"]["pretraining"]["enabled"] is True
     assert captured["run_data_metadata"]["pretraining"]["train_rows"] == 2
+    assert captured["run_data_metadata"]["pretraining"]["learning_rate"] == pytest.approx(7e-6)
+    assert captured["run_data_metadata"]["pretraining"]["warmup_steps"] == 0
+    assert captured["run_data_metadata"]["pretraining"]["eval_every_n_epochs"] == 10
+
+
+def test_train_with_pretraining_uses_stage_specific_hyperparameters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two-stage flow should pass pretrain-specific optimizer/eval settings."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        lr=2e-5,
+        warmup_steps=300,
+        pretrain_num_train_epochs=5,
+        pretrain_learning_rate=9e-6,
+        pretrain_eval_every_n_epochs=10,
+    )
+    pretrain_ds = pd.DataFrame({"text": ["p1"], "label": ["A10"]})
+    train_ds = pd.DataFrame({"text": ["t1"], "label": ["A00"]})
+    eval_ds = pd.DataFrame({"text": ["v1"], "label": ["A01"]})
+
+    monkeypatch.setattr(
+        train_module,
+        "_initialize_training_components",
+        lambda _: ("model", "tokenizer", False),
+    )
+    captured_stages: list[dict[str, Any]] = []
+
+    def fake_train_with_model(
+        cfg: Config,
+        model: Any,
+        tokenizer: Any,
+        disable_fp16: bool,
+        train_ds: Any,
+        eval_ds: Optional[Any] = None,
+        run_data_metadata: Optional[dict[str, Any]] = None,
+    ) -> str:
+        del cfg, model, tokenizer, disable_fp16, train_ds, eval_ds
+        assert run_data_metadata is not None
+        stage = run_data_metadata.get("training_stage")
+        assert isinstance(stage, dict)
+        captured_stages.append(stage)
+        return "trainer"
+
+    monkeypatch.setattr(train_module, "_train_with_model", fake_train_with_model)
+
+    trainer, tokenizer = train_module._train_with_pretraining(
+        cfg=cfg,
+        pretrain_ds=pretrain_ds,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        run_data_metadata={"split_rows": {"train": 1, "val": 1, "test": 1}},
+    )
+
+    assert trainer == "trainer"
+    assert tokenizer == "tokenizer"
+    assert len(captured_stages) == 2
+    pretrain_stage = captured_stages[0]
+    finetune_stage = captured_stages[1]
+    assert pretrain_stage["name"] == "pretrain"
+    assert pretrain_stage["learning_rate"] == pytest.approx(9e-6)
+    assert pretrain_stage["warmup_steps"] == 0
+    assert pretrain_stage["eval_every_n_epochs"] == 10
+    assert Path(pretrain_stage["output_dir"]).name == "pretrain"
+    assert finetune_stage["name"] == "finetune"
+    assert finetune_stage["learning_rate"] == pytest.approx(2e-5)
+    assert finetune_stage["warmup_steps"] == 300
+    assert Path(finetune_stage["output_dir"]).name == "finetune"
 
 
 def test_train_pretraining_requires_validation_split(

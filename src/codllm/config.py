@@ -179,6 +179,8 @@ class Config:
     pretrain_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
     pretrain_masterlist_sheet_name: str = "Masterlist"
     pretrain_num_train_epochs: int = 1
+    pretrain_learning_rate: float | None = None
+    pretrain_eval_every_n_epochs: int = 1
 
     balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
@@ -538,6 +540,22 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if pretrain_num_train_epochs < 1:
             raise ValueError("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS must be at least 1.")
         cfg.pretrain_num_train_epochs = pretrain_num_train_epochs
+
+    pretrain_learning_rate = _parse_env_float("CODLLM_PRETRAIN_LEARNING_RATE")
+    if pretrain_learning_rate is not None:
+        if pretrain_learning_rate <= 0:
+            raise ValueError("CODLLM_PRETRAIN_LEARNING_RATE must be positive.")
+        cfg.pretrain_learning_rate = pretrain_learning_rate
+
+    pretrain_eval_every_n_epochs = _parse_env_int(
+        "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS"
+    )
+    if pretrain_eval_every_n_epochs is not None:
+        if pretrain_eval_every_n_epochs < 1:
+            raise ValueError(
+                "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS must be at least 1."
+            )
+        cfg.pretrain_eval_every_n_epochs = pretrain_eval_every_n_epochs
 
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:
