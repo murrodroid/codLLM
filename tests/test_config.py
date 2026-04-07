@@ -58,10 +58,12 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_ENABLED",
     "CODLLM_PRETRAIN_MASTERLIST_PATH",
     "CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME",
+    "CODLLM_PRETRAIN_TRANSFER_SHEET_NAME",
     "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
     "CODLLM_PRETRAIN_LEARNING_RATE",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
     "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
+    "CODLLM_LABEL_HARMONIZATION_ENABLED",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -145,10 +147,12 @@ def test_config_from_env_applies_runtime_overrides(
         "CODLLM_PRETRAIN_MASTERLIST_PATH", "data/raw/ICD10h_Masterlist_2024.xlsx"
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME", "Masterlist")
+    monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "2020to2024transfer")
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
     monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
+    monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -220,10 +224,12 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_enabled is True
     assert cfg.pretrain_masterlist_path == "data/raw/ICD10h_Masterlist_2024.xlsx"
     assert cfg.pretrain_masterlist_sheet_name == "Masterlist"
+    assert cfg.pretrain_transfer_sheet_name == "2020to2024transfer"
     assert cfg.pretrain_num_train_epochs == 2
     assert cfg.pretrain_learning_rate == 8e-6
     assert cfg.pretrain_eval_every_n_epochs == 10
     assert cfg.pretrain_lr_scheduler_type == "linear"
+    assert cfg.label_harmonization_enabled is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"

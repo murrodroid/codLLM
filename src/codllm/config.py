@@ -205,10 +205,12 @@ class Config:
     pretrain_enabled: bool = False
     pretrain_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
     pretrain_masterlist_sheet_name: str = "Masterlist"
+    pretrain_transfer_sheet_name: str = "2020to2024transfer"
     pretrain_num_train_epochs: int = 1
     pretrain_learning_rate: float | None = None
     pretrain_eval_every_n_epochs: int = 1
     pretrain_lr_scheduler_type: LRSchedulerType = "linear"
+    label_harmonization_enabled: bool = False
 
     balance_strategy: BalanceStrategy = "upsample"
     balance_target_quantile: float = 0.5
@@ -581,6 +583,13 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     ):
         cfg.pretrain_masterlist_sheet_name = pretrain_masterlist_sheet_name.strip()
 
+    pretrain_transfer_sheet_name = os.getenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME")
+    if (
+        pretrain_transfer_sheet_name is not None
+        and pretrain_transfer_sheet_name.strip() != ""
+    ):
+        cfg.pretrain_transfer_sheet_name = pretrain_transfer_sheet_name.strip()
+
     pretrain_num_train_epochs = _parse_env_int("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS")
     if pretrain_num_train_epochs is not None:
         if pretrain_num_train_epochs < 1:
@@ -619,6 +628,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         cfg.pretrain_lr_scheduler_type = cast(
             LRSchedulerType, normalized_pretrain_lr_scheduler_type
         )
+
+    label_harmonization_enabled = _parse_env_bool(
+        "CODLLM_LABEL_HARMONIZATION_ENABLED"
+    )
+    if label_harmonization_enabled is not None:
+        cfg.label_harmonization_enabled = label_harmonization_enabled
 
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:

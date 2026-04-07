@@ -124,6 +124,49 @@ def _write_masterlist(path: Path, num_rows: int = 4) -> None:
     pd.DataFrame(rows).to_excel(path, sheet_name="Masterlist", index=False)
 
 
+def _write_masterlist_with_transfer(
+    path: Path,
+    master_codes: list[str],
+    transfer_pairs: list[tuple[str, str]],
+) -> None:
+    """Write a compact masterlist workbook with transfer mapping sheet."""
+    master_rows = []
+    for idx, code in enumerate(master_codes, start=1):
+        master_rows.append(
+            {
+                "IDMasterlist": idx,
+                "ICD10h": code,
+                "ICD10": f"{code[:4]}{code[4]}" if len(code) >= 5 else code,
+                "icd10_2levelCATEGORY": "Category",
+                "ICD10_2levelCAUSE": f"Cause {idx}",
+                "ICD10h_DESCRIPTION": f"description-{idx}",
+                "HistCat": "Hist",
+                "DoNotUse": 0,
+                "NotForUnderlying": 0,
+                "GenderSpecific": 0,
+            }
+        )
+
+    transfer_rows = []
+    for idx, (old_code, new_code) in enumerate(transfer_pairs, start=1):
+        transfer_rows.append(
+            {
+                "ID2024Transfer": idx,
+                "IDoct2020Masterlist": idx,
+                "ICD10h_oct2020": old_code,
+                "ICD10h2024": new_code,
+            }
+        )
+
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame(master_rows).to_excel(
+            writer, sheet_name="Masterlist", index=False
+        )
+        pd.DataFrame(transfer_rows).to_excel(
+            writer, sheet_name="2020to2024transfer", index=False
+        )
+
+
 class TestBuildText:
     def test_build_text_uses_configured_training_input_order(self) -> None:
         """Text should respect feature order from training_input."""
@@ -400,6 +443,53 @@ class TestLoaders:
         assert len(result) == 1
         assert result.iloc[0]["record_id"] == "RID-002"
         assert result.iloc[0]["label"] == "B01.001"
+
+    def test_build_processed_dataset_harmonizes_labels_against_masterlist(
+        self, tmp_path: Path
+    ) -> None:
+        """Harmonization should map transfer labels, pad suffixes, and drop unknowns."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                ["text-a", "A09.001", "", "1", "20", "RID-001"],
+                ["text-b", "Q36.9", "", "1", "21", "RID-002"],
+                ["text-c", "X99.999", "", "1", "22", "RID-003"],
+            ]
+        ).to_csv(csv_path, index=False)
+
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist_with_transfer(
+            masterlist_path,
+            master_codes=["A09.052", "Q36.900"],
+            transfer_pairs=[("A09.001", "A09.052")],
+        )
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_transfer_sheet_name="2020to2024transfer",
+            label_harmonization_enabled=True,
+        )
+        mapping = _make_mapping(multi_code_cols=[])
+
+        result = build_processed_dataset(
+            cfg=cfg,
+            mapping_registry={"test_mapping": mapping},
+        )
+
+        assert result["record_id"].tolist() == ["RID-001", "RID-002"]
+        assert result["label"].tolist() == ["A09.052", "Q36.900"]
+        assert result["y_codes"].tolist() == [["A09.052"], ["Q36.900"]]
 
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
