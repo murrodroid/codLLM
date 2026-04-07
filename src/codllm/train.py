@@ -316,6 +316,7 @@ def build_training_args(
         if lr_scheduler_type is None
         else lr_scheduler_type
     )
+    dataloader_num_workers = cfg.dataloader_num_workers
     training_kwargs: dict[str, Any] = {
         "output_dir": cfg.output_dir if output_dir is None else output_dir,
         "learning_rate": resolved_learning_rate,
@@ -339,8 +340,16 @@ def build_training_args(
         "run_name": run_name,
         "seed": cfg.seed,
         "data_seed": data_seed,
-        "dataloader_num_workers": cfg.dataloader_num_workers,
+        "dataloader_num_workers": dataloader_num_workers,
+        "dataloader_pin_memory": cfg.dataloader_pin_memory,
     }
+    if dataloader_num_workers > 0:
+        training_kwargs["dataloader_persistent_workers"] = (
+            cfg.dataloader_persistent_workers
+        )
+        training_kwargs["dataloader_prefetch_factor"] = cfg.dataloader_prefetch_factor
+    else:
+        training_kwargs["dataloader_persistent_workers"] = False
     if cfg.save_strategy == "best":
         training_kwargs["metric_for_best_model"] = cfg.save_strategy_best_metric
         training_kwargs["greater_is_better"] = _metric_greater_is_better(

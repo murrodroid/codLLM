@@ -165,6 +165,9 @@ class Config:
     max_grad_norm: float = 0.1
     warmup_steps: int = 1000
     dataloader_num_workers: int = 4
+    dataloader_pin_memory: bool = True
+    dataloader_persistent_workers: bool = False
+    dataloader_prefetch_factor: int = 2
     logging_steps: int = 25
     eval_steps: int = 200
     save_steps: int = 5000
@@ -358,6 +361,22 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if dataloader_num_workers < 0:
             raise ValueError("CODLLM_DATALOADER_NUM_WORKERS must be non-negative.")
         cfg.dataloader_num_workers = dataloader_num_workers
+
+    dataloader_pin_memory = _parse_env_bool("CODLLM_DATALOADER_PIN_MEMORY")
+    if dataloader_pin_memory is not None:
+        cfg.dataloader_pin_memory = dataloader_pin_memory
+
+    dataloader_persistent_workers = _parse_env_bool(
+        "CODLLM_DATALOADER_PERSISTENT_WORKERS"
+    )
+    if dataloader_persistent_workers is not None:
+        cfg.dataloader_persistent_workers = dataloader_persistent_workers
+
+    dataloader_prefetch_factor = _parse_env_int("CODLLM_DATALOADER_PREFETCH_FACTOR")
+    if dataloader_prefetch_factor is not None:
+        if dataloader_prefetch_factor < 1:
+            raise ValueError("CODLLM_DATALOADER_PREFETCH_FACTOR must be at least 1.")
+        cfg.dataloader_prefetch_factor = dataloader_prefetch_factor
 
     warmup_steps = _parse_env_int("CODLLM_WARMUP_STEPS")
     if warmup_steps is not None:

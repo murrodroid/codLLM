@@ -10,6 +10,9 @@ ENV_KEYS = [
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
+    "CODLLM_DATALOADER_PIN_MEMORY",
+    "CODLLM_DATALOADER_PERSISTENT_WORKERS",
+    "CODLLM_DATALOADER_PREFETCH_FACTOR",
     "CODLLM_MAX_SOURCE_LENGTH",
     "CODLLM_WARMUP_STEPS",
     "CODLLM_NUM_TRAIN_EPOCHS",
@@ -97,6 +100,9 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
+    monkeypatch.setenv("CODLLM_DATALOADER_PIN_MEMORY", "false")
+    monkeypatch.setenv("CODLLM_DATALOADER_PERSISTENT_WORKERS", "true")
+    monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "4")
     monkeypatch.setenv("CODLLM_MAX_SOURCE_LENGTH", "300")
     monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
     monkeypatch.setenv("CODLLM_NUM_TRAIN_EPOCHS", "6")
@@ -176,6 +182,9 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.seed == 101
     assert cfg.data_seed == 202
     assert cfg.dataloader_num_workers == 3
+    assert cfg.dataloader_pin_memory is False
+    assert cfg.dataloader_persistent_workers is True
+    assert cfg.dataloader_prefetch_factor == 4
     assert cfg.max_source_length == 300
     assert cfg.warmup_steps == 500
     assert cfg.num_train_epochs == 6
@@ -263,6 +272,16 @@ def test_config_from_env_rejects_negative_dataloader_workers(
     """Dataloader worker count should be non-negative."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "-1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_dataloader_prefetch_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dataloader prefetch factor should be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "0")
     with pytest.raises(ValueError):
         config_from_env()
 

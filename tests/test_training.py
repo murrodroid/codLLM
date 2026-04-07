@@ -91,6 +91,9 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
         seed=123,
         data_seed=321,
         dataloader_num_workers=2,
+        dataloader_pin_memory=False,
+        dataloader_persistent_workers=True,
+        dataloader_prefetch_factor=1,
         max_target_length=16,
         max_label_count=2,
     )
@@ -103,6 +106,9 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
     assert with_eval.seed == 123
     assert with_eval.data_seed == 321
     assert with_eval.dataloader_num_workers == 2
+    assert with_eval.dataloader_pin_memory is False
+    assert with_eval.dataloader_persistent_workers is True
+    assert with_eval.dataloader_prefetch_factor == 1
     assert with_eval.generation_max_length == cfg.resolved_max_target_length()
 
 
@@ -119,6 +125,28 @@ def test_build_training_args_defaults_data_seed_to_seed(
     args = build_training_args(cfg, has_eval=True)
     assert args.seed == 77
     assert args.data_seed == 77
+
+
+def test_build_training_args_disables_persistent_workers_without_worker_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Persistent workers should be disabled when dataloader workers are zero."""
+    monkeypatch.setattr(
+        train_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+        dataloader_persistent_workers=True,
+        dataloader_prefetch_factor=4,
+    )
+    args = build_training_args(cfg, has_eval=True)
+    assert args.dataloader_num_workers == 0
+    assert args.dataloader_pin_memory is False
+    assert args.dataloader_persistent_workers is False
+    assert args.dataloader_prefetch_factor is None
 
 
 def test_build_training_args_honors_explicit_generation_max_length(
