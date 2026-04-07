@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import asdict
+import gc
 import json
 import os
 from pathlib import Path
@@ -807,6 +808,18 @@ def _train_from_datasets(
     return trainer, tokenizer
 
 
+def _release_stage_trainer_memory(cfg: Config, trainer: Any) -> None:
+    """Release trainer-owned state before starting the next training stage."""
+    if hasattr(trainer, "optimizer"):
+        trainer.optimizer = None
+    if hasattr(trainer, "lr_scheduler"):
+        trainer.lr_scheduler = None
+    del trainer
+    gc.collect()
+    if cfg.uses_cuda():
+        torch.cuda.empty_cache()
+
+
 def _train_with_pretraining(
     cfg: Config,
     pretrain_ds: Any,
@@ -855,7 +868,8 @@ def _train_with_pretraining(
     if label2id is not None and id2label is not None:
         pretrain_kwargs["label2id"] = label2id
         pretrain_kwargs["id2label"] = id2label
-    _ = _train_with_model(**pretrain_kwargs)
+    pretrain_trainer = _train_with_model(**pretrain_kwargs)
+    _release_stage_trainer_memory(cfg=cfg, trainer=pretrain_trainer)
 
     finetune_output_dir = str(Path(cfg.output_dir) / "finetune")
     finetune_metadata = _with_training_stage_metadata(

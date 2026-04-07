@@ -972,6 +972,13 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         lambda _: ("model", "tokenizer", False),
     )
     captured_stages: list[dict[str, Any]] = []
+    release_calls: list[str] = []
+
+    class DummyTrainer:
+        """Trainer stub that carries stage identity for assertions."""
+
+        def __init__(self, stage_name: str) -> None:
+            self.stage_name = stage_name
 
     def fake_train_with_model(
         cfg: Config,
@@ -987,9 +994,14 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         stage = run_data_metadata.get("training_stage")
         assert isinstance(stage, dict)
         captured_stages.append(stage)
-        return "trainer"
+        return DummyTrainer(stage_name=str(stage["name"]))
 
     monkeypatch.setattr(train_module, "_train_with_model", fake_train_with_model)
+    monkeypatch.setattr(
+        train_module,
+        "_release_stage_trainer_memory",
+        lambda cfg, trainer: release_calls.append(str(trainer.stage_name)),
+    )
 
     trainer, tokenizer = train_module._train_with_pretraining(
         cfg=cfg,
@@ -999,9 +1011,10 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         run_data_metadata={"split_rows": {"train": 1, "val": 1, "test": 1}},
     )
 
-    assert trainer == "trainer"
+    assert trainer.stage_name == "finetune"
     assert tokenizer == "tokenizer"
     assert len(captured_stages) == 2
+    assert release_calls == ["pretrain"]
     pretrain_stage = captured_stages[0]
     finetune_stage = captured_stages[1]
     assert pretrain_stage["name"] == "pretrain"
@@ -1015,6 +1028,39 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
     assert finetune_stage["warmup_steps"] == 300
     assert finetune_stage["lr_scheduler_type"] == "linear"
     assert Path(finetune_stage["output_dir"]).name == "finetune"
+
+
+def test_release_stage_trainer_memory_clears_state_and_cuda_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Memory release helper should clear trainer state and flush CUDA cache."""
+    cfg = Config()
+    monkeypatch.setattr(cfg, "uses_cuda", lambda: True)
+    state = {"gc_called": False, "empty_cache_called": False}
+    monkeypatch.setattr(
+        train_module.gc,
+        "collect",
+        lambda: state.__setitem__("gc_called", True),
+    )
+    monkeypatch.setattr(
+        train_module.torch.cuda,
+        "empty_cache",
+        lambda: state.__setitem__("empty_cache_called", True),
+    )
+
+    class DummyTrainer:
+        """Trainer stub exposing optimizer and scheduler attributes."""
+
+        optimizer: Any = object()
+        lr_scheduler: Any = object()
+
+    trainer = DummyTrainer()
+    train_module._release_stage_trainer_memory(cfg=cfg, trainer=trainer)
+
+    assert trainer.optimizer is None
+    assert trainer.lr_scheduler is None
+    assert state["gc_called"] is True
+    assert state["empty_cache_called"] is True
 
 
 def test_train_pretraining_requires_validation_split(
