@@ -23,14 +23,6 @@ def _create_fake_uv(tmp_path: Path) -> None:
     fake_uv.chmod(0o755)
 
 
-def _create_fake_bsub(tmp_path: Path) -> None:
-    fake_bsub = tmp_path / "bsub"
-    fake_bsub.write_text(
-        '#!/usr/bin/env bash\necho "FAKE_BSUB_ARGS:$*"\ncat >/dev/null\nexit 0\n'
-    )
-    fake_bsub.chmod(0o755)
-
-
 def test_train_script_loads_job_config_file(tmp_path: Path) -> None:
     """jobs/train.sh should load JOB_CONFIG_FILE values into the training process."""
     if os.name == "nt":
@@ -141,43 +133,10 @@ def test_train_script_requires_job_config_when_flag_enabled(tmp_path: Path) -> N
     assert "REQUIRE_JOB_CONFIG_FILE=1 but JOB_CONFIG_FILE is not set." in result.stdout
 
 
-def test_train_h100_submit_mode_applies_runtime_override(tmp_path: Path) -> None:
-    """jobs/train_h100.sh submit mode should map RUNTIME env config to bsub -W."""
-    if os.name == "nt":
-        pytest.skip(
-            "jobs/train_h100.sh is a bash script and is not supported on Windows."
-        )
-
-    _create_fake_bsub(tmp_path)
-
-    job_config_file = tmp_path / "job-h100.env"
-    job_config_file.write_text("RUNTIME=02:00\n")
-
-    repo_root = Path(__file__).resolve().parents[1]
-    env = os.environ.copy()
-    env["PATH"] = f"{tmp_path}:{env['PATH']}"
-
-    result = subprocess.run(
-        ["bash", "jobs/train_h100.sh", "--submit", str(job_config_file)],
-        cwd=repo_root,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Loading job config file" in result.stdout
-    assert "Submitting LSF job with command:" in result.stdout
-    assert "FAKE_BSUB_ARGS:" in result.stdout
-    assert "-W 02:00" in result.stdout
-    assert "JOB_CONFIG_FILE=" in result.stdout
-
-
-def test_train_h100_fails_when_scheduler_overrides_are_ignored_inside_lsf_job(
+def test_train_h100_script_loads_job_config_file(
     tmp_path: Path,
 ) -> None:
-    """jobs/train_h100.sh should fail fast when scheduler overrides are set post-scheduling."""
+    """jobs/train_h100.sh should load JOB_CONFIG_FILE and launch training."""
     if os.name == "nt":
         pytest.skip(
             "jobs/train_h100.sh is a bash script and is not supported on Windows."
@@ -186,12 +145,13 @@ def test_train_h100_fails_when_scheduler_overrides_are_ignored_inside_lsf_job(
     _create_fake_uv(tmp_path)
 
     job_config_file = tmp_path / "job-h100.env"
-    job_config_file.write_text("RUNTIME=02:00\nSYNC_ENV=0\n")
+    job_config_file.write_text("RUNTIME=02:00\nCODLLM_LR=7e-5\nSYNC_ENV=0\n")
 
     repo_root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
     env["PATH"] = f"{tmp_path}:{env['PATH']}"
     env["JOB_CONFIG_FILE"] = str(job_config_file)
+    env["RUN_STORAGE_DIR"] = str(tmp_path / "run-storage")
     env["LSB_JOBID"] = "12345"
 
     result = subprocess.run(
@@ -203,6 +163,27 @@ def test_train_h100_fails_when_scheduler_overrides_are_ignored_inside_lsf_job(
         check=False,
     )
 
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Loading job config file" in result.stdout
+    assert "FAKE_UV_ARGS:run python -m codllm.train" in result.stdout
+    assert "ENV_CODLLM_LR:7e-5" in result.stdout
+
+
+def test_train_h100_rejects_submit_mode(tmp_path: Path) -> None:
+    """jobs/train_h100.sh should direct users to standard bsub submission mode."""
+    if os.name == "nt":
+        pytest.skip(
+            "jobs/train_h100.sh is a bash script and is not supported on Windows."
+        )
+
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        ["bash", "jobs/train_h100.sh", "--submit", "jobs/configs/pretraining_10.env"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
     assert result.returncode != 0
-    assert "Ignored scheduler overrides detected" in result.stdout
-    assert "Submit with --submit" in result.stdout
+    assert "--submit mode has been removed" in result.stdout

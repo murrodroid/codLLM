@@ -24,10 +24,10 @@ PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
 cd "$PROJECT_DIR"
 exec 2>&1
 
-SUBMIT_TO_LSF="${SUBMIT_TO_LSF:-0}"
 if [ "${1:-}" = "--submit" ]; then
-  SUBMIT_TO_LSF=1
-  shift
+  echo "ERROR: --submit mode has been removed for jobs/train_h100.sh."
+  echo "ERROR: Submit with: bsub -env \"all,JOB_CONFIG_FILE=<path>,REQUIRE_JOB_CONFIG_FILE=1\" < jobs/train_h100.sh"
+  exit 1
 fi
 
 JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-${1:-}}"
@@ -53,95 +53,6 @@ if [ -n "$JOB_CONFIG_FILE" ]; then
   set +a
 else
   echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
-fi
-
-scheduler_override_keys=(
-  RUNTIME
-  QUEUE
-  N_CORES
-  MEMORY_GB
-  GPU_REQUEST
-  JOB_NAME
-  LSF_LOG_PATH
-  LSF_SPAN_RESOURCE
-  LSF_NOTIFY_EMAIL
-  LSF_NOTIFY_ON_BEGIN
-  LSF_NOTIFY_ON_END
-)
-ignored_scheduler_overrides=()
-for key in "${scheduler_override_keys[@]}"; do
-  if [ -n "${!key:-}" ]; then
-    ignored_scheduler_overrides+=("$key")
-  fi
-done
-
-if [ "$SUBMIT_TO_LSF" = "1" ]; then
-  if ! command -v bsub >/dev/null 2>&1; then
-    echo "ERROR: bsub is not available in PATH."
-    exit 1
-  fi
-
-  JOB_NAME="${JOB_NAME:-codllm-train}"
-  QUEUE="${QUEUE:-gpuh100}"
-  RUNTIME="${RUNTIME:-10:00}"
-  N_CORES="${N_CORES:-8}"
-  MEMORY_GB="${MEMORY_GB:-4}"
-  GPU_REQUEST="${GPU_REQUEST:-num=1:mode=exclusive_process}"
-  LSF_SPAN_RESOURCE="${LSF_SPAN_RESOURCE:-span[hosts=1]}"
-  LSF_LOG_PATH="${LSF_LOG_PATH:-logs/%J.out}"
-  LSF_NOTIFY_EMAIL="${LSF_NOTIFY_EMAIL:-s234805@dtu.dk}"
-  LSF_NOTIFY_ON_BEGIN="${LSF_NOTIFY_ON_BEGIN:-1}"
-  LSF_NOTIFY_ON_END="${LSF_NOTIFY_ON_END:-1}"
-
-  mkdir -p "$(dirname "$LSF_LOG_PATH")"
-
-  bsub_env_export="all"
-  if [ -n "${resolved_job_config:-}" ]; then
-    bsub_env_export="all,JOB_CONFIG_FILE=${resolved_job_config},REQUIRE_JOB_CONFIG_FILE=1"
-  fi
-
-  bsub_cmd=(
-    bsub
-    -J "$JOB_NAME"
-    -q "$QUEUE"
-    -W "$RUNTIME"
-    -n "$N_CORES"
-    -R "$LSF_SPAN_RESOURCE"
-    -R "rusage[mem=${MEMORY_GB}GB]"
-    -gpu "$GPU_REQUEST"
-    -env "$bsub_env_export"
-    -oo "$LSF_LOG_PATH"
-  )
-
-  if [ -n "$LSF_NOTIFY_EMAIL" ]; then
-    bsub_cmd+=(-u "$LSF_NOTIFY_EMAIL")
-  fi
-  if [ "$LSF_NOTIFY_ON_BEGIN" = "1" ]; then
-    bsub_cmd+=(-B)
-  fi
-  if [ "$LSF_NOTIFY_ON_END" = "1" ]; then
-    bsub_cmd+=(-N)
-  fi
-
-  echo "Submitting LSF job with command: ${bsub_cmd[*]}"
-  "${bsub_cmd[@]}" < "$0"
-  exit 0
-fi
-
-if [ "${#ignored_scheduler_overrides[@]}" -gt 0 ]; then
-  if [ -n "${LSB_JOBID:-}" ]; then
-    echo "ERROR: Ignored scheduler overrides detected: ${ignored_scheduler_overrides[*]}"
-    echo "ERROR: This run is already inside an LSF job (LSB_JOBID=$LSB_JOBID), so runtime/queue/core/memory settings cannot be changed."
-    echo "ERROR: Submit with --submit so RUNTIME/QUEUE/N_CORES/MEMORY_GB are applied before scheduling."
-    if [ -n "${resolved_job_config:-}" ]; then
-      echo "ERROR: Example: bash jobs/train_h100.sh --submit \"$resolved_job_config\""
-    else
-      echo "ERROR: Example: bash jobs/train_h100.sh --submit jobs/configs/t5-large_h100.env"
-    fi
-    exit 2
-  fi
-  echo "WARNING: Ignored scheduler overrides outside submit mode: ${ignored_scheduler_overrides[*]}"
-  echo "WARNING: Run with --submit to apply these to bsub scheduling."
 fi
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"

@@ -249,27 +249,11 @@ See `jobs/configs/example.env`.
 You can define model selection and all training knobs here, for example
 `CODLLM_HF_MODEL`, `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE`, and `CODLLM_GRADIENT_ACCUMULATION_STEPS`.
 
-For `jobs/train_h100.sh`, you can submit with scheduler overrides loaded from the same env file:
+For `jobs/train_h100.sh`, submit in the same style as `jobs/train.sh`:
 
 ```bash
-bash jobs/train_h100.sh --submit jobs/configs/t5-large_h100.env
+bsub -env "all,JOB_CONFIG_FILE=jobs/configs/t5-large_h100.env,REQUIRE_JOB_CONFIG_FILE=1" < jobs/train_h100.sh
 ```
-
-Supported scheduler override keys in that env file include:
-
-- `RUNTIME` (maps to `bsub -W`, example: `RUNTIME=02:00`)
-- `QUEUE` (maps to `bsub -q`)
-- `N_CORES` (maps to `bsub -n`)
-- `MEMORY_GB` (maps to `bsub -R "rusage[mem=...GB]"`)
-- `GPU_REQUEST` (maps to `bsub -gpu`)
-- `JOB_NAME` (maps to `bsub -J`)
-- `LSF_LOG_PATH` (maps to `bsub -oo`)
-
-On many LSF clusters, `rusage[mem=...]` is applied per CPU slot.  
-Total requested host RAM is therefore often approximately `N_CORES * MEMORY_GB`.
-
-Important: these scheduler keys are only applied when using `jobs/train_h100.sh --submit ...`.
-If you submit with `bsub < jobs/train_h100.sh`, LSF uses the static `#BSUB` lines in the script.
 
 For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
 You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
