@@ -66,6 +66,10 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_LEARNING_RATE",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
     "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
+    "CODLLM_PRETRAIN_UPSAMPLE_ENABLED",
+    "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL",
+    "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
+    "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
@@ -158,6 +162,13 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
     monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_ENABLED", "true")
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL", "10")
+    monkeypatch.setenv(
+        "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
+        "delete_random_char,qwerty_misspell",
+    )
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
@@ -238,6 +249,13 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_learning_rate == 8e-6
     assert cfg.pretrain_eval_every_n_epochs == 10
     assert cfg.pretrain_lr_scheduler_type == "linear"
+    assert cfg.pretrain_upsample_enabled is True
+    assert cfg.pretrain_upsample_target_per_label == 10
+    assert cfg.pretrain_upsample_perturbations == [
+        "delete_random_char",
+        "qwerty_misspell",
+    ]
+    assert cfg.pretrain_upsample_perturbations_per_sample == 2
     assert cfg.label_harmonization_enabled is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
@@ -482,6 +500,26 @@ def test_config_from_env_rejects_invalid_pretrain_eval_every_n_epochs(
     """Pretraining eval interval must be at least one epoch."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_upsample_target_per_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining upsample target must be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_perturbations_per_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining perturbations per sample must be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "0")
     with pytest.raises(ValueError):
         config_from_env()
 

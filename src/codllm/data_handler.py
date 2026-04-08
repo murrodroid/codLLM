@@ -312,6 +312,12 @@ def _perturb_cod_segment(
     )
 
 
+def _contains_cod_segment(cfg: Config, text: str) -> bool:
+    """Return whether a training text contains a cod: segment."""
+    parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
+    return any(part.startswith("cod: ") for part in parts)
+
+
 def _quantile_target_count(class_counts: pd.Series, target_quantile: float) -> int:
     """Compute the class-count target used for quantile-based balancing."""
     if target_quantile < 0 or target_quantile > 1:
@@ -516,6 +522,7 @@ class DataHandler:
         self.mapping_registry = dict(MAPPING_REGISTRY)
         if mapping_registry is not None:
             self.mapping_registry.update(mapping_registry)
+        self._pretraining_upsampling_metrics: dict[str, Any] | None = None
 
     @property
     def processed_path(self) -> Path:
@@ -667,12 +674,19 @@ class DataHandler:
     def get_pretraining_train_dataframe(self) -> pd.DataFrame | None:
         """Return optional masterlist dataframe used for pretraining."""
         if not self.cfg.pretrain_enabled:
+            self._pretraining_upsampling_metrics = None
             return None
 
         pretrain_df = self._load_pretraining_source()
         if pretrain_df.empty:
             raise ValueError("Pretraining dataframe is empty.")
-        return pretrain_df
+        return self._apply_pretraining_upsample_policy(pretrain_df)
+
+    def get_pretraining_upsampling_metrics(self) -> dict[str, Any] | None:
+        """Return metrics from the latest pretraining upsampling pass."""
+        if self._pretraining_upsampling_metrics is None:
+            return None
+        return dict(self._pretraining_upsampling_metrics)
 
     def get_masterlist_label_vocabulary(self) -> list[str]:
         """Return sorted unique ICD10h label values from the configured masterlist."""
@@ -721,6 +735,123 @@ class DataHandler:
         self._validate_required_columns(pretrain_df)
         self._validate_label_quality(pretrain_df)
         return pretrain_df.reset_index(drop=True)
+
+    def _label_count_summary(self, counts: pd.Series) -> dict[str, float]:
+        """Summarize label-count distribution for metadata and diagnostics."""
+        if counts.empty:
+            return {"min": 0.0, "max": 0.0, "median": 0.0, "mean": 0.0}
+        return {
+            "min": float(counts.min()),
+            "max": float(counts.max()),
+            "median": float(counts.median()),
+            "mean": float(counts.mean()),
+        }
+
+    def _apply_pretraining_upsample_policy(self, pretrain_df: pd.DataFrame) -> pd.DataFrame:
+        """Upsample pretraining rows per label and track perturbation diagnostics."""
+        label_column = self.cfg.dataset_label_column
+        text_column = self.cfg.dataset_text_column
+        target_count = self.cfg.pretrain_upsample_target_per_label
+        perturbations_per_sample = self.cfg.pretrain_upsample_perturbations_per_sample
+
+        if target_count < 1:
+            raise ValueError("pretrain_upsample_target_per_label must be at least 1.")
+        if perturbations_per_sample < 1:
+            raise ValueError(
+                "pretrain_upsample_perturbations_per_sample must be at least 1."
+            )
+
+        rows_before = int(len(pretrain_df))
+        before_counts = pretrain_df[label_column].value_counts()
+        metrics: dict[str, Any] = {
+            "enabled": bool(self.cfg.pretrain_upsample_enabled),
+            "target_examples_per_label": int(target_count),
+            "rows_before": rows_before,
+            "rows_after": rows_before,
+            "rows_added": 0,
+            "synthetic_rows": 0,
+            "perturbed_rows": 0,
+            "perturbation_rate": 0.0,
+            "perturbation_applications": 0,
+            "perturbations_per_sample": int(perturbations_per_sample),
+            "perturbations": list(self.cfg.pretrain_upsample_perturbations),
+            "labels_before": int(before_counts.shape[0]),
+            "labels_upsampled": 0,
+            "labels_below_target_before": int((before_counts < target_count).sum()),
+            "labels_below_target_after": int((before_counts < target_count).sum()),
+            "label_count_summary_before": self._label_count_summary(before_counts),
+            "label_count_summary_after": self._label_count_summary(before_counts),
+        }
+
+        if not self.cfg.pretrain_upsample_enabled:
+            self._pretraining_upsampling_metrics = metrics
+            return pretrain_df.reset_index(drop=True)
+
+        perturbation_fns = _resolve_perturbation_functions(
+            self.cfg.pretrain_upsample_perturbations
+        )
+        rng = random.Random(self.cfg.resolved_data_seed())
+
+        synthetic_rows: list[dict[str, Any]] = []
+        perturbed_rows = 0
+        perturbation_applications = 0
+        labels_upsampled = 0
+
+        for label, current_count in before_counts.items():
+            current_count_int = int(current_count)
+            if current_count_int >= target_count:
+                continue
+
+            class_rows = pretrain_df[pretrain_df[label_column] == label]
+            needed = target_count - current_count_int
+            sampled_rows = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
+            if not sampled_rows:
+                continue
+            labels_upsampled += 1
+
+            for row in sampled_rows:
+                synthetic_row = dict(row)
+                original_text = str(synthetic_row[text_column])
+                perturbed_text = original_text
+
+                if perturbation_fns:
+                    perturbed_text = _perturb_cod_segment(
+                        cfg=self.cfg,
+                        text=original_text,
+                        perturbation_fns=perturbation_fns,
+                        perturbations_per_sample=perturbations_per_sample,
+                        rng=rng,
+                    )
+                    if _contains_cod_segment(self.cfg, original_text):
+                        perturbation_applications += perturbations_per_sample
+
+                if perturbed_text != original_text:
+                    perturbed_rows += 1
+                synthetic_row[text_column] = perturbed_text
+                synthetic_rows.append(synthetic_row)
+
+        if synthetic_rows:
+            synthetic_df = pd.DataFrame(synthetic_rows, columns=pretrain_df.columns)
+            result_df = pd.concat([pretrain_df, synthetic_df], ignore_index=True)
+        else:
+            result_df = pretrain_df
+
+        rows_after = int(len(result_df))
+        synthetic_count = int(len(synthetic_rows))
+        after_counts = result_df[label_column].value_counts()
+        metrics["rows_after"] = rows_after
+        metrics["rows_added"] = rows_after - rows_before
+        metrics["synthetic_rows"] = synthetic_count
+        metrics["labels_upsampled"] = labels_upsampled
+        metrics["perturbed_rows"] = perturbed_rows
+        metrics["perturbation_applications"] = perturbation_applications
+        metrics["perturbation_rate"] = (
+            float(perturbed_rows / synthetic_count) if synthetic_count > 0 else 0.0
+        )
+        metrics["labels_below_target_after"] = int((after_counts < target_count).sum())
+        metrics["label_count_summary_after"] = self._label_count_summary(after_counts)
+        self._pretraining_upsampling_metrics = metrics
+        return result_df.reset_index(drop=True)
 
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Apply optional upsampling and manipulation rules to the training split."""

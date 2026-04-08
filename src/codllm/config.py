@@ -213,6 +213,17 @@ class Config:
     pretrain_learning_rate: float | None = None
     pretrain_eval_every_n_epochs: int = 1
     pretrain_lr_scheduler_type: LRSchedulerType = "linear"
+    pretrain_upsample_enabled: bool = True
+    pretrain_upsample_target_per_label: int = 10
+    pretrain_upsample_perturbations: list[str] = field(
+        default_factory=lambda: [
+            "swap_adjacent_chars",
+            "delete_random_char",
+            "accent_random_vowel",
+            "qwerty_misspell",
+        ]
+    )
+    pretrain_upsample_perturbations_per_sample: int = 1
     label_harmonization_enabled: bool = False
 
     balance_strategy: BalanceStrategy = "upsample"
@@ -646,6 +657,45 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.pretrain_lr_scheduler_type = cast(
             LRSchedulerType, normalized_pretrain_lr_scheduler_type
+        )
+
+    pretrain_upsample_enabled = _parse_env_bool("CODLLM_PRETRAIN_UPSAMPLE_ENABLED")
+    if pretrain_upsample_enabled is not None:
+        cfg.pretrain_upsample_enabled = pretrain_upsample_enabled
+
+    pretrain_upsample_target_per_label = _parse_env_int(
+        "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL"
+    )
+    if pretrain_upsample_target_per_label is not None:
+        if pretrain_upsample_target_per_label < 1:
+            raise ValueError(
+                "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL must be at least 1."
+            )
+        cfg.pretrain_upsample_target_per_label = pretrain_upsample_target_per_label
+
+    pretrain_upsample_perturbations = os.getenv(
+        "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS"
+    )
+    if (
+        pretrain_upsample_perturbations is not None
+        and pretrain_upsample_perturbations.strip() != ""
+    ):
+        cfg.pretrain_upsample_perturbations = [
+            name.strip()
+            for name in pretrain_upsample_perturbations.split(",")
+            if name.strip()
+        ]
+
+    pretrain_upsample_perturbations_per_sample = _parse_env_int(
+        "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE"
+    )
+    if pretrain_upsample_perturbations_per_sample is not None:
+        if pretrain_upsample_perturbations_per_sample < 1:
+            raise ValueError(
+                "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE must be at least 1."
+            )
+        cfg.pretrain_upsample_perturbations_per_sample = (
+            pretrain_upsample_perturbations_per_sample
         )
 
     label_harmonization_enabled = _parse_env_bool(

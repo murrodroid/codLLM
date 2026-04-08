@@ -126,6 +126,10 @@ export CODLLM_PRETRAIN_ENABLED=1
 export CODLLM_PRETRAIN_MASTERLIST_PATH=data/raw/ICD10h_Masterlist_2024.xlsx
 export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME=Masterlist
 export CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS=1
+export CODLLM_PRETRAIN_UPSAMPLE_ENABLED=1
+export CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL=10
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS=swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE=1
 ```
 
 ## Docker (Local)
@@ -190,9 +194,14 @@ Pretraining-specific knobs:
 - `CODLLM_PRETRAIN_LEARNING_RATE` optionally overrides pretraining LR (falls back to `CODLLM_LR`).
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` controls the pretraining scheduler (default: `linear`).
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` runs pretraining validation every N epochs (final epoch is always evaluated).
+- `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` enables label-wise pretraining upsampling (default: enabled).
+- `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
 - Pretraining warmup is fixed to `0` steps.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
 - For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
+- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
 
 ## HPC Usage (LSF, No Docker)
 
@@ -318,6 +327,10 @@ tail -f logs/<job_id>.out
 - `CODLLM_PRETRAIN_LEARNING_RATE` (optional; defaults to `CODLLM_LR` when unset)
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` (default: `linear`)
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` (default: `1`)
+- `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` (`1`/`0`; default: `1`)
+- `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` (default: `10`)
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` (default: `1`)
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 

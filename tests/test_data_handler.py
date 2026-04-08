@@ -534,14 +534,70 @@ class TestDataHandler:
             pretrain_masterlist_sheet_name="Masterlist",
             training_input=["cod"],
             data_sources=[],
+            pretrain_upsample_enabled=False,
         )
         handler = DataHandler(cfg)
         pretrain_df = handler.get_pretraining_train_dataframe()
+        upsampling_metrics = handler.get_pretraining_upsampling_metrics()
 
         assert pretrain_df is not None
         assert len(pretrain_df) == 3
         assert pretrain_df.iloc[0]["text"] == "cod: description-0"
         assert pretrain_df.iloc[0]["label"] == "A00.000"
+        assert upsampling_metrics is not None
+        assert upsampling_metrics["enabled"] is False
+        assert upsampling_metrics["rows_before"] == 3
+        assert upsampling_metrics["rows_after"] == 3
+        assert upsampling_metrics["rows_added"] == 0
+
+    def test_get_pretraining_train_dataframe_upsamples_masterlist_and_tracks_metrics(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining rows should upsample to target per label and report metrics."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=2)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_upsample_enabled=True,
+            pretrain_upsample_target_per_label=3,
+            pretrain_upsample_perturbations=["delete_random_char"],
+            pretrain_upsample_perturbations_per_sample=1,
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+        upsampling_metrics = handler.get_pretraining_upsampling_metrics()
+
+        assert pretrain_df is not None
+        assert len(pretrain_df) == 6
+        assert pretrain_df["label"].value_counts().to_dict() == {
+            "A00.000": 3,
+            "A01.000": 3,
+        }
+        assert upsampling_metrics is not None
+        assert upsampling_metrics["enabled"] is True
+        assert upsampling_metrics["target_examples_per_label"] == 3
+        assert upsampling_metrics["rows_before"] == 2
+        assert upsampling_metrics["rows_after"] == 6
+        assert upsampling_metrics["rows_added"] == 4
+        assert upsampling_metrics["synthetic_rows"] == 4
+        assert upsampling_metrics["labels_upsampled"] == 2
+        assert upsampling_metrics["labels_below_target_before"] == 2
+        assert upsampling_metrics["labels_below_target_after"] == 0
+        assert upsampling_metrics["perturbations_per_sample"] == 1
+        assert upsampling_metrics["perturbation_applications"] == 4
+        assert upsampling_metrics["perturbed_rows"] == 4
+        assert upsampling_metrics["perturbation_rate"] == pytest.approx(1.0)
+        assert upsampling_metrics["label_count_summary_before"]["min"] == pytest.approx(
+            1.0
+        )
+        assert upsampling_metrics["label_count_summary_after"]["min"] == pytest.approx(
+            3.0
+        )
 
     def test_get_masterlist_label_vocabulary_loads_sorted_unique_labels(
         self, tmp_path: Path

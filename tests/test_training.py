@@ -952,6 +952,15 @@ def test_train_uses_pretraining_dataset_when_available(
         def get_pretraining_train_dataframe(self) -> pd.DataFrame:
             return pretrain_df
 
+        def get_pretraining_upsampling_metrics(self) -> dict[str, Any]:
+            return {
+                "enabled": True,
+                "rows_before": 2,
+                "rows_after": 20,
+                "rows_added": 18,
+                "perturbation_rate": 1.0,
+            }
+
     captured: dict[str, Any] = {}
 
     def fake_train_with_optional_pretraining(
@@ -991,6 +1000,13 @@ def test_train_uses_pretraining_dataset_when_available(
     assert captured["run_data_metadata"]["pretraining"]["warmup_steps"] == 0
     assert captured["run_data_metadata"]["pretraining"]["eval_every_n_epochs"] == 10
     assert captured["run_data_metadata"]["pretraining"]["lr_scheduler_type"] == "constant"
+    assert captured["run_data_metadata"]["pretraining"]["upsampling"] == {
+        "enabled": True,
+        "rows_before": 2,
+        "rows_after": 20,
+        "rows_added": 18,
+        "perturbation_rate": 1.0,
+    }
 
 
 def test_train_with_pretraining_uses_stage_specific_hyperparameters(

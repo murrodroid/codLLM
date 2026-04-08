@@ -785,6 +785,14 @@ def train(
 
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    pretrain_upsampling_metrics_loader = getattr(
+        handler, "get_pretraining_upsampling_metrics", None
+    )
+    pretrain_upsampling_metrics = (
+        pretrain_upsampling_metrics_loader()
+        if callable(pretrain_upsampling_metrics_loader)
+        else None
+    )
     if cfg.pretrain_enabled and pretrain_loader is None:
         raise AttributeError(
             "Configured data_handler does not support pretraining datasets."
@@ -814,6 +822,8 @@ def train(
             "eval_every_n_epochs": cfg.pretrain_eval_every_n_epochs,
             "lr_scheduler_type": cfg.pretrain_lr_scheduler_type,
         }
+        if pretrain_upsampling_metrics is not None:
+            run_data_metadata["pretraining"]["upsampling"] = pretrain_upsampling_metrics
         if classifier_label2id is not None and classifier_id2label is not None:
             trainer, tokenizer = _train_with_pretraining(
                 cfg=cfg,
