@@ -66,13 +66,49 @@ def resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], str | None]:
     return "none", None
 
 
-def _report_to_includes_wandb(report_to: str | list[str] | None) -> bool:
+def report_to_includes_wandb(report_to: str | list[str] | None) -> bool:
     """Return True when trainer reporting includes W&B."""
     if report_to is None:
         return False
     if isinstance(report_to, str):
         return report_to in {"wandb", "all"}
     return "wandb" in report_to
+
+
+def rewrite_logs_preserving_scoped_metric_keys(
+    logs: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rewrite W&B logs while preserving already-scoped metric keys."""
+    rewritten_logs: dict[str, Any] = {}
+    for key, value in logs.items():
+        if "/" in key:
+            rewritten_logs[key] = value
+            continue
+        if key.startswith("eval_"):
+            rewritten_logs[f"eval/{key.removeprefix('eval_')}"] = value
+            continue
+        if key.startswith("test_"):
+            rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
+            continue
+        rewritten_logs[f"train/{key}"] = value
+    return rewritten_logs
+
+
+def patch_transformers_wandb_log_rewrite(
+    report_to: str | list[str] | None,
+) -> None:
+    """Patch Transformers W&B rewrite hook to preserve scoped metric keys."""
+    if not report_to_includes_wandb(report_to):
+        return
+    try:
+        from transformers.integrations import integration_utils
+    except ImportError:
+        return
+
+    current_rewrite = getattr(integration_utils, "rewrite_logs", None)
+    if current_rewrite is rewrite_logs_preserving_scoped_metric_keys:
+        return
+    integration_utils.rewrite_logs = rewrite_logs_preserving_scoped_metric_keys
 
 
 def _sanitize_for_wandb(value: Any) -> Any:
@@ -223,7 +259,7 @@ def log_wandb_run_metadata(
     metadata: Mapping[str, Any],
 ) -> None:
     """Initialize W&B if needed and attach experiment metadata to run config."""
-    if not _report_to_includes_wandb(report_to):
+    if not report_to_includes_wandb(report_to):
         return
     if os.getenv("WANDB_MODE") == "disabled":
         return

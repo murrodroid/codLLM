@@ -4,21 +4,16 @@ import gc
 import json
 import os
 from pathlib import Path
-import re
 from typing import Any, Mapping, Optional, Tuple
 import warnings
 
-from filelock import FileLock, Timeout
 import torch
 from transformers import (
     DataCollatorWithPadding,
     DataCollatorForSeq2Seq,
     Trainer,
-    Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     TrainerCallback,
-    TrainerControl,
-    TrainerState,
     TrainingArguments,
 )
 
@@ -37,87 +32,18 @@ from codllm.metrics import (
 )
 from codllm.model_registry import load_base_model
 from codllm.reproducibility import configure_reproducibility
-
-LOCAL_RUN_DIR_PATTERN = re.compile(r"^run-(\d+)$")
-DEFAULT_RUN_DIR_LOCK_TIMEOUT_SECONDS = 120.0
-
-
-def _run_dir_lock_timeout_seconds() -> float:
-    """Return run-directory allocation lock timeout from environment."""
-    raw_value = os.getenv("CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS")
-    if raw_value is None or raw_value.strip() == "":
-        return DEFAULT_RUN_DIR_LOCK_TIMEOUT_SECONDS
-    try:
-        timeout_seconds = float(raw_value)
-    except ValueError as exc:
-        raise ValueError(
-            "CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS must be a positive float."
-        ) from exc
-    if timeout_seconds <= 0:
-        raise ValueError("CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS must be greater than 0.")
-    return timeout_seconds
+from codllm.run_directory import prepare_run_output_dir
+from codllm.trainer_logging import (
+    EvaluateEveryNEpochsCallback,
+    StageScopedSeq2SeqTrainer,
+    StageScopedTrainer,
+)
 
 
 def _metric_greater_is_better(metric_name: str) -> bool:
     """Return whether higher metric values indicate better checkpoints."""
     normalized_metric = metric_name.strip().lower()
     return not normalized_metric.endswith("loss")
-
-
-def _next_local_run_number(base_output_dir: Path) -> int:
-    """Return the next available local run number in the output root."""
-    max_number = 0
-    if base_output_dir.exists():
-        for path in base_output_dir.iterdir():
-            if not path.is_dir():
-                continue
-            match = LOCAL_RUN_DIR_PATTERN.match(path.name)
-            if match is None:
-                continue
-            max_number = max(max_number, int(match.group(1)))
-    return max_number + 1
-
-
-def _resolve_run_output_dir(base_output_dir: str) -> Path:
-    """Resolve one run-scoped output directory below the configured root."""
-    output_root = Path(base_output_dir)
-    output_root.mkdir(parents=True, exist_ok=True)
-    lock_path = output_root / ".run-dir.lock"
-    lock_timeout_seconds = _run_dir_lock_timeout_seconds()
-    lock = FileLock(str(lock_path), timeout=lock_timeout_seconds)
-    try:
-        with lock:
-            hpc_job_id = os.getenv("LSB_JOBID")
-            hpc_job_index = os.getenv("LSB_JOBINDEX")
-            if hpc_job_id:
-                run_id = hpc_job_id
-                if hpc_job_index and hpc_job_index not in {"0", ""}:
-                    run_id = f"{hpc_job_id}_{hpc_job_index}"
-                run_dir = output_root / f"run-{run_id}"
-                run_dir.mkdir(parents=True, exist_ok=True)
-                return run_dir
-
-            next_run_number = _next_local_run_number(output_root)
-            while True:
-                run_dir = output_root / f"run-{next_run_number:04d}"
-                try:
-                    run_dir.mkdir(parents=True, exist_ok=False)
-                    return run_dir
-                except FileExistsError:
-                    next_run_number += 1
-    except Timeout as exc:
-        raise TimeoutError(
-            f"Timed out waiting for run-directory lock '{lock_path}'. "
-            "Set CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS to a larger value."
-        ) from exc
-
-
-def _prepare_run_output_dir(cfg: Config) -> Path:
-    """Mutate config output_dir to a run-scoped checkpoint root."""
-    run_dir = _resolve_run_output_dir(cfg.output_dir)
-    cfg.output_dir = str(run_dir)
-    os.environ["CODLLM_RUN_ID"] = run_dir.name.removeprefix("run-")
-    return run_dir
 
 
 def _dataset_row_count(dataset: Any) -> int | None:
@@ -397,160 +323,6 @@ def _upcast_trainable_fp16_params(model: Any) -> bool:
     return True
 
 
-def _normalize_stage_name(stage_name: str) -> str:
-    """Normalize arbitrary stage names to one lowercase token."""
-    return stage_name.strip().lower()
-
-
-def _rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
-    """Map trainer metric keys to train/val/test/pretraining W&B categories."""
-    if key == "epoch":
-        return key
-
-    normalized_stage_name = _normalize_stage_name(stage_name)
-    if normalized_stage_name in {"pretrain", "pretraining"}:
-        if key.startswith("eval_"):
-            return f"pretraining/val/{key.removeprefix('eval_')}"
-        if key.startswith("test_"):
-            return f"pretraining/test/{key.removeprefix('test_')}"
-        if key.startswith("train_"):
-            return f"pretraining/{key.removeprefix('train_')}"
-        return f"pretraining/{key}"
-
-    if key.startswith("eval_"):
-        return f"val/{key.removeprefix('eval_')}"
-    if key.startswith("test_"):
-        return f"test/{key.removeprefix('test_')}"
-    if key.startswith("train_"):
-        return f"train/{key.removeprefix('train_')}"
-    return f"train/{key}"
-
-
-def _scope_metric_logs_for_stage(
-    logs: Mapping[str, Any], stage_name: str
-) -> dict[str, Any]:
-    """Rewrite one trainer log payload to stage-scoped W&B metric keys."""
-    scoped_logs: dict[str, Any] = {}
-    for key, value in logs.items():
-        scoped_logs[_rewrite_metric_key_for_stage(key, stage_name)] = value
-    return scoped_logs
-
-
-def _rewrite_logs_preserving_scoped_metric_keys(
-    logs: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Rewrite logs for W&B while preserving already-scoped metric keys."""
-    rewritten_logs: dict[str, Any] = {}
-    for key, value in logs.items():
-        if "/" in key:
-            rewritten_logs[key] = value
-            continue
-        if key.startswith("eval_"):
-            rewritten_logs[f"eval/{key.removeprefix('eval_')}"] = value
-            continue
-        if key.startswith("test_"):
-            rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
-            continue
-        rewritten_logs[f"train/{key}"] = value
-    return rewritten_logs
-
-
-def _patch_transformers_wandb_log_rewrite() -> None:
-    """Patch Transformers W&B log rewriting to retain stage-scoped metric keys."""
-    try:
-        from transformers.integrations import integration_utils
-    except ImportError:
-        return
-    current_rewrite = getattr(integration_utils, "rewrite_logs", None)
-    if current_rewrite is _rewrite_logs_preserving_scoped_metric_keys:
-        return
-    integration_utils.rewrite_logs = _rewrite_logs_preserving_scoped_metric_keys
-
-
-def _report_to_includes_wandb(report_to: str | list[str] | None) -> bool:
-    """Return True when Hugging Face reporting targets include W&B."""
-    if report_to is None:
-        return False
-    if isinstance(report_to, str):
-        return report_to in {"all", "wandb"}
-    return "all" in report_to or "wandb" in report_to
-
-
-class EvaluateEveryNEpochsCallback(TrainerCallback):
-    """Skip intermediate eval epochs and evaluate only every Nth epoch."""
-
-    def __init__(self, every_n_epochs: int) -> None:
-        if every_n_epochs < 1:
-            raise ValueError("every_n_epochs must be at least 1.")
-        self.every_n_epochs = every_n_epochs
-
-    def on_epoch_end(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        **kwargs: Any,
-    ) -> TrainerControl:
-        """Run eval only on Nth epochs and always on the final epoch."""
-        del args, kwargs
-        if not control.should_evaluate:
-            return control
-        if self.every_n_epochs <= 1:
-            return control
-        if state.epoch is None:
-            return control
-
-        completed_epochs = int(round(state.epoch))
-        if completed_epochs < 1:
-            return control
-        if state.num_train_epochs is None:
-            target_epochs = completed_epochs
-        else:
-            target_epochs = int(round(state.num_train_epochs))
-
-        is_interval_epoch = completed_epochs % self.every_n_epochs == 0
-        is_final_epoch = completed_epochs >= target_epochs
-        if not (is_interval_epoch or is_final_epoch):
-            control.should_evaluate = False
-        return control
-
-
-class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
-    """Seq2SeqTrainer variant that rewrites logged metric keys by stage."""
-
-    def __init__(
-        self,
-        *args: Any,
-        stage_name: str = "train",
-        **kwargs: Any,
-    ) -> None:
-        self.stage_name = stage_name
-        super().__init__(*args, **kwargs)
-
-    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
-        """Log stage-scoped metrics to callbacks/reporters."""
-        scoped_logs = _scope_metric_logs_for_stage(logs, self.stage_name)
-        super().log(scoped_logs, start_time=start_time)
-
-
-class StageScopedTrainer(Trainer):
-    """Trainer variant that rewrites logged metric keys by stage."""
-
-    def __init__(
-        self,
-        *args: Any,
-        stage_name: str = "train",
-        **kwargs: Any,
-    ) -> None:
-        self.stage_name = stage_name
-        super().__init__(*args, **kwargs)
-
-    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
-        """Log stage-scoped metrics to callbacks/reporters."""
-        scoped_logs = _scope_metric_logs_for_stage(logs, self.stage_name)
-        super().log(scoped_logs, start_time=start_time)
-
-
 def _initialize_training_components(
     cfg: Config,
     label2id: dict[str, int] | None = None,
@@ -719,8 +491,7 @@ def _train_with_model(
         warmup_steps=stage_warmup_steps,
         lr_scheduler_type=stage_lr_scheduler_type,
     )
-    if _report_to_includes_wandb(args.report_to):
-        _patch_transformers_wandb_log_rewrite()
+    wandb_utils.patch_transformers_wandb_log_rewrite(report_to=args.report_to)
     fallback_data_metadata = {
         "split_rows": {
             "train": _dataset_row_count(train_ds),
@@ -983,7 +754,7 @@ def train(
     force_reprocess: bool = False,
 ) -> Tuple[Trainer, Any, DataSplits]:
     """Build/load data splits via DataHandler and launch training."""
-    _prepare_run_output_dir(cfg)
+    prepare_run_output_dir(cfg)
     handler = data_handler or DataHandler(cfg)
     splits = handler.get_splits(force_reprocess=force_reprocess)
     train_ds, eval_ds = resolve_training_frames(splits)

@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 import codllm.metrics as metrics_module
+import codllm.run_directory as run_directory_module
+import codllm.trainer_logging as trainer_logging_module
 import codllm.train as train_module
 import codllm.wandb_utils as wandb_utils_module
 from codllm.config import Config, WandbConfig
@@ -217,7 +219,7 @@ def test_build_training_args_disables_fp16_when_requested(
 def test_scope_metric_logs_for_pretrain_stage() -> None:
     """Pretraining metrics should be logged under the pretraining category."""
     logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
-    scoped = train_module._scope_metric_logs_for_stage(logs, "pretrain")
+    scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretrain")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
@@ -229,7 +231,7 @@ def test_scope_metric_logs_for_pretrain_stage() -> None:
 def test_scope_metric_logs_for_pretraining_stage_alias() -> None:
     """Pretraining stage aliases should share the same metric namespace."""
     logs = {"loss": 1.2, "eval_loss": 0.9}
-    scoped = train_module._scope_metric_logs_for_stage(logs, "pretraining")
+    scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretraining")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
@@ -243,7 +245,7 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "test_f1": 0.8,
         "pretraining/val/loss": 0.7,
     }
-    rewritten = train_module._rewrite_logs_preserving_scoped_metric_keys(logs)
+    rewritten = wandb_utils_module.rewrite_logs_preserving_scoped_metric_keys(logs)
 
     assert rewritten["train/loss"] == 1.2
     assert rewritten["eval/loss"] == 0.9
@@ -258,7 +260,7 @@ def test_patch_transformers_wandb_log_rewrite_preserves_scoped_keys() -> None:
 
     original_rewrite = integration_utils.rewrite_logs
     try:
-        train_module._patch_transformers_wandb_log_rewrite()
+        wandb_utils_module.patch_transformers_wandb_log_rewrite(report_to=["wandb"])
         rewritten = integration_utils.rewrite_logs(
             {"loss": 1.2, "pretraining/val/loss": 0.7}
         )
@@ -272,7 +274,7 @@ def test_patch_transformers_wandb_log_rewrite_preserves_scoped_keys() -> None:
 def test_scope_metric_logs_for_finetune_stage() -> None:
     """Fine-tuning metrics should route to train/val/test categories."""
     logs = {"loss": 1.2, "eval_accuracy": 0.8, "test_f1": 0.7}
-    scoped = train_module._scope_metric_logs_for_stage(logs, "finetune")
+    scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "finetune")
 
     assert scoped["train/loss"] == 1.2
     assert scoped["val/accuracy"] == 0.8
@@ -283,12 +285,12 @@ def test_evaluate_every_n_epochs_callback_skips_non_interval_epoch(
     tmp_path: Path,
 ) -> None:
     """Eval callback should skip intermediate epochs outside the interval."""
-    callback = train_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
-    args = train_module.TrainingArguments(output_dir=str(tmp_path / "out"))
-    state = train_module.TrainerState()
+    callback = trainer_logging_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
+    args = trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out"))
+    state = trainer_logging_module.TrainerState()
     state.epoch = 9.0
     state.num_train_epochs = 20
-    control = train_module.TrainerControl(should_evaluate=True)
+    control = trainer_logging_module.TrainerControl(should_evaluate=True)
 
     updated = callback.on_epoch_end(args=args, state=state, control=control)
 
@@ -299,13 +301,13 @@ def test_evaluate_every_n_epochs_callback_runs_on_interval_and_final_epoch(
     tmp_path: Path,
 ) -> None:
     """Eval callback should evaluate on interval epochs and final epoch."""
-    callback = train_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
-    args = train_module.TrainingArguments(output_dir=str(tmp_path / "out"))
+    callback = trainer_logging_module.EvaluateEveryNEpochsCallback(every_n_epochs=10)
+    args = trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out"))
 
-    interval_state = train_module.TrainerState()
+    interval_state = trainer_logging_module.TrainerState()
     interval_state.epoch = 10.0
     interval_state.num_train_epochs = 20
-    interval_control = train_module.TrainerControl(should_evaluate=True)
+    interval_control = trainer_logging_module.TrainerControl(should_evaluate=True)
     interval_updated = callback.on_epoch_end(
         args=args,
         state=interval_state,
@@ -313,10 +315,10 @@ def test_evaluate_every_n_epochs_callback_runs_on_interval_and_final_epoch(
     )
     assert interval_updated.should_evaluate is True
 
-    final_state = train_module.TrainerState()
+    final_state = trainer_logging_module.TrainerState()
     final_state.epoch = 11.0
     final_state.num_train_epochs = 11
-    final_control = train_module.TrainerControl(should_evaluate=True)
+    final_control = trainer_logging_module.TrainerControl(should_evaluate=True)
     final_updated = callback.on_epoch_end(
         args=args,
         state=final_state,
@@ -856,7 +858,7 @@ def test_resolve_run_output_dir_uses_hpc_job_id(
     monkeypatch.setenv("LSB_JOBID", "12345")
     monkeypatch.setenv("LSB_JOBINDEX", "2")
 
-    run_dir = train_module._resolve_run_output_dir(str(tmp_path / "runs"))
+    run_dir = run_directory_module.resolve_run_output_dir(str(tmp_path / "runs"))
 
     assert run_dir.name == "run-12345_2"
     assert run_dir.exists()
@@ -872,7 +874,7 @@ def test_resolve_run_output_dir_local_allocates_next_numeric(
     (runs_dir / "run-0001").mkdir(parents=True, exist_ok=True)
     (runs_dir / "run-0003").mkdir(parents=True, exist_ok=True)
 
-    run_dir = train_module._resolve_run_output_dir(str(runs_dir))
+    run_dir = run_directory_module.resolve_run_output_dir(str(runs_dir))
 
     assert run_dir.name == "run-0004"
     assert run_dir.exists()
