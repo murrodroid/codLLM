@@ -51,6 +51,7 @@ class DataSourceConfig:
     enabled: bool = True
     file_type: Optional[str] = None
     sep: str = ","
+    encoding: str = "utf-8"
     header: int | None = 0
     sheet_name: int | str = 0
     skip_rows: list[int] = field(default_factory=list)
@@ -86,6 +87,25 @@ def _default_data_sources() -> list[DataSourceConfig]:
             source_id="copenhagen_may2025",
             path="Copenhagen_burials_all_May2025.csv",
             mapping_id="copenhagen",
+        ),
+        DataSourceConfig(
+            source_id="ipswich_1871_1911",
+            path="Ipswich_deaths_codllm.txt",
+            mapping_id="ipswich",
+            file_type="csv",
+            sep="|",
+            encoding="latin-1",
+        ),
+        DataSourceConfig(
+            source_id="madrid_1905_1927",
+            path="Madrid 1905_1927.csv",
+            mapping_id="madrid",
+        ),
+        DataSourceConfig(
+            source_id="historic_strings_en_2024",
+            path="ICD10H_HISTORICSTRINGSENGLISH_2024.2.xlsx",
+            mapping_id="historic_strings",
+            sheet_name="HistoricstringsEnglish2024 1.1",
         ),
     ]
 

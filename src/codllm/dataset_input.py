@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
@@ -71,10 +72,39 @@ COPENHAGEN_MAPPING = DatasetMapping(
     skip_rows=[0],
 )
 
+IPSWICH_MAPPING = DatasetMapping(
+    text_col=4,
+    single_code_col=5,
+    multi_code_cols=[5, 6, 7, 8, 9, 10],
+    sex_col=2,
+    sex_map={"M": "male", "F": "female", "m": "male", "f": "female"},
+    age_col=1,
+    record_id_col=0,
+)
+
+MADRID_MAPPING = DatasetMapping(
+    text_col=1,
+    single_code_col=2,
+    multi_code_cols=[2, 3],
+    sex_col=4,
+    sex_map={"1": "male", "2": "female"},
+    age_col=5,
+)
+
+HISTORIC_STRINGS_MAPPING = DatasetMapping(
+    text_col=1,
+    single_code_col=2,
+    multi_code_cols=[],
+    record_id_col=0,
+)
+
 MAPPING_REGISTRY: dict[str, DatasetMapping] = {
     "belgium": BELGIUM_MAPPING,
     "amsterdam": AMSTERDAM_MAPPING,
     "copenhagen": COPENHAGEN_MAPPING,
+    "ipswich": IPSWICH_MAPPING,
+    "madrid": MADRID_MAPPING,
+    "historic_strings": HISTORIC_STRINGS_MAPPING,
 }
 
 PERTURBATION_REGISTRY: dict[str, Any] = {
@@ -170,6 +200,8 @@ def _build_text(
     for feature in normalized_training_input:
         if feature == "cod":
             cod_text = _get(row, mapping.text_col) or UNKNOWN_VALUE
+            # Normalize dot-separated words (e.g. "asiatic.cholera" -> "asiatic cholera")
+            cod_text = re.sub(r"(?<=\w)\.(?=\w)", " ", cod_text)
             parts.append(f"cod: {cod_text}")
         elif feature == "age":
             raw_age = (
@@ -222,8 +254,11 @@ def _detect_file_type(path: Path, source: DataSourceConfig) -> str:
 def _read_raw_dataframe(path: Path, source: DataSourceConfig) -> pd.DataFrame:
     """Read one raw source file into a dataframe."""
     file_type = _detect_file_type(path, source)
-    if file_type == "csv":
-        return pd.read_csv(path, header=source.header, dtype=str, sep=source.sep)
+    if file_type in {"csv", "txt", "tsv"}:
+        return pd.read_csv(
+            path, header=source.header, dtype=str, sep=source.sep,
+            encoding=source.encoding, on_bad_lines="skip",
+        )
     if file_type in {"xlsx", "xls"}:
         return pd.read_excel(
             path, header=source.header, dtype=str, sheet_name=source.sheet_name
