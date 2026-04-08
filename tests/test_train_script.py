@@ -172,3 +172,37 @@ def test_train_h100_submit_mode_applies_runtime_override(tmp_path: Path) -> None
     assert "FAKE_BSUB_ARGS:" in result.stdout
     assert "-W 02:00" in result.stdout
     assert "JOB_CONFIG_FILE=" in result.stdout
+
+
+def test_train_h100_fails_when_scheduler_overrides_are_ignored_inside_lsf_job(
+    tmp_path: Path,
+) -> None:
+    """jobs/train_h100.sh should fail fast when scheduler overrides are set post-scheduling."""
+    if os.name == "nt":
+        pytest.skip(
+            "jobs/train_h100.sh is a bash script and is not supported on Windows."
+        )
+
+    _create_fake_uv(tmp_path)
+
+    job_config_file = tmp_path / "job-h100.env"
+    job_config_file.write_text("RUNTIME=02:00\nSYNC_ENV=0\n")
+
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["JOB_CONFIG_FILE"] = str(job_config_file)
+    env["LSB_JOBID"] = "12345"
+
+    result = subprocess.run(
+        ["bash", "jobs/train_h100.sh"],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Ignored scheduler overrides detected" in result.stdout
+    assert "Submit with --submit" in result.stdout

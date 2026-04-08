@@ -215,15 +215,58 @@ def test_build_training_args_disables_fp16_when_requested(
 
 
 def test_scope_metric_logs_for_pretrain_stage() -> None:
-    """Pretraining metrics should be logged under the pretrain category."""
+    """Pretraining metrics should be logged under the pretraining category."""
     logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
     scoped = train_module._scope_metric_logs_for_stage(logs, "pretrain")
 
-    assert scoped["pretrain/loss"] == 1.2
-    assert scoped["pretrain/val/loss"] == 0.9
+    assert scoped["pretraining/loss"] == 1.2
+    assert scoped["pretraining/val/loss"] == 0.9
     assert scoped["epoch"] == 1.0
     assert "loss" not in scoped
     assert "eval_loss" not in scoped
+
+
+def test_scope_metric_logs_for_pretraining_stage_alias() -> None:
+    """Pretraining stage aliases should share the same metric namespace."""
+    logs = {"loss": 1.2, "eval_loss": 0.9}
+    scoped = train_module._scope_metric_logs_for_stage(logs, "pretraining")
+
+    assert scoped["pretraining/loss"] == 1.2
+    assert scoped["pretraining/val/loss"] == 0.9
+
+
+def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
+    """W&B log rewriting should keep already-scoped keys unchanged."""
+    logs = {
+        "loss": 1.2,
+        "eval_loss": 0.9,
+        "test_f1": 0.8,
+        "pretraining/val/loss": 0.7,
+    }
+    rewritten = train_module._rewrite_logs_preserving_scoped_metric_keys(logs)
+
+    assert rewritten["train/loss"] == 1.2
+    assert rewritten["eval/loss"] == 0.9
+    assert rewritten["test/f1"] == 0.8
+    assert rewritten["pretraining/val/loss"] == 0.7
+    assert "train/pretraining/val/loss" not in rewritten
+
+
+def test_patch_transformers_wandb_log_rewrite_preserves_scoped_keys() -> None:
+    """Transformers rewrite hook should preserve stage-scoped metric keys."""
+    from transformers.integrations import integration_utils
+
+    original_rewrite = integration_utils.rewrite_logs
+    try:
+        train_module._patch_transformers_wandb_log_rewrite()
+        rewritten = integration_utils.rewrite_logs(
+            {"loss": 1.2, "pretraining/val/loss": 0.7}
+        )
+        assert rewritten["train/loss"] == 1.2
+        assert rewritten["pretraining/val/loss"] == 0.7
+        assert "train/pretraining/val/loss" not in rewritten
+    finally:
+        integration_utils.rewrite_logs = original_rewrite
 
 
 def test_scope_metric_logs_for_finetune_stage() -> None:

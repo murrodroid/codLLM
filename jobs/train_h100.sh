@@ -55,6 +55,26 @@ else
   echo "INFO: JOB_CONFIG_FILE not provided; using defaults and inherited env vars."
 fi
 
+scheduler_override_keys=(
+  RUNTIME
+  QUEUE
+  N_CORES
+  MEMORY_GB
+  GPU_REQUEST
+  JOB_NAME
+  LSF_LOG_PATH
+  LSF_SPAN_RESOURCE
+  LSF_NOTIFY_EMAIL
+  LSF_NOTIFY_ON_BEGIN
+  LSF_NOTIFY_ON_END
+)
+ignored_scheduler_overrides=()
+for key in "${scheduler_override_keys[@]}"; do
+  if [ -n "${!key:-}" ]; then
+    ignored_scheduler_overrides+=("$key")
+  fi
+done
+
 if [ "$SUBMIT_TO_LSF" = "1" ]; then
   if ! command -v bsub >/dev/null 2>&1; then
     echo "ERROR: bsub is not available in PATH."
@@ -106,6 +126,22 @@ if [ "$SUBMIT_TO_LSF" = "1" ]; then
   echo "Submitting LSF job with command: ${bsub_cmd[*]}"
   "${bsub_cmd[@]}" < "$0"
   exit 0
+fi
+
+if [ "${#ignored_scheduler_overrides[@]}" -gt 0 ]; then
+  if [ -n "${LSB_JOBID:-}" ]; then
+    echo "ERROR: Ignored scheduler overrides detected: ${ignored_scheduler_overrides[*]}"
+    echo "ERROR: This run is already inside an LSF job (LSB_JOBID=$LSB_JOBID), so runtime/queue/core/memory settings cannot be changed."
+    echo "ERROR: Submit with --submit so RUNTIME/QUEUE/N_CORES/MEMORY_GB are applied before scheduling."
+    if [ -n "${resolved_job_config:-}" ]; then
+      echo "ERROR: Example: bash jobs/train_h100.sh --submit \"$resolved_job_config\""
+    else
+      echo "ERROR: Example: bash jobs/train_h100.sh --submit jobs/configs/t5-large_h100.env"
+    fi
+    exit 2
+  fi
+  echo "WARNING: Ignored scheduler overrides outside submit mode: ${ignored_scheduler_overrides[*]}"
+  echo "WARNING: Run with --submit to apply these to bsub scheduling."
 fi
 
 STORAGE_FOLDER="${STORAGE_FOLDER:-/work3/s234805}"

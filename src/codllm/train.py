@@ -403,19 +403,19 @@ def _normalize_stage_name(stage_name: str) -> str:
 
 
 def _rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
-    """Map trainer metric keys to train/val/test/pretrain W&B categories."""
+    """Map trainer metric keys to train/val/test/pretraining W&B categories."""
     if key == "epoch":
         return key
 
     normalized_stage_name = _normalize_stage_name(stage_name)
-    if normalized_stage_name == "pretrain":
+    if normalized_stage_name in {"pretrain", "pretraining"}:
         if key.startswith("eval_"):
-            return f"pretrain/val/{key.removeprefix('eval_')}"
+            return f"pretraining/val/{key.removeprefix('eval_')}"
         if key.startswith("test_"):
-            return f"pretrain/test/{key.removeprefix('test_')}"
+            return f"pretraining/test/{key.removeprefix('test_')}"
         if key.startswith("train_"):
-            return f"pretrain/{key.removeprefix('train_')}"
-        return f"pretrain/{key}"
+            return f"pretraining/{key.removeprefix('train_')}"
+        return f"pretraining/{key}"
 
     if key.startswith("eval_"):
         return f"val/{key.removeprefix('eval_')}"
@@ -434,6 +434,46 @@ def _scope_metric_logs_for_stage(
     for key, value in logs.items():
         scoped_logs[_rewrite_metric_key_for_stage(key, stage_name)] = value
     return scoped_logs
+
+
+def _rewrite_logs_preserving_scoped_metric_keys(
+    logs: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rewrite logs for W&B while preserving already-scoped metric keys."""
+    rewritten_logs: dict[str, Any] = {}
+    for key, value in logs.items():
+        if "/" in key:
+            rewritten_logs[key] = value
+            continue
+        if key.startswith("eval_"):
+            rewritten_logs[f"eval/{key.removeprefix('eval_')}"] = value
+            continue
+        if key.startswith("test_"):
+            rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
+            continue
+        rewritten_logs[f"train/{key}"] = value
+    return rewritten_logs
+
+
+def _patch_transformers_wandb_log_rewrite() -> None:
+    """Patch Transformers W&B log rewriting to retain stage-scoped metric keys."""
+    try:
+        from transformers.integrations import integration_utils
+    except ImportError:
+        return
+    current_rewrite = getattr(integration_utils, "rewrite_logs", None)
+    if current_rewrite is _rewrite_logs_preserving_scoped_metric_keys:
+        return
+    integration_utils.rewrite_logs = _rewrite_logs_preserving_scoped_metric_keys
+
+
+def _report_to_includes_wandb(report_to: str | list[str] | None) -> bool:
+    """Return True when Hugging Face reporting targets include W&B."""
+    if report_to is None:
+        return False
+    if isinstance(report_to, str):
+        return report_to in {"all", "wandb"}
+    return "all" in report_to or "wandb" in report_to
 
 
 class EvaluateEveryNEpochsCallback(TrainerCallback):
@@ -679,6 +719,8 @@ def _train_with_model(
         warmup_steps=stage_warmup_steps,
         lr_scheduler_type=stage_lr_scheduler_type,
     )
+    if _report_to_includes_wandb(args.report_to):
+        _patch_transformers_wandb_log_rewrite()
     fallback_data_metadata = {
         "split_rows": {
             "train": _dataset_row_count(train_ds),
