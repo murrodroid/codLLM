@@ -281,6 +281,26 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
     assert scoped["test/f1"] == 0.7
 
 
+def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
+    """Pretraining stage should honor the configured eval epoch interval."""
+    assert train_module._should_apply_eval_interval_callback(
+        stage_name="pretrain",
+        eval_strategy_value="epoch",
+        has_eval_dataset=True,
+        eval_every_n_epochs=10,
+    )
+
+
+def test_should_not_apply_eval_interval_callback_for_finetune_stage() -> None:
+    """Fine-tuning should follow user eval strategy without pretraining interval overrides."""
+    assert not train_module._should_apply_eval_interval_callback(
+        stage_name="finetune",
+        eval_strategy_value="epoch",
+        has_eval_dataset=True,
+        eval_every_n_epochs=10,
+    )
+
+
 def test_evaluate_every_n_epochs_callback_skips_non_interval_epoch(
     tmp_path: Path,
 ) -> None:

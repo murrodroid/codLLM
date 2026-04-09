@@ -396,6 +396,23 @@ def _resolve_classifier_label_space(
     return label2id, id2label
 
 
+def _should_apply_eval_interval_callback(
+    stage_name: str,
+    eval_strategy_value: str,
+    has_eval_dataset: bool,
+    eval_every_n_epochs: int,
+) -> bool:
+    """Return whether the N-epoch eval callback should be attached for this stage."""
+    normalized_stage_name = stage_name.strip().lower()
+    is_pretraining_stage = normalized_stage_name in {"pretrain", "pretraining"}
+    return (
+        has_eval_dataset
+        and eval_strategy_value == "epoch"
+        and is_pretraining_stage
+        and eval_every_n_epochs > 1
+    )
+
+
 def _train_with_model(
     cfg: Config,
     model: Any,
@@ -539,10 +556,11 @@ def _train_with_model(
         if hasattr(args.eval_strategy, "value")
         else str(args.eval_strategy)
     )
-    if (
-        processed_eval_ds is not None
-        and eval_strategy_value == "epoch"
-        and stage_eval_every_n_epochs > 1
+    if _should_apply_eval_interval_callback(
+        stage_name=stage_name,
+        eval_strategy_value=eval_strategy_value,
+        has_eval_dataset=processed_eval_ds is not None,
+        eval_every_n_epochs=stage_eval_every_n_epochs,
     ):
         callbacks.append(EvaluateEveryNEpochsCallback(stage_eval_every_n_epochs))
 
