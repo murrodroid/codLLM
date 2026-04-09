@@ -257,6 +257,13 @@ bsub -env "all,JOB_CONFIG_FILE=jobs/configs/example.env,REQUIRE_JOB_CONFIG_FILE=
 See `jobs/configs/example.env`.
 You can define model selection and all training knobs here, for example
 `CODLLM_HF_MODEL`, `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE`, and `CODLLM_GRADIENT_ACCUMULATION_STEPS`.
+You can also run a single-variable sweep by using list syntax:
+
+```bash
+CODLLM_NUM_TRAIN_EPOCHS=[2,4,8]
+```
+
+Only one list-valued variable is supported per config file.
 
 For `jobs/train_h100.sh`, submit in the same style as `jobs/train.sh`:
 
