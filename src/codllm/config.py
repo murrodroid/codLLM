@@ -210,8 +210,8 @@ class Config:
     balance_upsample_labels: list[str] = field(default_factory=list)
     balance_upsample_inverse_power: float = 0.5
     balance_upsample_budget_ratio: float = 0.4
-    balance_sqrt_floor: int = 10
-    balance_sqrt_decay: float = 0.1
+    balance_sqrt_floor: int = 0
+    balance_sqrt_decay: float = 0.0
     balance_sqrt_power: float = 0.5
     balance_sqrt_budget_scale: float = 1.05
     balance_base_perturbation_rate: float = 0.05
@@ -648,8 +648,8 @@ def config_from_env(base: Optional[Config] = None) -> Config:
 
     balance_sqrt_floor = _parse_env_int("CODLLM_BALANCE_SQRT_FLOOR")
     if balance_sqrt_floor is not None:
-        if balance_sqrt_floor < 1:
-            raise ValueError("CODLLM_BALANCE_SQRT_FLOOR must be at least 1.")
+        if balance_sqrt_floor < 0:
+            raise ValueError("CODLLM_BALANCE_SQRT_FLOOR must be non-negative.")
         cfg.balance_sqrt_floor = balance_sqrt_floor
 
     balance_sqrt_decay = _parse_env_float("CODLLM_BALANCE_SQRT_DECAY")

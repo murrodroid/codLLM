@@ -310,8 +310,10 @@ def select_floor_upsample_targets(
     """
     import math
 
-    if floor < 1:
-        raise ValueError("floor must be at least 1.")
+    if floor < 0:
+        raise ValueError("floor must be non-negative.")
+    if floor == 0:
+        return {}
     if decay < 0 or decay > 1:
         raise ValueError("decay must be between 0 and 1.")
 
