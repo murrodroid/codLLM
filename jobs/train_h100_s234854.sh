@@ -2,7 +2,7 @@
 # ---------------- LSF directives ----------------
 #BSUB -J codllm-train
 #BSUB -q gpuh100
-#BSUB -W 10:00
+#BSUB -W 24:00
 #BSUB -n 17
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=4GB]"
