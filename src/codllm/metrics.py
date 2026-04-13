@@ -44,15 +44,10 @@ def _micro_precision_recall_f1(
     }
 
 
-def _macro_precision_recall_f1(
+def _per_class_stats(
     predictions: list[set[str]], labels: list[set[str]]
-) -> dict[str, float]:
-    """Compute macro-averaged precision/recall/F1 across all classes.
-
-    Each unique code in the label or prediction sets is treated as a class.
-    Per-class metrics are computed independently, then averaged with equal
-    weight to rare and frequent classes.
-    """
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """Accumulate per-class TP, label totals, and prediction totals."""
     class_tp: dict[str, int] = {}
     class_label_total: dict[str, int] = {}
     class_pred_total: dict[str, int] = {}
@@ -63,10 +58,19 @@ def _macro_precision_recall_f1(
                 class_tp[code] = class_tp.get(code, 0) + 1
         for code in predicted_codes:
             class_pred_total[code] = class_pred_total.get(code, 0) + 1
+    return class_tp, class_label_total, class_pred_total
 
-    all_classes = set(class_label_total) | set(class_pred_total)
+
+def _macro_from_class_stats(
+    class_tp: dict[str, int],
+    class_label_total: dict[str, int],
+    class_pred_total: dict[str, int],
+    classes: set[str] | None = None,
+) -> dict[str, float]:
+    """Compute macro P/R/F1 over the given class subset (or all classes)."""
+    all_classes = classes if classes is not None else (set(class_label_total) | set(class_pred_total))
     if not all_classes:
-        return {"macro_precision": 0.0, "macro_recall": 0.0, "macro_f1": 0.0}
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
     per_class_precision = []
     per_class_recall = []
@@ -85,9 +89,9 @@ def _macro_precision_recall_f1(
         per_class_f1.append(f)
 
     return {
-        "macro_precision": float(np.mean(per_class_precision)),
-        "macro_recall": float(np.mean(per_class_recall)),
-        "macro_f1": float(np.mean(per_class_f1)),
+        "precision": float(np.mean(per_class_precision)),
+        "recall": float(np.mean(per_class_recall)),
+        "f1": float(np.mean(per_class_f1)),
     }
 
 
@@ -115,17 +119,62 @@ def _sanitize_token_ids_for_decoding(
     if max_token_id is not None:
         sanitized = np.where(sanitized > max_token_id, pad_token_id, sanitized)
     return sanitized
+def _macro_precision_recall_f1(
+    predictions: list[set[str]], labels: list[set[str]]
+) -> dict[str, float]:
+    """Compute macro-averaged precision/recall/F1 across all classes."""
+    class_tp, class_label_total, class_pred_total = _per_class_stats(predictions, labels)
+    raw = _macro_from_class_stats(class_tp, class_label_total, class_pred_total)
+    return {f"macro_{k}": v for k, v in raw.items()}
+
+
+def _seen_unseen_macro(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    train_classes: set[str],
+) -> dict[str, float]:
+    """Compute macro P/R/F1 split by seen (in training) and unseen classes.
+
+    - seen_macro_*: metrics over eval classes that appeared in training
+    - unseen_macro_*: metrics over eval classes never seen during training
+    - seen_class_count / unseen_class_count: how many classes in each bucket
+    """
+    class_tp, class_label_total, class_pred_total = _per_class_stats(predictions, labels)
+    eval_classes = set(class_label_total) | set(class_pred_total)
+
+    seen = eval_classes & train_classes
+    unseen = eval_classes - train_classes
+
+    result: dict[str, float] = {
+        "seen_class_count": float(len(seen)),
+        "unseen_class_count": float(len(unseen)),
+    }
+
+    seen_stats = _macro_from_class_stats(class_tp, class_label_total, class_pred_total, seen)
+    for k, v in seen_stats.items():
+        result[f"seen_macro_{k}"] = v
+
+    unseen_stats = _macro_from_class_stats(class_tp, class_label_total, class_pred_total, unseen)
+    for k, v in unseen_stats.items():
+        result[f"unseen_macro_{k}"] = v
+
+    return result
 
 
 def build_exact_match_accuracy_metric(
     tokenizer: Any,
     label_separator: str = ",",
     max_label_count: int = 1,
+    train_classes: set[str] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build a compute_metrics callback with exact-match and overlap metrics.
 
     When max_label_count is 1 (single-label), micro metrics are skipped because
     they are mathematically identical to accuracy in that regime.
+
+    When train_classes is provided, additional seen/unseen macro metrics are
+    emitted to distinguish performance on classes the model trained on vs.
+    classes it has never seen.
     """
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
     raw_vocab_size = getattr(tokenizer, "vocab_size", None)
@@ -245,6 +294,8 @@ def build_sequence_classification_metric(
         label_code_sets = [{label} for label in normalized_labels]
         result: dict[str, float] = {"accuracy": accuracy}
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        if train_classes is not None:
+            result.update(_seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes))
         return result
 
     return compute_metrics

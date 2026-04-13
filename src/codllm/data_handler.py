@@ -392,6 +392,54 @@ def select_upsample_targets(
     return selected_targets
 
 
+def select_floor_upsample_targets(
+    df: pd.DataFrame,
+    label_column: str,
+    floor: int = 10,
+    decay: float = 0.1,
+) -> dict[Any, int]:
+    """Select per-class target counts by enforcing a minimum sample floor.
+
+    Classes below the floor are brought up towards it, with a gentle
+    log-decay so that the rarest classes get less boost and classes
+    closer to the floor get nearly the full floor. Classes at or above
+    the floor are untouched. Original ordering by class size is always
+    preserved.
+
+    Parameters
+    ----------
+    floor : int
+        Every class gets at least this many samples (before decay).
+    decay : float
+        Maximum fractional reduction for the smallest classes.
+        0.0 = no decay (all below-floor classes get exactly ``floor``).
+        0.1 = smallest classes get 10% less than ``floor``.
+    """
+    import math
+
+    if floor < 0:
+        raise ValueError("floor must be non-negative.")
+    if floor == 0:
+        return {}
+    if decay < 0 or decay > 1:
+        raise ValueError("decay must be between 0 and 1.")
+
+    class_counts = df[label_column].value_counts()
+    targets: dict[Any, int] = {}
+    for label, count in class_counts.items():
+        original = int(count)
+        if original >= floor:
+            continue
+        # t in [0, 1]: 0 = just below floor (biggest minority), 1 = smallest class
+        t = 1.0 - (original - 1) / max(floor - 1, 1)
+        # log curve: smallest classes lose up to `decay` of the floor
+        scale = 1.0 - decay * (math.log1p(t) / math.log(2))
+        target = max(original, round(floor * scale))
+        if target > original:
+            targets[label] = target
+    return targets
+
+
 def _sample_upsample_rows(
     class_rows: pd.DataFrame, needed: int, rng: random.Random
 ) -> list[dict[str, Any]]:
@@ -414,8 +462,17 @@ def upsample(
     label_column: str,
     target_counts: Mapping[Any, int],
     seed: int = 42,
+    text_column: str | None = None,
+    perturbation_fns: Sequence[Any] | None = None,
+    perturbations_per_sample: int = 1,
+    text_field_separator: str = " | ",
 ) -> pd.DataFrame:
-    """Upsample classes to target counts by appending sampled rows without perturbation."""
+    """Upsample classes to target counts, perturbing synthetic rows proportionally.
+
+    When perturbation functions are provided, each synthetic row is perturbed
+    with probability proportional to the duplication ratio: a class going from
+    1→200 perturbs ~99.5% of copies, while 180→200 perturbs ~10%.
+    """
     if not target_counts:
         return df
 
@@ -433,7 +490,22 @@ def upsample(
 
         class_rows = df[df[label_column] == label]
         needed = target_count - current_count
-        synthetic_rows.extend(_sample_upsample_rows(class_rows, needed=needed, rng=rng))
+        new_rows = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
+
+        # Perturb synthetic rows proportional to duplication ratio
+        if text_column and perturbation_fns and new_rows:
+            perturb_rate = 1.0 - (current_count / target_count)
+            for row in new_rows:
+                if rng.random() < perturb_rate:
+                    text = str(row[text_column])
+                    for _ in range(perturbations_per_sample):
+                        fn = rng.choice(perturbation_fns)
+                        text = _apply_perturbation_with_seed(
+                            fn, text, seed=rng.randint(0, 2_147_483_647)
+                        )
+                    row[text_column] = text
+
+        synthetic_rows.extend(new_rows)
 
     if not synthetic_rows:
         return df
@@ -872,6 +944,26 @@ class DataHandler:
                 label_column=self.cfg.dataset_label_column,
                 target_counts=target_counts,
                 seed=self.cfg.resolved_data_seed(),
+            )
+        elif self.cfg.balance_strategy == "sqrt":
+            target_counts = select_floor_upsample_targets(
+                df=train_df,
+                label_column=self.cfg.dataset_label_column,
+                floor=self.cfg.balance_sqrt_floor,
+                decay=self.cfg.balance_sqrt_decay,
+            )
+            perturbation_fns = _resolve_perturbation_functions(
+                self.cfg.balance_perturbations
+            )
+            balanced_train_df = upsample(
+                df=balanced_train_df,
+                label_column=self.cfg.dataset_label_column,
+                target_counts=target_counts,
+                seed=self.cfg.resolved_data_seed(),
+                text_column=self.cfg.dataset_text_column,
+                perturbation_fns=perturbation_fns,
+                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
+                text_field_separator=self.cfg.text_field_separator,
             )
 
         if self.cfg.balance_base_perturbation_rate > 0:

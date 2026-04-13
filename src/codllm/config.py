@@ -7,7 +7,7 @@ import torch
 
 
 TrainingInput = Literal["cod", "age", "sex"]
-BalanceStrategy = Literal["none", "upsample"]
+BalanceStrategy = Literal["none", "upsample", "sqrt"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
@@ -62,6 +62,7 @@ class DataSourceConfig:
     enabled: bool = True
     file_type: Optional[str] = None
     sep: str = ","
+    encoding: str = "utf-8"
     header: int | None = 0
     sheet_name: int | str = 0
     skip_rows: list[int] = field(default_factory=list)
@@ -97,6 +98,25 @@ def _default_data_sources() -> list[DataSourceConfig]:
             source_id="copenhagen_may2025",
             path="Copenhagen_burials_all_May2025.csv",
             mapping_id="copenhagen",
+        ),
+        DataSourceConfig(
+            source_id="ipswich_1871_1911",
+            path="Ipswich_deaths_codllm.txt",
+            mapping_id="ipswich",
+            file_type="csv",
+            sep="|",
+            encoding="latin-1",
+        ),
+        DataSourceConfig(
+            source_id="madrid_1905_1927",
+            path="Madrid 1905_1927.csv",
+            mapping_id="madrid",
+        ),
+        DataSourceConfig(
+            source_id="historic_strings_en_2024",
+            path="ICD10H_HISTORICSTRINGSENGLISH_2024.2.xlsx",
+            mapping_id="historic_strings",
+            sheet_name="HistoricstringsEnglish2024 1.1",
         ),
     ]
 
@@ -226,7 +246,7 @@ class Config:
     pretrain_upsample_perturbations_per_sample: int = 1
     label_harmonization_enabled: bool = False
 
-    balance_strategy: BalanceStrategy = "upsample"
+    balance_strategy: BalanceStrategy = "sqrt"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
         default_factory=lambda: [
@@ -240,6 +260,10 @@ class Config:
     balance_upsample_labels: list[str] = field(default_factory=list)
     balance_upsample_inverse_power: float = 0.5
     balance_upsample_budget_ratio: float = 0.4
+    balance_sqrt_floor: int = 0
+    balance_sqrt_decay: float = 0.0
+    balance_sqrt_power: float = 0.5
+    balance_sqrt_budget_scale: float = 1.05
     balance_base_perturbation_rate: float = 0.05
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
@@ -756,7 +780,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     balance_strategy = os.getenv("CODLLM_BALANCE_STRATEGY")
     if balance_strategy is not None and balance_strategy.strip() != "":
         normalized_balance = balance_strategy.strip().lower()
-        allowed_balance = {"none", "upsample"}
+        allowed_balance = {"none", "upsample", "sqrt"}
         if normalized_balance not in allowed_balance:
             allowed = ", ".join(sorted(allowed_balance))
             raise ValueError(f"CODLLM_BALANCE_STRATEGY must be one of: {allowed}.")
@@ -811,6 +835,30 @@ def config_from_env(base: Optional[Config] = None) -> Config:
                 "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO must be between 0 and 1."
             )
         cfg.balance_upsample_budget_ratio = balance_upsample_budget_ratio
+
+    balance_sqrt_floor = _parse_env_int("CODLLM_BALANCE_SQRT_FLOOR")
+    if balance_sqrt_floor is not None:
+        if balance_sqrt_floor < 0:
+            raise ValueError("CODLLM_BALANCE_SQRT_FLOOR must be non-negative.")
+        cfg.balance_sqrt_floor = balance_sqrt_floor
+
+    balance_sqrt_decay = _parse_env_float("CODLLM_BALANCE_SQRT_DECAY")
+    if balance_sqrt_decay is not None:
+        if balance_sqrt_decay < 0 or balance_sqrt_decay > 1:
+            raise ValueError("CODLLM_BALANCE_SQRT_DECAY must be between 0 and 1.")
+        cfg.balance_sqrt_decay = balance_sqrt_decay
+
+    balance_sqrt_power = _parse_env_float("CODLLM_BALANCE_SQRT_POWER")
+    if balance_sqrt_power is not None:
+        if balance_sqrt_power < 0 or balance_sqrt_power > 1:
+            raise ValueError("CODLLM_BALANCE_SQRT_POWER must be between 0 and 1.")
+        cfg.balance_sqrt_power = balance_sqrt_power
+
+    balance_sqrt_budget_scale = _parse_env_float("CODLLM_BALANCE_SQRT_BUDGET_SCALE")
+    if balance_sqrt_budget_scale is not None:
+        if balance_sqrt_budget_scale < 1:
+            raise ValueError("CODLLM_BALANCE_SQRT_BUDGET_SCALE must be at least 1.")
+        cfg.balance_sqrt_budget_scale = balance_sqrt_budget_scale
 
     balance_base_perturbation_rate = _parse_env_float(
         "CODLLM_BALANCE_BASE_PERTURBATION_RATE"
