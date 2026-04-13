@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import numpy as np
 
@@ -95,6 +95,30 @@ def _macro_from_class_stats(
     }
 
 
+def _sanitize_token_ids_for_decoding(
+    token_ids: np.ndarray,
+    *,
+    pad_token_id: int,
+    max_token_id: int | None = None,
+) -> np.ndarray:
+    """Return token ids safe for tokenizer.decode/batch_decode.
+
+    Tokenizer decoders can fail on invalid integral values (for example negative
+    ids, NaN/Inf values cast from floating tensors, or very large out-of-range ids).
+    This helper maps those invalid ids to the configured pad token id.
+    """
+    sanitized = np.asarray(token_ids)
+    if not np.issubdtype(sanitized.dtype, np.integer):
+        finite_mask = np.isfinite(sanitized)
+        sanitized = np.where(finite_mask, sanitized, pad_token_id)
+        sanitized = np.rint(sanitized).astype(np.int64, copy=False)
+    else:
+        sanitized = sanitized.astype(np.int64, copy=False)
+
+    sanitized = np.where(sanitized < 0, pad_token_id, sanitized)
+    if max_token_id is not None:
+        sanitized = np.where(sanitized > max_token_id, pad_token_id, sanitized)
+    return sanitized
 def _macro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
 ) -> dict[str, float]:
@@ -153,6 +177,12 @@ def build_exact_match_accuracy_metric(
     classes it has never seen.
     """
     pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    raw_vocab_size = getattr(tokenizer, "vocab_size", None)
+    max_token_id = (
+        int(raw_vocab_size) - 1
+        if isinstance(raw_vocab_size, int) and raw_vocab_size > 0
+        else None
+    )
     multi_label = max_label_count > 1
 
     def compute_metrics(eval_pred: Any) -> dict[str, float]:
@@ -172,7 +202,17 @@ def build_exact_match_accuracy_metric(
         if prediction_ids.ndim == 3:
             prediction_ids = prediction_ids.argmax(axis=-1)
 
+        prediction_ids = _sanitize_token_ids_for_decoding(
+            prediction_ids,
+            pad_token_id=pad_token_id,
+            max_token_id=max_token_id,
+        )
         label_ids = np.where(label_ids == -100, pad_token_id, label_ids)
+        label_ids = _sanitize_token_ids_for_decoding(
+            label_ids,
+            pad_token_id=pad_token_id,
+            max_token_id=max_token_id,
+        )
         decoded_predictions = tokenizer.batch_decode(
             prediction_ids.tolist(), skip_special_tokens=True
         )
@@ -199,7 +239,60 @@ def build_exact_match_accuracy_metric(
 
         result: dict[str, float] = {"accuracy": accuracy}
         if multi_label:
-            result.update(_micro_precision_recall_f1(predicted_code_sets, label_code_sets))
+            result.update(
+                _micro_precision_recall_f1(predicted_code_sets, label_code_sets)
+            )
+        result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        return result
+
+    return compute_metrics
+
+
+def build_sequence_classification_metric(
+    id2label: Mapping[int, str],
+) -> Callable[[Any], dict[str, float]]:
+    """Build compute_metrics callback for single-label sequence classification."""
+    normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
+
+    def compute_metrics(eval_pred: Any) -> dict[str, float]:
+        """Compute accuracy and macro precision/recall/F1 from classifier logits."""
+        if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
+            predictions = eval_pred.predictions
+            labels = eval_pred.label_ids
+        else:
+            predictions, labels = eval_pred
+
+        if isinstance(predictions, tuple):
+            predictions = predictions[0]
+
+        prediction_array = np.asarray(predictions)
+        if prediction_array.ndim == 2:
+            predicted_ids = prediction_array.argmax(axis=-1)
+        else:
+            predicted_ids = prediction_array
+
+        label_ids = np.asarray(labels)
+        predicted_ids = predicted_ids.astype(np.int64, copy=False)
+        label_ids = label_ids.astype(np.int64, copy=False)
+
+        normalized_predictions = [
+            normalized_id2label.get(int(label_id), str(int(label_id)))
+            for label_id in predicted_ids.tolist()
+        ]
+        normalized_labels = [
+            normalized_id2label.get(int(label_id), str(int(label_id)))
+            for label_id in label_ids.tolist()
+        ]
+
+        matches = [
+            prediction == label
+            for prediction, label in zip(normalized_predictions, normalized_labels)
+        ]
+        accuracy = float(np.mean(matches)) if matches else 0.0
+
+        predicted_code_sets = [{label} for label in normalized_predictions]
+        label_code_sets = [{label} for label in normalized_labels]
+        result: dict[str, float] = {"accuracy": accuracy}
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
         if train_classes is not None:
             result.update(_seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes))

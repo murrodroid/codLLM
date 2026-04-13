@@ -3,7 +3,7 @@
 #BSUB -J codllm-train
 #BSUB -q gpuh100
 #BSUB -W 10:00
-#BSUB -n 17
+#BSUB -n 8
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=4GB]"
 #BSUB -gpu "num=1:mode=exclusive_process"
@@ -17,12 +17,110 @@
 set -euo pipefail
 
 trap 'code=$?;
-  printf "ERROR: jobs/train.sh failed at line %s with exit code %s\n" "$LINENO" "$code";
+  printf "ERROR: jobs/train_h100.sh failed at line %s with exit code %s\n" "$LINENO" "$code";
   exit "$code"' ERR
 
 PROJECT_DIR="${LSB_SUBCWD:-$(pwd)}"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 cd "$PROJECT_DIR"
 exec 2>&1
+
+trim_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+declare -a SWEEP_VALUES=()
+SWEEP_VAR_NAME=""
+
+parse_sweep_from_job_config() {
+  local config_path="$1"
+  local raw_line=""
+  local stripped_line=""
+  local list_values_raw=""
+  local cleaned_value=""
+  local match_count=0
+  local raw_values=()
+
+  SWEEP_VAR_NAME=""
+  SWEEP_VALUES=()
+
+  while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+    stripped_line="${raw_line%%#*}"
+    if [[ "$stripped_line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\[(.*)\][[:space:]]*$ ]]; then
+      if [ "$match_count" -ge 1 ]; then
+        echo "ERROR: Multiple list-valued variables found in '$config_path'."
+        echo "ERROR: Only one sweep variable is supported per job config."
+        exit 1
+      fi
+      SWEEP_VAR_NAME="${BASH_REMATCH[1]}"
+      list_values_raw="${BASH_REMATCH[2]}"
+      IFS=',' read -r -a raw_values <<< "$list_values_raw"
+      if [ "${#raw_values[@]}" -eq 0 ]; then
+        echo "ERROR: Sweep variable '$SWEEP_VAR_NAME' has no values in '$config_path'."
+        exit 1
+      fi
+      for raw_value in "${raw_values[@]}"; do
+        cleaned_value="$(trim_whitespace "$raw_value")"
+        if [ -z "$cleaned_value" ]; then
+          echo "ERROR: Sweep variable '$SWEEP_VAR_NAME' contains an empty list entry."
+          exit 1
+        fi
+        if [[ "$cleaned_value" =~ ^\"(.*)\"$ ]]; then
+          cleaned_value="${BASH_REMATCH[1]}"
+        elif [[ "$cleaned_value" =~ ^\'(.*)\'$ ]]; then
+          cleaned_value="${BASH_REMATCH[1]}"
+        fi
+        SWEEP_VALUES+=("$cleaned_value")
+      done
+      if [ "${#SWEEP_VALUES[@]}" -eq 0 ]; then
+        echo "ERROR: Sweep variable '$SWEEP_VAR_NAME' has no parsed values."
+        exit 1
+      fi
+      match_count=$((match_count + 1))
+    fi
+  done < "$config_path"
+}
+
+submit_sweep_jobs() {
+  local config_path="$1"
+  local generated_config_dir="$PROJECT_DIR/jobs/configs/.generated"
+  local timestamp=""
+  local idx=0
+  local value=""
+  local generated_config_file=""
+  local bsub_env=""
+
+  if ! command -v bsub >/dev/null 2>&1; then
+    echo "ERROR: Sweep list syntax requires bsub in PATH."
+    exit 1
+  fi
+
+  mkdir -p "$generated_config_dir"
+  timestamp="$(date +%Y%m%d%H%M%S)"
+  echo "Submitting sweep jobs for $SWEEP_VAR_NAME with ${#SWEEP_VALUES[@]} values."
+  for idx in "${!SWEEP_VALUES[@]}"; do
+    value="${SWEEP_VALUES[$idx]}"
+    generated_config_file="$generated_config_dir/$(basename "$config_path").$timestamp.$$.$((idx + 1)).env"
+    {
+      printf "source %q\n" "$config_path"
+      printf "%s=%q\n" "$SWEEP_VAR_NAME" "$value"
+      printf "CODLLM_SWEEP_CHILD=1\n"
+    } > "$generated_config_file"
+    bsub_env="all,JOB_CONFIG_FILE=$generated_config_file,REQUIRE_JOB_CONFIG_FILE=1"
+    echo "Submitting sweep job $((idx + 1))/${#SWEEP_VALUES[@]}: $SWEEP_VAR_NAME=$value"
+    bsub -env "$bsub_env" < "$SCRIPT_PATH"
+  done
+  echo "Submitted ${#SWEEP_VALUES[@]} jobs."
+}
+
+if [ "${1:-}" = "--submit" ]; then
+  echo "ERROR: --submit mode has been removed for jobs/train_h100.sh."
+  echo "ERROR: Submit with: bsub -env \"all,JOB_CONFIG_FILE=<path>,REQUIRE_JOB_CONFIG_FILE=1\" < jobs/train_h100.sh"
+  exit 1
+fi
 
 JOB_CONFIG_FILE="${JOB_CONFIG_FILE:-${1:-}}"
 REQUIRE_JOB_CONFIG_FILE="${REQUIRE_JOB_CONFIG_FILE:-0}"
@@ -40,6 +138,14 @@ if [ -n "$JOB_CONFIG_FILE" ]; then
   else
     echo "ERROR: JOB_CONFIG_FILE '$JOB_CONFIG_FILE' does not exist."
     exit 1
+  fi
+  resolved_job_config="$(cd "$(dirname "$resolved_job_config")" && pwd)/$(basename "$resolved_job_config")"
+  if [ "${CODLLM_SWEEP_CHILD:-0}" != "1" ]; then
+    parse_sweep_from_job_config "$resolved_job_config"
+    if [ -n "$SWEEP_VAR_NAME" ]; then
+      submit_sweep_jobs "$resolved_job_config"
+      exit 0
+    fi
   fi
   echo "Loading job config file: $resolved_job_config"
   set -a
@@ -92,12 +198,17 @@ CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE="${CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE:-8}"
 CODLLM_PER_DEVICE_EVAL_BATCH_SIZE="${CODLLM_PER_DEVICE_EVAL_BATCH_SIZE:-8}"
 CODLLM_GRADIENT_ACCUMULATION_STEPS="${CODLLM_GRADIENT_ACCUMULATION_STEPS:-2}"
 CODLLM_DATALOADER_NUM_WORKERS="${CODLLM_DATALOADER_NUM_WORKERS:-4}"
+CODLLM_DATALOADER_PIN_MEMORY="${CODLLM_DATALOADER_PIN_MEMORY:-1}"
+CODLLM_DATALOADER_PERSISTENT_WORKERS="${CODLLM_DATALOADER_PERSISTENT_WORKERS:-0}"
+CODLLM_DATALOADER_PREFETCH_FACTOR="${CODLLM_DATALOADER_PREFETCH_FACTOR:-1}"
 CODLLM_LOGGING_STEPS="${CODLLM_LOGGING_STEPS:-25}"
 CODLLM_EVAL_STEPS="${CODLLM_EVAL_STEPS:-200}"
 CODLLM_SAVE_STEPS="${CODLLM_SAVE_STEPS:-5000}"
 CODLLM_EVAL_STRATEGY="${CODLLM_EVAL_STRATEGY:-epoch}"
 CODLLM_SAVE_STRATEGY="${CODLLM_SAVE_STRATEGY:-epoch}"
 CODLLM_SAVE_STRATEGY_BEST_METRIC="${CODLLM_SAVE_STRATEGY_BEST_METRIC:-accuracy}"
+CODLLM_MODEL_TASK="${CODLLM_MODEL_TASK:-seq2seq}"
+CODLLM_LR_SCHEDULER_TYPE="${CODLLM_LR_SCHEDULER_TYPE:-linear}"
 CODLLM_LR="${CODLLM_LR:-3e-5}"
 CODLLM_WEIGHT_DECAY="${CODLLM_WEIGHT_DECAY:-0.0}"
 CODLLM_MAX_GRAD_NORM="${CODLLM_MAX_GRAD_NORM:-0.5}"
@@ -105,10 +216,21 @@ CODLLM_TRAINING_INPUT="${CODLLM_TRAINING_INPUT:-cod,age,sex}"
 CODLLM_BALANCE_STRATEGY="${CODLLM_BALANCE_STRATEGY:-none}"
 CODLLM_BALANCE_TARGET_QUANTILE="${CODLLM_BALANCE_TARGET_QUANTILE:-0.5}"
 CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE="${CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE:-1}"
+CODLLM_PRETRAIN_ENABLED="${CODLLM_PRETRAIN_ENABLED:-0}"
+CODLLM_PRETRAIN_MASTERLIST_PATH="${CODLLM_PRETRAIN_MASTERLIST_PATH:-data/raw/ICD10h_Masterlist_2024.xlsx}"
+CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME="${CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME:-Masterlist}"
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS="${CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS:-1}"
+CODLLM_PRETRAIN_LEARNING_RATE="${CODLLM_PRETRAIN_LEARNING_RATE:-}"
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS="${CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS:-1}"
+CODLLM_PRETRAIN_LR_SCHEDULER_TYPE="${CODLLM_PRETRAIN_LR_SCHEDULER_TYPE:-linear}"
+CODLLM_PRETRAIN_UPSAMPLE_ENABLED="${CODLLM_PRETRAIN_UPSAMPLE_ENABLED:-1}"
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL="${CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL:-10}"
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS="${CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS:-swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell}"
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE="${CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE:-1}"
 PYTHONHASHSEED="${PYTHONHASHSEED:-$CODLLM_SEED}"
 CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
-OMP_NUM_THREADS="${OMP_NUM_THREADS:-${LSB_DJOB_NUMPROC:-1}}"
-MKL_NUM_THREADS="${MKL_NUM_THREADS:-$OMP_NUM_THREADS}"
+OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 export HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE HF_DATASETS_CACHE TORCH_HOME
@@ -125,12 +247,22 @@ export CODLLM_MAX_SOURCE_LENGTH CODLLM_MAX_TARGET_LENGTH
 export CODLLM_WARMUP_STEPS CODLLM_NUM_TRAIN_EPOCHS
 export CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE CODLLM_PER_DEVICE_EVAL_BATCH_SIZE
 export CODLLM_GRADIENT_ACCUMULATION_STEPS CODLLM_DATALOADER_NUM_WORKERS
+export CODLLM_DATALOADER_PIN_MEMORY CODLLM_DATALOADER_PERSISTENT_WORKERS
+export CODLLM_DATALOADER_PREFETCH_FACTOR
 export CODLLM_LOGGING_STEPS CODLLM_EVAL_STEPS CODLLM_SAVE_STEPS
 export CODLLM_EVAL_STRATEGY CODLLM_SAVE_STRATEGY CODLLM_SAVE_STRATEGY_BEST_METRIC
-export CODLLM_LR CODLLM_WEIGHT_DECAY CODLLM_MAX_GRAD_NORM
+export CODLLM_MODEL_TASK
+export CODLLM_LR_SCHEDULER_TYPE CODLLM_LR CODLLM_WEIGHT_DECAY CODLLM_MAX_GRAD_NORM
 export CODLLM_TRAINING_INPUT
 export CODLLM_BALANCE_STRATEGY CODLLM_BALANCE_TARGET_QUANTILE
 export CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE
+export CODLLM_PRETRAIN_ENABLED CODLLM_PRETRAIN_MASTERLIST_PATH
+export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS
+export CODLLM_PRETRAIN_LEARNING_RATE CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS
+export CODLLM_PRETRAIN_LR_SCHEDULER_TYPE
+export CODLLM_PRETRAIN_UPSAMPLE_ENABLED CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE
 export PYTHONHASHSEED CUBLAS_WORKSPACE_CONFIG
 export OMP_NUM_THREADS MKL_NUM_THREADS TOKENIZERS_PARALLELISM
 export PYTHONUNBUFFERED=1
@@ -139,11 +271,24 @@ echo "Effective training environment:"
 echo "  JOB_CONFIG_FILE=${resolved_job_config:-<none>}"
 echo "  CODLLM_HF_MODEL=$CODLLM_HF_MODEL"
 echo "  CODLLM_LR=$CODLLM_LR"
+echo "  CODLLM_MODEL_TASK=$CODLLM_MODEL_TASK"
+echo "  CODLLM_LR_SCHEDULER_TYPE=$CODLLM_LR_SCHEDULER_TYPE"
 echo "  CODLLM_NUM_TRAIN_EPOCHS=$CODLLM_NUM_TRAIN_EPOCHS"
 echo "  CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE=$CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"
 echo "  CODLLM_GRADIENT_ACCUMULATION_STEPS=$CODLLM_GRADIENT_ACCUMULATION_STEPS"
+echo "  CODLLM_DATALOADER_NUM_WORKERS=$CODLLM_DATALOADER_NUM_WORKERS"
+echo "  CODLLM_DATALOADER_PIN_MEMORY=$CODLLM_DATALOADER_PIN_MEMORY"
+echo "  CODLLM_DATALOADER_PERSISTENT_WORKERS=$CODLLM_DATALOADER_PERSISTENT_WORKERS"
+echo "  CODLLM_DATALOADER_PREFETCH_FACTOR=$CODLLM_DATALOADER_PREFETCH_FACTOR"
 echo "  CODLLM_WEIGHT_DECAY=$CODLLM_WEIGHT_DECAY"
 echo "  CODLLM_TRAINING_INPUT=$CODLLM_TRAINING_INPUT"
+echo "  CODLLM_PRETRAIN_ENABLED=$CODLLM_PRETRAIN_ENABLED"
+echo "  CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS=$CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS"
+echo "  CODLLM_PRETRAIN_LR_SCHEDULER_TYPE=$CODLLM_PRETRAIN_LR_SCHEDULER_TYPE"
+echo "  CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS=$CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS"
+echo "  CODLLM_PRETRAIN_UPSAMPLE_ENABLED=$CODLLM_PRETRAIN_UPSAMPLE_ENABLED"
+echo "  CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL=$CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL"
+echo "  CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE=$CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE"
 echo "  CODLLM_VERBOSE=$CODLLM_VERBOSE"
 
 mkdir -p \

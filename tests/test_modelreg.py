@@ -159,3 +159,40 @@ def test_flan_t5_small_uses_default_seq2seq_loader(
     model_registry.load_base_model(cfg)
 
     assert captured["use_safetensors"] is False
+
+
+def test_load_base_model_uses_sequence_classification_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sequence-classification task should load the classifier model path."""
+    cfg = Config(
+        hf_model="google/flan-t5-small",
+        model_task="sequence_classification",
+    )
+    captured: dict[str, Any] = {}
+
+    def fake_classifier_loader(
+        loader_cfg: Config,
+        label2id: dict[str, int] | None = None,
+        id2label: dict[int, str] | None = None,
+    ) -> tuple[Any, Any]:
+        captured["cfg"] = loader_cfg
+        captured["label2id"] = label2id
+        captured["id2label"] = id2label
+        return object(), object()
+
+    monkeypatch.setattr(
+        model_registry,
+        "load_default_sequence_classifier",
+        fake_classifier_loader,
+    )
+
+    model_registry.load_base_model(
+        cfg=cfg,
+        label2id={"A00": 0},
+        id2label={0: "A00"},
+    )
+
+    assert captured["cfg"] is cfg
+    assert captured["label2id"] == {"A00": 0}
+    assert captured["id2label"] == {0: "A00"}

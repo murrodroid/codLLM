@@ -3,6 +3,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import (
+    AutoModelForSequenceClassification,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     BitsAndBytesConfig,
@@ -86,7 +87,41 @@ def load_default_seq2seq(
     return model, tokenizer
 
 
-def load_base_model(cfg: Config) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-    """Load a model using a registry override or the default seq2seq loader."""
+def load_default_sequence_classifier(
+    cfg: Config,
+    label2id: Optional[dict[str, int]] = None,
+    id2label: Optional[dict[int, str]] = None,
+) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    """Load an AutoModelForSequenceClassification and tokenizer."""
+    _apply_hf_runtime_env(cfg)
+    token = _resolve_hf_token(cfg)
+    model_kwargs = _build_model_kwargs(cfg, token)
+    if label2id is not None:
+        model_kwargs["label2id"] = dict(label2id)
+        model_kwargs["num_labels"] = len(label2id)
+    if id2label is not None:
+        model_kwargs["id2label"] = {int(key): value for key, value in id2label.items()}
+        model_kwargs["num_labels"] = len(id2label)
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        cfg.hf_model, **model_kwargs
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.hf_model,
+        use_fast=True,
+        trust_remote_code=cfg.trust_remote_code,
+        token=token,
+    )
+    return model, tokenizer
+
+
+def load_base_model(
+    cfg: Config,
+    label2id: Optional[dict[str, int]] = None,
+    id2label: Optional[dict[int, str]] = None,
+) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    """Load a model using task type and optional registry overrides."""
+    if cfg.model_task == "sequence_classification":
+        return load_default_sequence_classifier(cfg, label2id, id2label)
     loader = MODEL_REGISTRY.get(cfg.hf_model, load_default_seq2seq)
     return loader(cfg)

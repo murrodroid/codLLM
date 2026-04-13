@@ -103,6 +103,70 @@ def _balance_df() -> pd.DataFrame:
     )
 
 
+def _write_masterlist(path: Path, num_rows: int = 4) -> None:
+    """Write a compact ICD10h masterlist-like workbook for pretraining tests."""
+    rows = []
+    for idx in range(num_rows):
+        rows.append(
+            {
+                "IDMasterlist": idx + 1,
+                "ICD10h": f"A{idx:02d}.000",
+                "ICD10": f"A{idx:02d}.0",
+                "icd10_2levelCATEGORY": "Category",
+                "ICD10_2levelCAUSE": f"Cause {idx}",
+                "ICD10h_DESCRIPTION": f"description-{idx}",
+                "HistCat": "Hist",
+                "DoNotUse": 0,
+                "NotForUnderlying": 0,
+                "GenderSpecific": 0,
+            }
+        )
+    pd.DataFrame(rows).to_excel(path, sheet_name="Masterlist", index=False)
+
+
+def _write_masterlist_with_transfer(
+    path: Path,
+    master_codes: list[str],
+    transfer_pairs: list[tuple[str, str]],
+) -> None:
+    """Write a compact masterlist workbook with transfer mapping sheet."""
+    master_rows = []
+    for idx, code in enumerate(master_codes, start=1):
+        master_rows.append(
+            {
+                "IDMasterlist": idx,
+                "ICD10h": code,
+                "ICD10": f"{code[:4]}{code[4]}" if len(code) >= 5 else code,
+                "icd10_2levelCATEGORY": "Category",
+                "ICD10_2levelCAUSE": f"Cause {idx}",
+                "ICD10h_DESCRIPTION": f"description-{idx}",
+                "HistCat": "Hist",
+                "DoNotUse": 0,
+                "NotForUnderlying": 0,
+                "GenderSpecific": 0,
+            }
+        )
+
+    transfer_rows = []
+    for idx, (old_code, new_code) in enumerate(transfer_pairs, start=1):
+        transfer_rows.append(
+            {
+                "ID2024Transfer": idx,
+                "IDoct2020Masterlist": idx,
+                "ICD10h_oct2020": old_code,
+                "ICD10h2024": new_code,
+            }
+        )
+
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame(master_rows).to_excel(
+            writer, sheet_name="Masterlist", index=False
+        )
+        pd.DataFrame(transfer_rows).to_excel(
+            writer, sheet_name="2020to2024transfer", index=False
+        )
+
+
 class TestBuildText:
     def test_build_text_uses_configured_training_input_order(self) -> None:
         """Text should respect feature order from training_input."""
@@ -380,6 +444,53 @@ class TestLoaders:
         assert result.iloc[0]["record_id"] == "RID-002"
         assert result.iloc[0]["label"] == "B01.001"
 
+    def test_build_processed_dataset_harmonizes_labels_against_masterlist(
+        self, tmp_path: Path
+    ) -> None:
+        """Harmonization should map transfer labels, pad suffixes, and drop unknowns."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                ["text-a", "A09.001", "", "1", "20", "RID-001"],
+                ["text-b", "Q36.9", "", "1", "21", "RID-002"],
+                ["text-c", "X99.999", "", "1", "22", "RID-003"],
+            ]
+        ).to_csv(csv_path, index=False)
+
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist_with_transfer(
+            masterlist_path,
+            master_codes=["A09.052", "Q36.900"],
+            transfer_pairs=[("A09.001", "A09.052")],
+        )
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_transfer_sheet_name="2020to2024transfer",
+            label_harmonization_enabled=True,
+        )
+        mapping = _make_mapping(multi_code_cols=[])
+
+        result = build_processed_dataset(
+            cfg=cfg,
+            mapping_registry={"test_mapping": mapping},
+        )
+
+        assert result["record_id"].tolist() == ["RID-001", "RID-002"]
+        assert result["label"].tolist() == ["A09.052", "Q36.900"]
+        assert result["y_codes"].tolist() == [["A09.052"], ["Q36.900"]]
+
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
     ) -> None:
@@ -410,6 +521,102 @@ class TestLoaders:
 
 
 class TestDataHandler:
+    def test_get_pretraining_train_dataframe_loads_masterlist(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining loader should map ICD10h description/text into training columns."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=3)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            training_input=["cod"],
+            data_sources=[],
+            pretrain_upsample_enabled=False,
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+        upsampling_metrics = handler.get_pretraining_upsampling_metrics()
+
+        assert pretrain_df is not None
+        assert len(pretrain_df) == 3
+        assert pretrain_df.iloc[0]["text"] == "cod: description-0"
+        assert pretrain_df.iloc[0]["label"] == "A00.000"
+        assert upsampling_metrics is not None
+        assert upsampling_metrics["enabled"] is False
+        assert upsampling_metrics["rows_before"] == 3
+        assert upsampling_metrics["rows_after"] == 3
+        assert upsampling_metrics["rows_added"] == 0
+
+    def test_get_pretraining_train_dataframe_upsamples_masterlist_and_tracks_metrics(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining rows should upsample to target per label and report metrics."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=2)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_upsample_enabled=True,
+            pretrain_upsample_target_per_label=3,
+            pretrain_upsample_perturbations=["delete_random_char"],
+            pretrain_upsample_perturbations_per_sample=1,
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+        upsampling_metrics = handler.get_pretraining_upsampling_metrics()
+
+        assert pretrain_df is not None
+        assert len(pretrain_df) == 6
+        assert pretrain_df["label"].value_counts().to_dict() == {
+            "A00.000": 3,
+            "A01.000": 3,
+        }
+        assert upsampling_metrics is not None
+        assert upsampling_metrics["enabled"] is True
+        assert upsampling_metrics["target_examples_per_label"] == 3
+        assert upsampling_metrics["rows_before"] == 2
+        assert upsampling_metrics["rows_after"] == 6
+        assert upsampling_metrics["rows_added"] == 4
+        assert upsampling_metrics["synthetic_rows"] == 4
+        assert upsampling_metrics["labels_upsampled"] == 2
+        assert upsampling_metrics["labels_below_target_before"] == 2
+        assert upsampling_metrics["labels_below_target_after"] == 0
+        assert upsampling_metrics["perturbations_per_sample"] == 1
+        assert upsampling_metrics["perturbation_applications"] == 4
+        assert upsampling_metrics["perturbed_rows"] == 4
+        assert upsampling_metrics["perturbation_rate"] == pytest.approx(1.0)
+        assert upsampling_metrics["label_count_summary_before"]["min"] == pytest.approx(
+            1.0
+        )
+        assert upsampling_metrics["label_count_summary_after"]["min"] == pytest.approx(
+            3.0
+        )
+
+    def test_get_masterlist_label_vocabulary_loads_sorted_unique_labels(
+        self, tmp_path: Path
+    ) -> None:
+        """Masterlist label vocabulary should expose sorted unique ICD10h labels."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=4)
+
+        cfg = Config(
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        labels = handler.get_masterlist_label_vocabulary()
+
+        assert labels == ["A00.000", "A01.000", "A02.000", "A03.000"]
+
     def test_select_upsample_targets_returns_quantile_minority_targets(self) -> None:
         """Minority selector should return per-label target counts."""
         targets = select_upsample_targets(

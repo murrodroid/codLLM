@@ -16,7 +16,7 @@ from codllm.icd10h_registry import (
     set_valid_codes,
 )
 
-MASTERLIST_PATH = Path("data/ICD10h_Masterlist_2024.xlsx")
+MASTERLIST_PATH = Path("data/raw/ICD10h_Masterlist_2024.xlsx")
 
 
 # --- Pattern ---

@@ -81,6 +81,7 @@ The training runtime uses config-driven reproducibility defaults:
 - deterministic torch algorithms
 - deterministic CuDNN mode
 - fixed dataloader worker count (`4` by default)
+- dataloader prefetch queue depth (`2` by default)
 - dynamic target-length floor for labels
 
 You can override these at runtime without editing code:
@@ -89,6 +90,9 @@ You can override these at runtime without editing code:
 export CODLLM_SEED=42
 export CODLLM_DATA_SEED=42
 export CODLLM_DATALOADER_NUM_WORKERS=4
+export CODLLM_DATALOADER_PIN_MEMORY=true
+export CODLLM_DATALOADER_PERSISTENT_WORKERS=false
+export CODLLM_DATALOADER_PREFETCH_FACTOR=2
 export CODLLM_HF_MODEL=google/flan-t5-small
 export CODLLM_MAX_SOURCE_LENGTH=256
 export CODLLM_MAX_TARGET_LENGTH=32
@@ -118,6 +122,14 @@ export CODLLM_MAX_LABEL_COUNT=2
 export CODLLM_LABEL_CODE_LENGTH=7
 export CODLLM_LABEL_SEPARATOR=" | "
 export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
+export CODLLM_PRETRAIN_ENABLED=1
+export CODLLM_PRETRAIN_MASTERLIST_PATH=data/raw/ICD10h_Masterlist_2024.xlsx
+export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME=Masterlist
+export CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS=1
+export CODLLM_PRETRAIN_UPSAMPLE_ENABLED=1
+export CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL=10
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS=swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell
+export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE=1
 ```
 
 ## Docker (Local)
@@ -172,11 +184,31 @@ Typical setups:
 
 Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows.
 
+### Masterlist Pretraining
+
+You can run a two-stage pipeline where the model first pretrains on the ICD10h masterlist and then continues normal training.
+
+Pretraining-specific knobs:
+
+- `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` controls pretraining epochs.
+- `CODLLM_PRETRAIN_LEARNING_RATE` optionally overrides pretraining LR (falls back to `CODLLM_LR`).
+- `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` controls the pretraining scheduler (default: `linear`).
+- `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` runs pretraining validation every N epochs (final epoch is always evaluated).
+- `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` enables label-wise pretraining upsampling (default: enabled).
+- `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
+- Pretraining warmup is fixed to `0` steps.
+- Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
+- For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
+- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
+
 ## HPC Usage (LSF, No Docker)
 
 Use this path when your cluster does not allow Docker.
 
 Script: `jobs/train.sh`
+H100 script: `jobs/train_h100.sh`
 
 ### 1) Edit scheduler directives in `jobs/train.sh`
 
@@ -225,6 +257,19 @@ bsub -env "all,JOB_CONFIG_FILE=jobs/configs/example.env,REQUIRE_JOB_CONFIG_FILE=
 See `jobs/configs/example.env`.
 You can define model selection and all training knobs here, for example
 `CODLLM_HF_MODEL`, `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE`, and `CODLLM_GRADIENT_ACCUMULATION_STEPS`.
+You can also run a single-variable sweep by using list syntax:
+
+```bash
+CODLLM_NUM_TRAIN_EPOCHS=[2,4,8]
+```
+
+Only one list-valued variable is supported per config file.
+
+For `jobs/train_h100.sh`, submit in the same style as `jobs/train.sh`:
+
+```bash
+bsub -env "all,JOB_CONFIG_FILE=jobs/configs/t5-large_h100.env,REQUIRE_JOB_CONFIG_FILE=1" < jobs/train_h100.sh
+```
 
 For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
 You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
@@ -266,16 +311,33 @@ tail -f logs/<job_id>.out
 - `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE` (default: `8`)
 - `CODLLM_PER_DEVICE_EVAL_BATCH_SIZE` (default: `8`)
 - `CODLLM_GRADIENT_ACCUMULATION_STEPS` (default: `2`)
+- `CODLLM_DATALOADER_NUM_WORKERS` (default: `4`)
+- `CODLLM_DATALOADER_PIN_MEMORY` (`1`/`0`; default: `1`)
+- `CODLLM_DATALOADER_PERSISTENT_WORKERS` (`1`/`0`; default: `0`)
+- `CODLLM_DATALOADER_PREFETCH_FACTOR` (default: `2`; only applied when workers > `0`)
 - `CODLLM_LOGGING_STEPS` (default: `25`)
 - `CODLLM_EVAL_STEPS` (default: `200`)
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `accuracy`)
+- `CODLLM_MODEL_TASK` (`seq2seq`, `sequence_classification`; default: `seq2seq`)
+- `CODLLM_LR_SCHEDULER_TYPE` (`linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`, `inverse_sqrt`, `reduce_lr_on_plateau`; default: `linear`)
 - `CODLLM_LR` (default: `3e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
+- `CODLLM_PRETRAIN_ENABLED` (`1`/`0`; when enabled, runs masterlist pretraining before normal training)
+- `CODLLM_PRETRAIN_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
+- `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
+- `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` (default: `1`)
+- `CODLLM_PRETRAIN_LEARNING_RATE` (optional; defaults to `CODLLM_LR` when unset)
+- `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` (default: `linear`)
+- `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` (default: `1`)
+- `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` (`1`/`0`; default: `1`)
+- `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` (default: `10`)
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
+- `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` (default: `1`)
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 

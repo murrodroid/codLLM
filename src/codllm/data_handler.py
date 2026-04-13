@@ -12,7 +12,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
-from codllm.config import Config
+from codllm.config import Config, DataSourceConfig
 import codllm.dataset_input as dataset_input
 from codllm.path_utils import resolve_source_path
 from codllm.preprocess import build_preprocess_fn
@@ -136,6 +136,107 @@ def prepare_training_dataset(
     )
 
 
+def _normalize_label_value(value: Any) -> str:
+    """Normalize one label value to a stripped string."""
+    if value is None:
+        return ""
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _tokenize_dataframe_for_sequence_classification(
+    cfg: Config,
+    tokenizer: Any,
+    dataframe: pd.DataFrame,
+    label2id: Mapping[str, int],
+) -> TokenizedSeq2SeqDataset:
+    """Convert a pandas dataframe into a tokenized sequence-classification dataset."""
+    if dataframe.empty:
+        raise ValueError("Training dataframe is empty.")
+    if cfg.dataset_text_column not in dataframe.columns:
+        raise KeyError(
+            f"Missing source column '{cfg.dataset_text_column}' in dataframe."
+        )
+    if cfg.dataset_label_column not in dataframe.columns:
+        raise KeyError(
+            f"Missing label column '{cfg.dataset_label_column}' in dataframe."
+        )
+
+    sources = dataframe[cfg.dataset_text_column].fillna("").astype(str).tolist()
+    labels = [_normalize_label_value(value) for value in dataframe[cfg.dataset_label_column]]
+
+    unique_labels = set(labels)
+    unknown_labels = sorted(label for label in unique_labels if label not in label2id)
+    if unknown_labels:
+        preview = ", ".join(unknown_labels[:10])
+        raise ValueError(
+            "Found labels missing from classifier label space: "
+            f"{preview}."
+        )
+
+    model_inputs = tokenizer(
+        sources,
+        max_length=cfg.max_source_length,
+        truncation=True,
+    )
+    model_inputs["labels"] = [int(label2id[label]) for label in labels]
+    return TokenizedSeq2SeqDataset(model_inputs)
+
+
+def prepare_sequence_classification_dataset(
+    cfg: Config,
+    tokenizer: Any,
+    dataset: Any,
+    label2id: Mapping[str, int],
+) -> Any:
+    """Convert a dataset into tokenized format expected by Trainer classification."""
+    if isinstance(dataset, pd.DataFrame):
+        return _tokenize_dataframe_for_sequence_classification(
+            cfg=cfg,
+            tokenizer=tokenizer,
+            dataframe=dataset,
+            label2id=label2id,
+        )
+
+    if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
+
+        def preprocess(batch: dict[str, Any]) -> dict[str, Any]:
+            if cfg.dataset_text_column not in batch:
+                raise KeyError(
+                    f"Missing source column '{cfg.dataset_text_column}' in batch."
+                )
+            if cfg.dataset_label_column not in batch:
+                raise KeyError(
+                    f"Missing label column '{cfg.dataset_label_column}' in batch."
+                )
+            sources = batch[cfg.dataset_text_column]
+            raw_labels = batch[cfg.dataset_label_column]
+            normalized_labels = [_normalize_label_value(value) for value in raw_labels]
+            unknown_labels = sorted(
+                label for label in set(normalized_labels) if label not in label2id
+            )
+            if unknown_labels:
+                preview = ", ".join(unknown_labels[:10])
+                raise ValueError(
+                    "Found labels missing from classifier label space: "
+                    f"{preview}."
+                )
+            model_inputs = tokenizer(
+                sources,
+                max_length=cfg.max_source_length,
+                truncation=True,
+            )
+            model_inputs["labels"] = [int(label2id[label]) for label in normalized_labels]
+            return model_inputs
+
+        return dataset.map(preprocess, batched=True, remove_columns=dataset.column_names)
+
+    raise TypeError(
+        "Unsupported dataset type. Expected pandas.DataFrame or a dataset with map/column_names."
+    )
+
+
 def resolve_training_frames(
     splits: DataSplits,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
@@ -209,6 +310,12 @@ def _perturb_cod_segment(
     return (
         cfg.text_field_separator.join(parts) if cfg.text_field_separator else parts[0]
     )
+
+
+def _contains_cod_segment(cfg: Config, text: str) -> bool:
+    """Return whether a training text contains a cod: segment."""
+    parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
+    return any(part.startswith("cod: ") for part in parts)
 
 
 def _quantile_target_count(class_counts: pd.Series, target_quantile: float) -> int:
@@ -487,6 +594,7 @@ class DataHandler:
         self.mapping_registry = dict(MAPPING_REGISTRY)
         if mapping_registry is not None:
             self.mapping_registry.update(mapping_registry)
+        self._pretraining_upsampling_metrics: dict[str, Any] | None = None
 
     @property
     def processed_path(self) -> Path:
@@ -635,6 +743,188 @@ class DataHandler:
             splits.train = self._apply_balance_policy(splits.train)
         return splits
 
+    def get_pretraining_train_dataframe(self) -> pd.DataFrame | None:
+        """Return optional masterlist dataframe used for pretraining."""
+        if not self.cfg.pretrain_enabled:
+            self._pretraining_upsampling_metrics = None
+            return None
+
+        pretrain_df = self._load_pretraining_source()
+        if pretrain_df.empty:
+            raise ValueError("Pretraining dataframe is empty.")
+        return self._apply_pretraining_upsample_policy(pretrain_df)
+
+    def get_pretraining_upsampling_metrics(self) -> dict[str, Any] | None:
+        """Return metrics from the latest pretraining upsampling pass."""
+        if self._pretraining_upsampling_metrics is None:
+            return None
+        return dict(self._pretraining_upsampling_metrics)
+
+    def get_masterlist_label_vocabulary(self) -> list[str]:
+        """Return sorted unique ICD10h label values from the configured masterlist."""
+        masterlist_df = self._load_pretraining_source()
+        label_column = self.cfg.dataset_label_column
+        if label_column not in masterlist_df.columns:
+            raise KeyError(
+                f"Masterlist dataframe is missing label column '{label_column}'."
+            )
+        labels = (
+            masterlist_df[label_column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        unique_labels = sorted(label for label in labels.unique().tolist() if label)
+        if not unique_labels:
+            raise ValueError("Masterlist label vocabulary is empty.")
+        return unique_labels
+
+    def _load_pretraining_source(self) -> pd.DataFrame:
+        """Load pretraining rows from the configured ICD10h masterlist source."""
+        source = DataSourceConfig(
+            source_id="masterlist_pretrain",
+            path=self.cfg.pretrain_masterlist_path,
+            mapping_id="masterlist",
+            sheet_name=self.cfg.pretrain_masterlist_sheet_name,
+            enabled=True,
+        )
+        if source.mapping_id not in self.mapping_registry:
+            raise KeyError(
+                f"Unknown mapping_id '{source.mapping_id}' for pretraining source."
+            )
+        mapping = self.mapping_registry[source.mapping_id]
+        pretrain_df = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=self.cfg.training_input,
+            max_labels=self.cfg.max_label_count,
+            label_separator=self.cfg.label_separator,
+            text_field_separator=self.cfg.text_field_separator,
+            data_raw_dir=self.cfg.data_raw_dir,
+            text_column=self.cfg.dataset_text_column,
+            label_column=self.cfg.dataset_label_column,
+        )
+        self._validate_required_columns(pretrain_df)
+        self._validate_label_quality(pretrain_df)
+        return pretrain_df.reset_index(drop=True)
+
+    def _label_count_summary(self, counts: pd.Series) -> dict[str, float]:
+        """Summarize label-count distribution for metadata and diagnostics."""
+        if counts.empty:
+            return {"min": 0.0, "max": 0.0, "median": 0.0, "mean": 0.0}
+        return {
+            "min": float(counts.min()),
+            "max": float(counts.max()),
+            "median": float(counts.median()),
+            "mean": float(counts.mean()),
+        }
+
+    def _apply_pretraining_upsample_policy(self, pretrain_df: pd.DataFrame) -> pd.DataFrame:
+        """Upsample pretraining rows per label and track perturbation diagnostics."""
+        label_column = self.cfg.dataset_label_column
+        text_column = self.cfg.dataset_text_column
+        target_count = self.cfg.pretrain_upsample_target_per_label
+        perturbations_per_sample = self.cfg.pretrain_upsample_perturbations_per_sample
+
+        if target_count < 1:
+            raise ValueError("pretrain_upsample_target_per_label must be at least 1.")
+        if perturbations_per_sample < 1:
+            raise ValueError(
+                "pretrain_upsample_perturbations_per_sample must be at least 1."
+            )
+
+        rows_before = int(len(pretrain_df))
+        before_counts = pretrain_df[label_column].value_counts()
+        metrics: dict[str, Any] = {
+            "enabled": bool(self.cfg.pretrain_upsample_enabled),
+            "target_examples_per_label": int(target_count),
+            "rows_before": rows_before,
+            "rows_after": rows_before,
+            "rows_added": 0,
+            "synthetic_rows": 0,
+            "perturbed_rows": 0,
+            "perturbation_rate": 0.0,
+            "perturbation_applications": 0,
+            "perturbations_per_sample": int(perturbations_per_sample),
+            "perturbations": list(self.cfg.pretrain_upsample_perturbations),
+            "labels_before": int(before_counts.shape[0]),
+            "labels_upsampled": 0,
+            "labels_below_target_before": int((before_counts < target_count).sum()),
+            "labels_below_target_after": int((before_counts < target_count).sum()),
+            "label_count_summary_before": self._label_count_summary(before_counts),
+            "label_count_summary_after": self._label_count_summary(before_counts),
+        }
+
+        if not self.cfg.pretrain_upsample_enabled:
+            self._pretraining_upsampling_metrics = metrics
+            return pretrain_df.reset_index(drop=True)
+
+        perturbation_fns = _resolve_perturbation_functions(
+            self.cfg.pretrain_upsample_perturbations
+        )
+        rng = random.Random(self.cfg.resolved_data_seed())
+
+        synthetic_rows: list[dict[str, Any]] = []
+        perturbed_rows = 0
+        perturbation_applications = 0
+        labels_upsampled = 0
+
+        for label, current_count in before_counts.items():
+            current_count_int = int(current_count)
+            if current_count_int >= target_count:
+                continue
+
+            class_rows = pretrain_df[pretrain_df[label_column] == label]
+            needed = target_count - current_count_int
+            sampled_rows = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
+            if not sampled_rows:
+                continue
+            labels_upsampled += 1
+
+            for row in sampled_rows:
+                synthetic_row = dict(row)
+                original_text = str(synthetic_row[text_column])
+                perturbed_text = original_text
+
+                if perturbation_fns:
+                    perturbed_text = _perturb_cod_segment(
+                        cfg=self.cfg,
+                        text=original_text,
+                        perturbation_fns=perturbation_fns,
+                        perturbations_per_sample=perturbations_per_sample,
+                        rng=rng,
+                    )
+                    if _contains_cod_segment(self.cfg, original_text):
+                        perturbation_applications += perturbations_per_sample
+
+                if perturbed_text != original_text:
+                    perturbed_rows += 1
+                synthetic_row[text_column] = perturbed_text
+                synthetic_rows.append(synthetic_row)
+
+        if synthetic_rows:
+            synthetic_df = pd.DataFrame(synthetic_rows, columns=pretrain_df.columns)
+            result_df = pd.concat([pretrain_df, synthetic_df], ignore_index=True)
+        else:
+            result_df = pretrain_df
+
+        rows_after = int(len(result_df))
+        synthetic_count = int(len(synthetic_rows))
+        after_counts = result_df[label_column].value_counts()
+        metrics["rows_after"] = rows_after
+        metrics["rows_added"] = rows_after - rows_before
+        metrics["synthetic_rows"] = synthetic_count
+        metrics["labels_upsampled"] = labels_upsampled
+        metrics["perturbed_rows"] = perturbed_rows
+        metrics["perturbation_applications"] = perturbation_applications
+        metrics["perturbation_rate"] = (
+            float(perturbed_rows / synthetic_count) if synthetic_count > 0 else 0.0
+        )
+        metrics["labels_below_target_after"] = int((after_counts < target_count).sum())
+        metrics["label_count_summary_after"] = self._label_count_summary(after_counts)
+        self._pretraining_upsampling_metrics = metrics
+        return result_df.reset_index(drop=True)
+
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Apply optional upsampling and manipulation rules to the training split."""
         balanced_train_df = train_df
@@ -762,11 +1052,12 @@ class DataHandler:
         self._validate_label_quality(df)
         return df
 
-    def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Subsample dataframe for pilot runs according to cfg.dataset_size."""
-        size = self.cfg.dataset_size
+    def _sample_dataframe_by_fraction(
+        self, df: pd.DataFrame, size: float, setting_name: str
+    ) -> pd.DataFrame:
+        """Subsample dataframe rows according to a configured fractional size."""
         if size <= 0 or size > 1:
-            raise ValueError("dataset_size must be in the interval (0, 1].")
+            raise ValueError(f"{setting_name} must be in the interval (0, 1].")
         if size == 1:
             return df.reset_index(drop=True)
 
@@ -778,6 +1069,14 @@ class DataHandler:
         return df.sample(
             n=sample_count, random_state=data_seed, replace=False
         ).reset_index(drop=True)
+
+    def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Subsample dataframe for pilot runs according to cfg.dataset_size."""
+        return self._sample_dataframe_by_fraction(
+            df=df,
+            size=self.cfg.dataset_size,
+            setting_name="dataset_size",
+        )
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:
         """Ensure configured text/label columns exist in the dataframe."""

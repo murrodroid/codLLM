@@ -10,6 +10,9 @@ ENV_KEYS = [
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
+    "CODLLM_DATALOADER_PIN_MEMORY",
+    "CODLLM_DATALOADER_PERSISTENT_WORKERS",
+    "CODLLM_DATALOADER_PREFETCH_FACTOR",
     "CODLLM_MAX_SOURCE_LENGTH",
     "CODLLM_WARMUP_STEPS",
     "CODLLM_NUM_TRAIN_EPOCHS",
@@ -22,6 +25,8 @@ ENV_KEYS = [
     "CODLLM_EVAL_STRATEGY",
     "CODLLM_SAVE_STRATEGY",
     "CODLLM_SAVE_STRATEGY_BEST_METRIC",
+    "CODLLM_MODEL_TASK",
+    "CODLLM_LR_SCHEDULER_TYPE",
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
@@ -53,6 +58,19 @@ ENV_KEYS = [
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
     "CODLLM_TEST_SIZE",
+    "CODLLM_PRETRAIN_ENABLED",
+    "CODLLM_PRETRAIN_MASTERLIST_PATH",
+    "CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME",
+    "CODLLM_PRETRAIN_TRANSFER_SHEET_NAME",
+    "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
+    "CODLLM_PRETRAIN_LEARNING_RATE",
+    "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
+    "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
+    "CODLLM_PRETRAIN_UPSAMPLE_ENABLED",
+    "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL",
+    "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
+    "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
+    "CODLLM_LABEL_HARMONIZATION_ENABLED",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -86,6 +104,9 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
+    monkeypatch.setenv("CODLLM_DATALOADER_PIN_MEMORY", "false")
+    monkeypatch.setenv("CODLLM_DATALOADER_PERSISTENT_WORKERS", "true")
+    monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "4")
     monkeypatch.setenv("CODLLM_MAX_SOURCE_LENGTH", "300")
     monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
     monkeypatch.setenv("CODLLM_NUM_TRAIN_EPOCHS", "6")
@@ -98,6 +119,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_EVAL_STRATEGY", "steps")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY", "best")
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "macro_f1")
+    monkeypatch.setenv("CODLLM_MODEL_TASK", "sequence_classification")
+    monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "cosine")
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
@@ -129,6 +152,24 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
     monkeypatch.setenv("CODLLM_TEST_SIZE", "0.1")
+    monkeypatch.setenv("CODLLM_PRETRAIN_ENABLED", "true")
+    monkeypatch.setenv(
+        "CODLLM_PRETRAIN_MASTERLIST_PATH", "data/raw/ICD10h_Masterlist_2024.xlsx"
+    )
+    monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME", "Masterlist")
+    monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "2020to2024transfer")
+    monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
+    monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
+    monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
+    monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_ENABLED", "true")
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL", "10")
+    monkeypatch.setenv(
+        "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
+        "delete_random_char,qwerty_misspell",
+    )
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
+    monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -152,6 +193,9 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.seed == 101
     assert cfg.data_seed == 202
     assert cfg.dataloader_num_workers == 3
+    assert cfg.dataloader_pin_memory is False
+    assert cfg.dataloader_persistent_workers is True
+    assert cfg.dataloader_prefetch_factor == 4
     assert cfg.max_source_length == 300
     assert cfg.warmup_steps == 500
     assert cfg.num_train_epochs == 6
@@ -164,6 +208,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.eval_strategy == "steps"
     assert cfg.save_strategy == "best"
     assert cfg.save_strategy_best_metric == "macro_f1"
+    assert cfg.model_task == "sequence_classification"
+    assert cfg.lr_scheduler_type == "cosine"
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
@@ -195,6 +241,22 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2
     assert cfg.test_size == 0.1
+    assert cfg.pretrain_enabled is True
+    assert cfg.pretrain_masterlist_path == "data/raw/ICD10h_Masterlist_2024.xlsx"
+    assert cfg.pretrain_masterlist_sheet_name == "Masterlist"
+    assert cfg.pretrain_transfer_sheet_name == "2020to2024transfer"
+    assert cfg.pretrain_num_train_epochs == 2
+    assert cfg.pretrain_learning_rate == 8e-6
+    assert cfg.pretrain_eval_every_n_epochs == 10
+    assert cfg.pretrain_lr_scheduler_type == "linear"
+    assert cfg.pretrain_upsample_enabled is True
+    assert cfg.pretrain_upsample_target_per_label == 10
+    assert cfg.pretrain_upsample_perturbations == [
+        "delete_random_char",
+        "qwerty_misspell",
+    ]
+    assert cfg.pretrain_upsample_perturbations_per_sample == 2
+    assert cfg.label_harmonization_enabled is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"
@@ -228,6 +290,16 @@ def test_config_from_env_rejects_negative_dataloader_workers(
     """Dataloader worker count should be non-negative."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "-1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_dataloader_prefetch_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dataloader prefetch factor should be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "0")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -398,6 +470,86 @@ def test_config_from_env_rejects_invalid_upsample_budget_ratio(
     """Upsample budget ratio should stay inside [0, 1]."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "1.2")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_num_train_epochs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining epochs must be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_non_positive_pretrain_learning_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining learning rate must be positive when provided."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_eval_every_n_epochs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining eval interval must be at least one epoch."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_upsample_target_per_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining upsample target must be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_perturbations_per_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining perturbations per sample must be at least one."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_lr_scheduler_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LR scheduler type should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_LR_SCHEDULER_TYPE", "invalid")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_model_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Model task should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MODEL_TASK", "invalid_task")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_lr_scheduler_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining LR scheduler type should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "invalid")
     with pytest.raises(ValueError):
         config_from_env()
 
