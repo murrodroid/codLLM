@@ -82,6 +82,8 @@ MASTERLIST_MAPPING = DatasetMapping(
     sex_col=None,
     sex_map={},
     age_col=None,
+)
+
 IPSWICH_MAPPING = DatasetMapping(
     text_col=4,
     single_code_col=5,
