@@ -244,6 +244,17 @@ class Config:
         ]
     )
     pretrain_upsample_perturbations_per_sample: int = 1
+    masterlist_inject_enabled: bool = False
+    masterlist_inject_target_per_label: int = 10
+    masterlist_inject_perturbations: list[str] = field(
+        default_factory=lambda: [
+            "swap_adjacent_chars",
+            "delete_random_char",
+            "accent_random_vowel",
+            "qwerty_misspell",
+        ]
+    )
+    masterlist_inject_perturbations_per_sample: int = 1
     label_harmonization_enabled: bool = False
 
     balance_strategy: BalanceStrategy = "sqrt"
@@ -720,6 +731,45 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.pretrain_upsample_perturbations_per_sample = (
             pretrain_upsample_perturbations_per_sample
+        )
+
+    masterlist_inject_enabled = _parse_env_bool("CODLLM_MASTERLIST_INJECT_ENABLED")
+    if masterlist_inject_enabled is not None:
+        cfg.masterlist_inject_enabled = masterlist_inject_enabled
+
+    masterlist_inject_target_per_label = _parse_env_int(
+        "CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL"
+    )
+    if masterlist_inject_target_per_label is not None:
+        if masterlist_inject_target_per_label < 1:
+            raise ValueError(
+                "CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL must be at least 1."
+            )
+        cfg.masterlist_inject_target_per_label = masterlist_inject_target_per_label
+
+    masterlist_inject_perturbations = os.getenv(
+        "CODLLM_MASTERLIST_INJECT_PERTURBATIONS"
+    )
+    if (
+        masterlist_inject_perturbations is not None
+        and masterlist_inject_perturbations.strip() != ""
+    ):
+        cfg.masterlist_inject_perturbations = [
+            name.strip()
+            for name in masterlist_inject_perturbations.split(",")
+            if name.strip()
+        ]
+
+    masterlist_inject_perturbations_per_sample = _parse_env_int(
+        "CODLLM_MASTERLIST_INJECT_PERTURBATIONS_PER_SAMPLE"
+    )
+    if masterlist_inject_perturbations_per_sample is not None:
+        if masterlist_inject_perturbations_per_sample < 1:
+            raise ValueError(
+                "CODLLM_MASTERLIST_INJECT_PERTURBATIONS_PER_SAMPLE must be at least 1."
+            )
+        cfg.masterlist_inject_perturbations_per_sample = (
+            masterlist_inject_perturbations_per_sample
         )
 
     label_harmonization_enabled = _parse_env_bool(
