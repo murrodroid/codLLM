@@ -39,6 +39,10 @@ NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
         "balance_upsample_inverse_power",
         "balance_upsample_budget_ratio",
         "balance_base_perturbation_rate",
+        "masterlist_inject_enabled",
+        "masterlist_inject_target_per_label",
+        "masterlist_inject_perturbations",
+        "masterlist_inject_perturbations_per_sample",
     }
 )
 
@@ -595,6 +599,7 @@ class DataHandler:
         if mapping_registry is not None:
             self.mapping_registry.update(mapping_registry)
         self._pretraining_upsampling_metrics: dict[str, Any] | None = None
+        self._masterlist_inject_metrics: dict[str, Any] | None = None
 
     @property
     def processed_path(self) -> Path:
@@ -741,6 +746,8 @@ class DataHandler:
         splits = self.split_dataframe(sampled_df)
         if not splits.train.empty:
             splits.train = self._apply_balance_policy(splits.train)
+        if self.cfg.masterlist_inject_enabled and not splits.train.empty:
+            splits.train = self._inject_masterlist(splits.train)
         return splits
 
     def get_pretraining_train_dataframe(self) -> pd.DataFrame | None:
@@ -980,6 +987,82 @@ class DataHandler:
             )
 
         return balanced_train_df
+
+    def _inject_masterlist(self, train_df: pd.DataFrame) -> pd.DataFrame:
+        """Load the masterlist, upsample with perturbations, and inject into training split."""
+        masterlist_df = self._load_pretraining_source()
+        if masterlist_df.empty:
+            warnings.warn("Masterlist is empty; skipping injection.")
+            return train_df
+
+        target_count = self.cfg.masterlist_inject_target_per_label
+        perturbations_per_sample = self.cfg.masterlist_inject_perturbations_per_sample
+        label_column = self.cfg.dataset_label_column
+        text_column = self.cfg.dataset_text_column
+
+        if target_count < 1:
+            raise ValueError("masterlist_inject_target_per_label must be at least 1.")
+
+        perturbation_fns = _resolve_perturbation_functions(
+            self.cfg.masterlist_inject_perturbations
+        )
+        rng = random.Random(self.cfg.resolved_data_seed() + 2)
+
+        before_counts = masterlist_df[label_column].value_counts()
+        synthetic_rows: list[dict[str, Any]] = []
+
+        for label, current_count in before_counts.items():
+            current_count_int = int(current_count)
+            if current_count_int >= target_count:
+                needed = 0
+            else:
+                needed = target_count - current_count_int
+
+            class_rows = masterlist_df[masterlist_df[label_column] == label]
+
+            # Always include originals
+            for _, row in class_rows.iterrows():
+                synthetic_rows.append(dict(row))
+
+            # Add perturbed copies up to target
+            if needed > 0:
+                sampled = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
+                for row in sampled:
+                    new_row = dict(row)
+                    original_text = str(new_row[text_column])
+                    if perturbation_fns:
+                        new_row[text_column] = _perturb_cod_segment(
+                            cfg=self.cfg,
+                            text=original_text,
+                            perturbation_fns=perturbation_fns,
+                            perturbations_per_sample=perturbations_per_sample,
+                            rng=rng,
+                        )
+                    synthetic_rows.append(new_row)
+
+        inject_df = pd.DataFrame(synthetic_rows, columns=train_df.columns)
+        rows_injected = len(inject_df)
+        labels_injected = inject_df[label_column].nunique()
+        print(
+            f"Masterlist injection: {rows_injected} rows "
+            f"({labels_injected} labels) injected into training split."
+        )
+        self._masterlist_inject_metrics = {
+            "enabled": True,
+            "target_per_label": target_count,
+            "rows_injected": rows_injected,
+            "labels_injected": labels_injected,
+            "perturbations": list(self.cfg.masterlist_inject_perturbations),
+            "perturbations_per_sample": perturbations_per_sample,
+        }
+        return pd.concat([train_df, inject_df], ignore_index=True)
+
+    def get_masterlist_inject_metrics(self) -> dict[str, Any] | None:
+        """Return metrics from the latest masterlist injection pass."""
+        metrics = getattr(self, "_masterlist_inject_metrics", None)
+        if metrics is None:
+            return None
+        return dict(metrics)
 
     def split_dataframe(self, df: pd.DataFrame) -> DataSplits:
         """Split a dataframe into train, validation, and test sets."""

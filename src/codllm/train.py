@@ -801,6 +801,10 @@ def train(
             },
         }
 
+    masterlist_inject_metrics = handler.get_masterlist_inject_metrics()
+    if masterlist_inject_metrics is not None:
+        run_data_metadata["masterlist_injection"] = masterlist_inject_metrics
+
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
     pretrain_upsampling_metrics_loader = getattr(
