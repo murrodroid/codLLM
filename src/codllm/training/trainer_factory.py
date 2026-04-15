@@ -1,0 +1,163 @@
+from typing import Any
+
+from transformers import (
+    DataCollatorForSeq2Seq,
+    DataCollatorWithPadding,
+    Trainer,
+    TrainerCallback,
+)
+
+import codllm.wandb_utils as wandb_utils
+from codllm.config import Config
+from codllm.data_handler import (
+    prepare_sequence_classification_dataset,
+    prepare_training_dataset,
+)
+from codllm.metrics import (
+    build_exact_match_accuracy_metric,
+    build_sequence_classification_metric,
+)
+from codllm.trainer_logging import (
+    EvaluateEveryNEpochsCallback,
+    StageScopedSeq2SeqTrainer,
+    StageScopedTrainer,
+)
+from codllm.training.arguments import build_training_args
+from codllm.training.metadata import (
+    build_stage_run_metadata,
+    print_training_configuration,
+)
+from codllm.training.stages import TrainingStage, should_apply_eval_interval_callback
+
+
+def run_training_stage(
+    cfg: Config,
+    stage: TrainingStage,
+    model: Any,
+    tokenizer: Any,
+    disable_fp16: bool,
+    train_ds: Any,
+    eval_ds: Any | None = None,
+    run_data_metadata: dict[str, Any] | None = None,
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> Trainer:
+    """Preprocess datasets and run one training stage."""
+    target_max_length = cfg.resolved_max_target_length()
+    if cfg.model_task == "sequence_classification":
+        if label2id is None or id2label is None:
+            raise ValueError(
+                "Sequence-classification training requires label mappings."
+            )
+        processed_train_ds = prepare_sequence_classification_dataset(
+            cfg=cfg,
+            tokenizer=tokenizer,
+            dataset=train_ds,
+            label2id=label2id,
+        )
+        processed_eval_ds = None
+        if eval_ds is not None:
+            processed_eval_ds = prepare_sequence_classification_dataset(
+                cfg=cfg,
+                tokenizer=tokenizer,
+                dataset=eval_ds,
+                label2id=label2id,
+            )
+        collator: Any = DataCollatorWithPadding(tokenizer=tokenizer)
+    else:
+        processed_train_ds = prepare_training_dataset(
+            cfg,
+            tokenizer,
+            train_ds,
+            target_max_length,
+        )
+        processed_eval_ds = None
+        if eval_ds is not None:
+            processed_eval_ds = prepare_training_dataset(
+                cfg,
+                tokenizer,
+                eval_ds,
+                target_max_length,
+            )
+        collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+
+    stage_run_data_metadata = build_stage_run_metadata(
+        run_data_metadata=run_data_metadata,
+        stage=stage,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+    )
+    args = build_training_args(
+        cfg=cfg,
+        has_eval=processed_eval_ds is not None,
+        stage=stage,
+        generation_max_length=target_max_length,
+        disable_fp16=disable_fp16,
+    )
+    wandb_utils.patch_transformers_wandb_log_rewrite(report_to=args.report_to)
+    training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
+    metadata_payload = wandb_utils.build_experiment_metadata(
+        cfg=cfg,
+        data_metadata=stage_run_data_metadata,
+        training_args=training_args_payload,
+    )
+    wandb_utils.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=args.report_to,
+        run_name=args.run_name,
+        metadata=metadata_payload,
+    )
+    print_training_configuration(cfg, args, stage_run_data_metadata)
+
+    callbacks: list[TrainerCallback] = []
+    eval_strategy_value = (
+        args.eval_strategy.value
+        if hasattr(args.eval_strategy, "value")
+        else str(args.eval_strategy)
+    )
+    if should_apply_eval_interval_callback(
+        stage=stage,
+        eval_strategy_value=eval_strategy_value,
+        has_eval_dataset=processed_eval_ds is not None,
+    ):
+        callbacks.append(EvaluateEveryNEpochsCallback(stage.eval_every_n_epochs))
+
+    if cfg.model_task == "sequence_classification":
+        trainer = StageScopedTrainer(
+            model=model,
+            args=args,
+            train_dataset=processed_train_ds,
+            eval_dataset=processed_eval_ds,
+            data_collator=collator,
+            processing_class=tokenizer,
+            stage_name=stage.name,
+            callbacks=callbacks or None,
+            compute_metrics=(
+                build_sequence_classification_metric(id2label=id2label)
+                if processed_eval_ds is not None and id2label is not None
+                else None
+            ),
+        )
+    else:
+        trainer = StageScopedSeq2SeqTrainer(
+            model=model,
+            args=args,
+            train_dataset=processed_train_ds,
+            eval_dataset=processed_eval_ds,
+            data_collator=collator,
+            processing_class=tokenizer,
+            stage_name=stage.name,
+            callbacks=callbacks or None,
+            compute_metrics=(
+                build_exact_match_accuracy_metric(
+                    tokenizer,
+                    label_separator=cfg.label_separator,
+                    max_label_count=cfg.max_label_count,
+                )
+                if processed_eval_ds is not None
+                else None
+            ),
+        )
+
+    trainer.train()
+    return trainer

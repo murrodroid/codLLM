@@ -6,15 +6,20 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import codllm.config as config_module
 import codllm.metrics as metrics_module
 import codllm.run_directory as run_directory_module
 import codllm.trainer_logging as trainer_logging_module
-import codllm.train as train_module
 import codllm.wandb_utils as wandb_utils_module
 from codllm.config import Config, WandbConfig
 from codllm.data_handler import DataSplits
 from codllm.preprocess import build_preprocess_fn
-from codllm.train import build_training_args
+from codllm.training import build_training_args
+import codllm.training.arguments as arguments_module
+import codllm.training.metadata as metadata_module
+import codllm.training.model_setup as model_setup_module
+import codllm.training.pipeline as pipeline_module
+import codllm.training.stages as stages_module
 
 
 class DummyTokenizer:
@@ -83,7 +88,7 @@ def test_preprocess_raises_when_column_missing() -> None:
 def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> None:
     """Training args should use eval_strategy and disable eval when absent."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -119,7 +124,7 @@ def test_build_training_args_defaults_data_seed_to_seed(
 ) -> None:
     """Data seed should fall back to seed when data_seed is not set."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -134,7 +139,7 @@ def test_build_training_args_disables_persistent_workers_without_worker_processe
 ) -> None:
     """Persistent workers should be disabled when dataloader workers are zero."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -156,7 +161,7 @@ def test_build_training_args_honors_explicit_generation_max_length(
 ) -> None:
     """Explicit generation cap should override derived target max length."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -170,7 +175,7 @@ def test_build_training_args_honors_stage_overrides(
 ) -> None:
     """Stage overrides should control output, epochs, lr, and warmup."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -181,14 +186,18 @@ def test_build_training_args_honors_stage_overrides(
         warmup_steps=100,
         lr_scheduler_type="linear",
     )
-    args = build_training_args(
-        cfg,
-        has_eval=True,
+    stage = stages_module.TrainingStage(
+        name="train",
         output_dir="/tmp/stage-output",
         num_train_epochs=2,
         learning_rate=3e-5,
         warmup_steps=0,
         lr_scheduler_type="constant",
+    )
+    args = build_training_args(
+        cfg,
+        has_eval=True,
+        stage=stage,
     )
     assert args.output_dir == "/tmp/stage-output"
     assert args.num_train_epochs == 2
@@ -207,7 +216,7 @@ def test_build_training_args_disables_fp16_when_requested(
 ) -> None:
     """Explicit disable flag should force fp16 AMP off."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -283,21 +292,37 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
 
 def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
     """Pretraining stage should honor the configured eval epoch interval."""
-    assert train_module._should_apply_eval_interval_callback(
-        stage_name="pretrain",
+    stage = stages_module.TrainingStage(
+        name="pretrain",
+        output_dir="/tmp/pretrain",
+        num_train_epochs=1,
+        learning_rate=1e-5,
+        warmup_steps=0,
+        lr_scheduler_type="linear",
+        eval_every_n_epochs=10,
+    )
+    assert stages_module.should_apply_eval_interval_callback(
+        stage=stage,
         eval_strategy_value="epoch",
         has_eval_dataset=True,
-        eval_every_n_epochs=10,
     )
 
 
 def test_should_not_apply_eval_interval_callback_for_finetune_stage() -> None:
     """Fine-tuning should follow user eval strategy without pretraining interval overrides."""
-    assert not train_module._should_apply_eval_interval_callback(
-        stage_name="finetune",
+    stage = stages_module.TrainingStage(
+        name="finetune",
+        output_dir="/tmp/finetune",
+        num_train_epochs=1,
+        learning_rate=1e-5,
+        warmup_steps=0,
+        lr_scheduler_type="linear",
+        eval_every_n_epochs=10,
+    )
+    assert not stages_module.should_apply_eval_interval_callback(
+        stage=stage,
         eval_strategy_value="epoch",
         has_eval_dataset=True,
-        eval_every_n_epochs=10,
     )
 
 
@@ -352,7 +377,7 @@ def test_build_training_args_best_save_strategy_sets_metric(
 ) -> None:
     """Best save strategy should configure the best-model metric and direction."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -372,7 +397,7 @@ def test_build_training_args_best_loss_metric_uses_lower_is_better(
 ) -> None:
     """Best save strategy should minimize loss metrics."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -387,7 +412,7 @@ def test_build_training_args_best_save_strategy_requires_eval_data(
 ) -> None:
     """Best save strategy should fail fast when no eval split is available."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -401,7 +426,7 @@ def test_build_training_args_best_micro_metric_requires_multi_label(
 ) -> None:
     """Best save strategy should reject micro metrics for single-label runs."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
@@ -419,13 +444,13 @@ def test_print_training_configuration_emits_summary_when_verbose(
 ) -> None:
     """Verbose mode should print JSON summary with config and training args."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(verbose=True, training_input=["cod", "age"], hf_token="secret")
     args = build_training_args(cfg, has_eval=True)
-    train_module._print_training_configuration(
+    metadata_module.print_training_configuration(
         cfg=cfg,
         args=args,
         run_data_metadata={"split_rows": {"train": 3}},
@@ -446,13 +471,13 @@ def test_print_training_configuration_noop_when_not_verbose(
 ) -> None:
     """Non-verbose mode should not print config summary."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
     cfg = Config(verbose=False)
     args = build_training_args(cfg, has_eval=True)
-    train_module._print_training_configuration(
+    metadata_module.print_training_configuration(
         cfg=cfg,
         args=args,
         run_data_metadata={"split_rows": {"train": 3}},
@@ -500,15 +525,15 @@ def test_build_training_args_auto_dtype_disables_fp16_without_bf16_support(
 ) -> None:
     """Auto dtype on CUDA should avoid fp16 when bf16 AMP is unavailable."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
-    monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(train_module.torch.cuda, "device_count", lambda: 1)
-    monkeypatch.setattr(train_module.torch.cuda, "set_device", lambda _: None)
+    monkeypatch.setattr(config_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(config_module.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(config_module.torch.cuda, "set_device", lambda _: None)
     monkeypatch.setattr(
-        train_module.torch.cuda, "is_bf16_supported", lambda: False, raising=False
+        config_module.torch.cuda, "is_bf16_supported", lambda: False, raising=False
     )
     cfg = Config(torch_dtype="auto")
     with pytest.warns(UserWarning, match="full precision"):
@@ -522,15 +547,15 @@ def test_build_training_args_auto_dtype_uses_bf16_when_supported(
 ) -> None:
     """Auto dtype on CUDA should prefer bf16 AMP when hardware supports it."""
     monkeypatch.setattr(
-        train_module.wandb_utils,
+        arguments_module.wandb_utils,
         "resolve_wandb_reporting",
         lambda _: ("none", None),
     )
-    monkeypatch.setattr(train_module.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(train_module.torch.cuda, "device_count", lambda: 1)
-    monkeypatch.setattr(train_module.torch.cuda, "set_device", lambda _: None)
+    monkeypatch.setattr(config_module.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(config_module.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(config_module.torch.cuda, "set_device", lambda _: None)
     monkeypatch.setattr(
-        train_module.torch.cuda, "is_bf16_supported", lambda: True, raising=False
+        config_module.torch.cuda, "is_bf16_supported", lambda: True, raising=False
     )
     cfg = Config(torch_dtype="auto")
     args = build_training_args(cfg, has_eval=True)
@@ -540,33 +565,33 @@ def test_build_training_args_auto_dtype_uses_bf16_when_supported(
 
 def test_model_uses_trainable_fp16_params_detects_half_weights() -> None:
     """Model inspection should detect trainable float16 parameters."""
-    model = train_module.torch.nn.Linear(4, 2).half()
-    assert train_module._model_uses_trainable_fp16_params(model) is True
+    model = model_setup_module.torch.nn.Linear(4, 2).half()
+    assert model_setup_module.model_uses_trainable_fp16_params(model) is True
 
 
 def test_model_uses_trainable_fp16_params_ignores_frozen_weights() -> None:
     """Frozen float16 parameters should not trigger fp16 AMP disablement."""
-    model = train_module.torch.nn.Linear(4, 2).half()
+    model = model_setup_module.torch.nn.Linear(4, 2).half()
     for parameter in model.parameters():
         parameter.requires_grad = False
-    assert train_module._model_uses_trainable_fp16_params(model) is False
+    assert model_setup_module.model_uses_trainable_fp16_params(model) is False
 
 
 def test_upcast_trainable_fp16_params_casts_to_float32() -> None:
     """Upcast helper should convert trainable half weights to float32."""
-    model = train_module.torch.nn.Linear(4, 2).half()
-    did_upcast = train_module._upcast_trainable_fp16_params(model)
+    model = model_setup_module.torch.nn.Linear(4, 2).half()
+    did_upcast = model_setup_module.upcast_trainable_fp16_params(model)
     assert did_upcast is True
     dtypes = {
         parameter.dtype for parameter in model.parameters() if parameter.requires_grad
     }
-    assert dtypes == {train_module.torch.float32}
+    assert dtypes == {model_setup_module.torch.float32}
 
 
 def test_upcast_trainable_fp16_params_noop_for_float32() -> None:
     """Upcast helper should no-op when model is already float32."""
-    model = train_module.torch.nn.Linear(4, 2).float()
-    did_upcast = train_module._upcast_trainable_fp16_params(model)
+    model = model_setup_module.torch.nn.Linear(4, 2).float()
+    did_upcast = model_setup_module.upcast_trainable_fp16_params(model)
     assert did_upcast is False
 
 
@@ -579,7 +604,7 @@ def test_validate_trainable_model_rejects_quantized_model() -> None:
         is_quantized = True
 
     with pytest.raises(ValueError, match="CODLLM_LOAD_IN_8BIT"):
-        train_module._validate_trainable_model(QuantizedModel())
+        model_setup_module.validate_trainable_model(QuantizedModel())
 
 
 def test_validate_trainable_model_accepts_non_quantized_model() -> None:
@@ -590,7 +615,7 @@ def test_validate_trainable_model_accepts_non_quantized_model() -> None:
 
         is_quantized = False
 
-    train_module._validate_trainable_model(TrainableModel())
+    model_setup_module.validate_trainable_model(TrainableModel())
 
 
 def test_resolve_wandb_reporting_uses_wandb_with_credentials(
@@ -679,20 +704,26 @@ def test_train_uses_validation_split_from_data_handler(
     captured: dict[str, Any] = {}
 
     def fake_train(
-        train_cfg: Config,
+        cfg: Config,
+        stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
     ) -> tuple[str, str]:
-        captured["cfg"] = train_cfg
+        captured["cfg"] = cfg
+        captured["stage"] = stage
         captured["train_ds"] = train_ds
         captured["eval_ds"] = eval_ds
         captured["run_data_metadata"] = run_data_metadata
+        captured["label2id"] = label2id
+        captured["id2label"] = id2label
         return "trainer", "tokenizer"
 
-    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
+    monkeypatch.setattr(pipeline_module, "_train_from_datasets", fake_train)
     handler = DummyDataHandler()
-    trainer, tokenizer, returned_splits = train_module.train(
+    trainer, tokenizer, returned_splits = pipeline_module.train(
         cfg, data_handler=handler, force_reprocess=True
     )
 
@@ -700,6 +731,7 @@ def test_train_uses_validation_split_from_data_handler(
     assert tokenizer == "tokenizer"
     assert returned_splits is splits
     assert captured["cfg"] is cfg
+    assert captured["stage"].name == "train"
     assert captured["train_ds"] is splits.train
     assert captured["eval_ds"] is splits.val
     assert captured["run_data_metadata"]["split_rows"] == {
@@ -739,14 +771,16 @@ def test_train_sequence_classification_builds_masterlist_label_space(
     captured: dict[str, Any] = {}
 
     def fake_train(
-        train_cfg: Config,
+        cfg: Config,
+        stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
     ) -> tuple[str, str]:
-        captured["cfg"] = train_cfg
+        captured["cfg"] = cfg
+        captured["stage"] = stage
         captured["train_ds"] = train_ds
         captured["eval_ds"] = eval_ds
         captured["run_data_metadata"] = run_data_metadata
@@ -770,20 +804,21 @@ def test_train_sequence_classification_builds_masterlist_label_space(
         captured_test_eval["label2id"] = label2id
         return {"test_accuracy": 1.0}
 
-    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
+    monkeypatch.setattr(pipeline_module, "_train_from_datasets", fake_train)
     monkeypatch.setattr(
-        train_module,
-        "_evaluate_test_split",
+        pipeline_module,
+        "evaluate_test_split",
         fake_evaluate_test_split,
     )
 
-    trainer, tokenizer, returned_splits = train_module.train(
+    trainer, tokenizer, returned_splits = pipeline_module.train(
         cfg, data_handler=DummyDataHandler()
     )
 
     assert trainer == "trainer"
     assert tokenizer == "tokenizer"
     assert returned_splits is splits
+    assert captured["stage"].name == "train"
     assert captured["train_ds"] is splits.train
     assert captured["eval_ds"] is splits.val
     assert captured["label2id"] == {"A00": 0, "A01": 1, "A02": 2}
@@ -818,13 +853,13 @@ def test_train_sequence_classification_requires_single_label_mode(
             return ["A00", "A01"]
 
     monkeypatch.setattr(
-        train_module,
+        pipeline_module,
         "_train_from_datasets",
         lambda *args, **kwargs: ("trainer", "tokenizer"),
     )
 
     with pytest.raises(ValueError, match="max_label_count=1"):
-        train_module.train(cfg, data_handler=DummyDataHandler())
+        pipeline_module.train(cfg, data_handler=DummyDataHandler())
 
 
 def test_train_omits_eval_when_validation_is_empty(
@@ -847,21 +882,28 @@ def test_train_omits_eval_when_validation_is_empty(
     captured: dict[str, Any] = {}
 
     def fake_train(
-        train_cfg: Config,
+        cfg: Config,
+        stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
     ) -> tuple[str, str]:
-        captured["cfg"] = train_cfg
+        captured["cfg"] = cfg
+        captured["stage"] = stage
         captured["train_ds"] = train_ds
         captured["eval_ds"] = eval_ds
         captured["run_data_metadata"] = run_data_metadata
+        captured["label2id"] = label2id
+        captured["id2label"] = id2label
         return "trainer", "tokenizer"
 
-    monkeypatch.setattr(train_module, "_train_from_datasets", fake_train)
-    _, _, _ = train_module.train(cfg, data_handler=DummyDataHandler())
+    monkeypatch.setattr(pipeline_module, "_train_from_datasets", fake_train)
+    _, _, _ = pipeline_module.train(cfg, data_handler=DummyDataHandler())
 
     assert captured["cfg"] is cfg
+    assert captured["stage"].name == "train"
     assert captured["train_ds"] is splits.train
     assert captured["eval_ds"] is None
     assert captured["run_data_metadata"]["split_rows"] == {
@@ -918,23 +960,30 @@ def test_train_runs_final_test_evaluation(
             return splits
 
     monkeypatch.setattr(
-        train_module,
+        pipeline_module,
         "_train_from_datasets",
         lambda *args, **kwargs: ("trainer", "tokenizer"),
     )
     captured: dict[str, Any] = {}
 
     def fake_evaluate_test_split(
-        cfg: Config, trainer: Any, tokenizer: Any, test_ds: Any
+        cfg: Config,
+        trainer: Any,
+        tokenizer: Any,
+        test_ds: Any,
+        label2id: Optional[dict[str, int]] = None,
     ) -> dict[str, float]:
         captured["cfg"] = cfg
         captured["trainer"] = trainer
         captured["tokenizer"] = tokenizer
         captured["test_ds"] = test_ds
+        captured["label2id"] = label2id
         return {"test_accuracy": 1.0}
 
-    monkeypatch.setattr(train_module, "_evaluate_test_split", fake_evaluate_test_split)
-    train_module.train(cfg, data_handler=DummyDataHandler())
+    monkeypatch.setattr(
+        pipeline_module, "evaluate_test_split", fake_evaluate_test_split
+    )
+    pipeline_module.train(cfg, data_handler=DummyDataHandler())
 
     assert captured["cfg"] is cfg
     assert captured["trainer"] == "trainer"
@@ -985,41 +1034,57 @@ def test_train_uses_pretraining_dataset_when_available(
 
     def fake_train_with_optional_pretraining(
         cfg: Config,
+        pretrain_stage: stages_module.TrainingStage,
+        finetune_stage: stages_module.TrainingStage,
         pretrain_ds: Any,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
     ) -> tuple[str, str]:
         captured["cfg"] = cfg
+        captured["pretrain_stage"] = pretrain_stage
+        captured["finetune_stage"] = finetune_stage
         captured["pretrain_ds"] = pretrain_ds
         captured["train_ds"] = train_ds
         captured["eval_ds"] = eval_ds
         captured["run_data_metadata"] = run_data_metadata
+        captured["label2id"] = label2id
+        captured["id2label"] = id2label
         return "trainer", "tokenizer"
 
     monkeypatch.setattr(
-        train_module,
+        pipeline_module,
         "_train_with_pretraining",
         fake_train_with_optional_pretraining,
     )
-    monkeypatch.setattr(train_module, "_evaluate_test_split", lambda **_: {"test": 1.0})
+    monkeypatch.setattr(
+        pipeline_module, "evaluate_test_split", lambda **_: {"test": 1.0}
+    )
 
-    trainer, tokenizer, returned_splits = train_module.train(
+    trainer, tokenizer, returned_splits = pipeline_module.train(
         cfg, data_handler=DummyDataHandler()
     )
 
     assert trainer == "trainer"
     assert tokenizer == "tokenizer"
     assert returned_splits is splits
+    assert captured["pretrain_stage"].name == "pretrain"
+    assert captured["finetune_stage"].name == "finetune"
     assert captured["pretrain_ds"] is pretrain_df
     assert captured["train_ds"] is splits.train
     assert captured["eval_ds"] is splits.val
     assert captured["run_data_metadata"]["pretraining"]["enabled"] is True
     assert captured["run_data_metadata"]["pretraining"]["train_rows"] == 2
-    assert captured["run_data_metadata"]["pretraining"]["learning_rate"] == pytest.approx(7e-6)
+    assert captured["run_data_metadata"]["pretraining"][
+        "learning_rate"
+    ] == pytest.approx(7e-6)
     assert captured["run_data_metadata"]["pretraining"]["warmup_steps"] == 0
     assert captured["run_data_metadata"]["pretraining"]["eval_every_n_epochs"] == 10
-    assert captured["run_data_metadata"]["pretraining"]["lr_scheduler_type"] == "constant"
+    assert (
+        captured["run_data_metadata"]["pretraining"]["lr_scheduler_type"] == "constant"
+    )
     assert captured["run_data_metadata"]["pretraining"]["upsampling"] == {
         "enabled": True,
         "rows_before": 2,
@@ -1048,9 +1113,9 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
     eval_ds = pd.DataFrame({"text": ["v1"], "label": ["A01"]})
 
     monkeypatch.setattr(
-        train_module,
-        "_initialize_training_components",
-        lambda _: ("model", "tokenizer", False),
+        pipeline_module,
+        "initialize_training_components",
+        lambda **_: ("model", "tokenizer", False),
     )
     captured_stages: list[dict[str, Any]] = []
     release_calls: list[str] = []
@@ -1061,31 +1126,43 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         def __init__(self, stage_name: str) -> None:
             self.stage_name = stage_name
 
-    def fake_train_with_model(
+    def fake_run_training_stage(
         cfg: Config,
+        stage: stages_module.TrainingStage,
         model: Any,
         tokenizer: Any,
         disable_fp16: bool,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
     ) -> str:
-        del cfg, model, tokenizer, disable_fp16, train_ds, eval_ds
-        assert run_data_metadata is not None
-        stage = run_data_metadata.get("training_stage")
-        assert isinstance(stage, dict)
-        captured_stages.append(stage)
-        return DummyTrainer(stage_name=str(stage["name"]))
+        del (
+            cfg,
+            model,
+            tokenizer,
+            disable_fp16,
+            train_ds,
+            eval_ds,
+            run_data_metadata,
+            label2id,
+            id2label,
+        )
+        captured_stages.append(stage.as_metadata())
+        return DummyTrainer(stage_name=stage.name)
 
-    monkeypatch.setattr(train_module, "_train_with_model", fake_train_with_model)
+    monkeypatch.setattr(pipeline_module, "run_training_stage", fake_run_training_stage)
     monkeypatch.setattr(
-        train_module,
-        "_release_stage_trainer_memory",
+        pipeline_module,
+        "release_stage_trainer_memory",
         lambda cfg, trainer: release_calls.append(str(trainer.stage_name)),
     )
 
-    trainer, tokenizer = train_module._train_with_pretraining(
+    trainer, tokenizer = pipeline_module._train_with_pretraining(
         cfg=cfg,
+        pretrain_stage=stages_module.build_pretraining_stage(cfg),
+        finetune_stage=stages_module.build_finetune_stage(cfg),
         pretrain_ds=pretrain_ds,
         train_ds=train_ds,
         eval_ds=eval_ds,
@@ -1119,12 +1196,12 @@ def test_release_stage_trainer_memory_clears_state_and_cuda_cache(
     monkeypatch.setattr(cfg, "uses_cuda", lambda: True)
     state = {"gc_called": False, "empty_cache_called": False}
     monkeypatch.setattr(
-        train_module.gc,
+        stages_module.gc,
         "collect",
         lambda: state.__setitem__("gc_called", True),
     )
     monkeypatch.setattr(
-        train_module.torch.cuda,
+        config_module.torch.cuda,
         "empty_cache",
         lambda: state.__setitem__("empty_cache_called", True),
     )
@@ -1136,7 +1213,7 @@ def test_release_stage_trainer_memory_clears_state_and_cuda_cache(
         lr_scheduler: Any = object()
 
     trainer = DummyTrainer()
-    train_module._release_stage_trainer_memory(cfg=cfg, trainer=trainer)
+    stages_module.release_stage_trainer_memory(cfg=cfg, trainer=trainer)
 
     assert trainer.optimizer is None
     assert trainer.lr_scheduler is None
@@ -1169,13 +1246,13 @@ def test_train_pretraining_requires_validation_split(
             return pretrain_df
 
     monkeypatch.setattr(
-        train_module,
+        pipeline_module,
         "_train_with_pretraining",
         lambda *args, **kwargs: ("trainer", "tokenizer"),
     )
 
     with pytest.raises(ValueError, match="requires a non-empty validation split"):
-        train_module.train(cfg, data_handler=DummyDataHandler())
+        pipeline_module.train(cfg, data_handler=DummyDataHandler())
 
 
 def test_evaluate_test_split_uses_test_metric_prefix() -> None:
@@ -1197,7 +1274,9 @@ def test_evaluate_test_split_uses_test_metric_prefix() -> None:
             return {"test_accuracy": 1.0, "test_f1": 1.0}
 
     trainer = DummyTrainer()
-    metrics = train_module._evaluate_test_split(cfg, trainer, DummyTokenizer(), test_ds)
+    metrics = pipeline_module.evaluate_test_split(
+        cfg, trainer, DummyTokenizer(), test_ds
+    )
 
     assert metrics == {"test_accuracy": 1.0, "test_f1": 1.0}
     assert trainer.called_with["metric_key_prefix"] == "test"
@@ -1226,7 +1305,7 @@ def test_evaluate_test_split_sequence_classification_uses_label_mapping() -> Non
             return {"test_accuracy": 1.0}
 
     trainer = DummyTrainer()
-    metrics = train_module._evaluate_test_split(
+    metrics = pipeline_module.evaluate_test_split(
         cfg=cfg,
         trainer=trainer,
         tokenizer=DummyTokenizer(),
@@ -1261,12 +1340,16 @@ class _FakeWandbModule:
     def __init__(self) -> None:
         self.run: object | None = None
         self.config = _FakeWandbConfig()
+        self.defined_metrics: list[dict[str, Any]] = []
         self.init_calls: list[dict[str, Any]] = []
 
     def init(self, **kwargs: Any) -> object:
         self.init_calls.append(kwargs)
         self.run = object()
         return self.run
+
+    def define_metric(self, name: str, **kwargs: Any) -> None:
+        self.defined_metrics.append({"name": name, **kwargs})
 
 
 def test_build_experiment_metadata_redacts_hf_token() -> None:

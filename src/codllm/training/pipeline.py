@@ -1,0 +1,260 @@
+from pathlib import Path
+from typing import Any
+
+from transformers import Trainer
+
+from codllm.config import Config
+from codllm.data_handler import (
+    DataHandler,
+    DataSplits,
+    prepare_sequence_classification_dataset,
+    prepare_training_dataset,
+    resolve_training_frames,
+)
+from codllm.run_directory import prepare_run_output_dir
+from codllm.training.metadata import build_data_metadata, dataset_row_count
+from codllm.training.model_setup import (
+    initialize_training_components,
+    resolve_classifier_label_space,
+)
+from codllm.training.stages import (
+    TrainingStage,
+    build_finetune_stage,
+    build_pretraining_stage,
+    build_train_stage,
+    release_stage_trainer_memory,
+)
+from codllm.training.trainer_factory import run_training_stage
+
+
+def _train_from_datasets(
+    cfg: Config,
+    stage: TrainingStage,
+    train_ds: Any,
+    eval_ds: Any | None = None,
+    run_data_metadata: dict[str, Any] | None = None,
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> tuple[Trainer, Any]:
+    """Run one fine-tuning job from prepared datasets."""
+    model, tokenizer, disable_fp16 = initialize_training_components(
+        cfg=cfg,
+        label2id=label2id,
+        id2label=id2label,
+    )
+    trainer = run_training_stage(
+        cfg=cfg,
+        stage=stage,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=run_data_metadata,
+        label2id=label2id,
+        id2label=id2label,
+    )
+    return trainer, tokenizer
+
+
+def _train_with_pretraining(
+    cfg: Config,
+    pretrain_stage: TrainingStage,
+    finetune_stage: TrainingStage,
+    pretrain_ds: Any,
+    train_ds: Any,
+    eval_ds: Any | None = None,
+    run_data_metadata: dict[str, Any] | None = None,
+    label2id: dict[str, int] | None = None,
+    id2label: dict[int, str] | None = None,
+) -> tuple[Trainer, Any]:
+    """Run optional pretraining first, then continue with regular fine-tuning."""
+    model, tokenizer, disable_fp16 = initialize_training_components(
+        cfg=cfg,
+        label2id=label2id,
+        id2label=id2label,
+    )
+    pretrain_trainer = run_training_stage(
+        cfg=cfg,
+        stage=pretrain_stage,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=pretrain_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=run_data_metadata,
+        label2id=label2id,
+        id2label=id2label,
+    )
+    release_stage_trainer_memory(cfg=cfg, trainer=pretrain_trainer)
+    trainer = run_training_stage(
+        cfg=cfg,
+        stage=finetune_stage,
+        model=model,
+        tokenizer=tokenizer,
+        disable_fp16=disable_fp16,
+        train_ds=train_ds,
+        eval_ds=eval_ds,
+        run_data_metadata=run_data_metadata,
+        label2id=label2id,
+        id2label=id2label,
+    )
+    return trainer, tokenizer
+
+
+def evaluate_test_split(
+    cfg: Config,
+    trainer: Any,
+    tokenizer: Any,
+    test_ds: Any,
+    label2id: dict[str, int] | None = None,
+) -> dict[str, float] | None:
+    """Run final evaluation on the test split and emit test-prefixed metrics."""
+    if dataset_row_count(test_ds) in (None, 0):
+        return None
+    if not hasattr(trainer, "evaluate"):
+        return None
+
+    if cfg.model_task == "sequence_classification":
+        if label2id is None:
+            raise ValueError(
+                "Sequence-classification test evaluation requires label mappings."
+            )
+        processed_test_ds = prepare_sequence_classification_dataset(
+            cfg=cfg,
+            tokenizer=tokenizer,
+            dataset=test_ds,
+            label2id=label2id,
+        )
+    else:
+        target_max_length = cfg.resolved_max_target_length()
+        processed_test_ds = prepare_training_dataset(
+            cfg,
+            tokenizer,
+            test_ds,
+            target_max_length,
+        )
+    raw_metrics = trainer.evaluate(
+        eval_dataset=processed_test_ds,
+        metric_key_prefix="test",
+    )
+    return {key: float(value) for key, value in raw_metrics.items()}
+
+
+def train(
+    cfg: Config,
+    data_handler: DataHandler | None = None,
+    force_reprocess: bool = False,
+) -> tuple[Trainer, Any, DataSplits]:
+    """Build or load data splits and launch training."""
+    prepare_run_output_dir(cfg)
+    handler = data_handler or DataHandler(cfg)
+    splits = handler.get_splits(force_reprocess=force_reprocess)
+    train_ds, eval_ds = resolve_training_frames(splits)
+    run_data_metadata = build_data_metadata(
+        cfg=cfg,
+        splits=splits,
+        force_reprocess=force_reprocess,
+        handler=handler,
+    )
+    classifier_label2id: dict[str, int] | None = None
+    classifier_id2label: dict[int, str] | None = None
+    if cfg.model_task == "sequence_classification":
+        if cfg.max_label_count != 1:
+            raise ValueError(
+                "sequence_classification currently supports max_label_count=1 only."
+            )
+        classifier_label2id, classifier_id2label = resolve_classifier_label_space(
+            handler=handler
+        )
+        run_data_metadata["classification"] = {
+            "num_labels": len(classifier_label2id),
+            "label_source": {
+                "masterlist_path": str(Path(cfg.pretrain_masterlist_path).resolve()),
+                "sheet_name": cfg.pretrain_masterlist_sheet_name,
+                "column": "ICD10h",
+            },
+        }
+
+    masterlist_inject_metrics_loader = getattr(
+        handler,
+        "get_masterlist_inject_metrics",
+        None,
+    )
+    masterlist_inject_metrics = (
+        masterlist_inject_metrics_loader()
+        if callable(masterlist_inject_metrics_loader)
+        else None
+    )
+    if masterlist_inject_metrics is not None:
+        run_data_metadata["masterlist_injection"] = masterlist_inject_metrics
+
+    pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
+    pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    pretrain_upsampling_metrics_loader = getattr(
+        handler,
+        "get_pretraining_upsampling_metrics",
+        None,
+    )
+    pretrain_upsampling_metrics = (
+        pretrain_upsampling_metrics_loader()
+        if callable(pretrain_upsampling_metrics_loader)
+        else None
+    )
+    if cfg.pretrain_enabled and pretrain_loader is None:
+        raise AttributeError(
+            "Configured data_handler does not support pretraining datasets."
+        )
+    if cfg.pretrain_enabled and pretrain_ds is None:
+        raise ValueError(
+            "Pretraining is enabled but no pretraining dataset was returned."
+        )
+    if cfg.pretrain_enabled and pretrain_ds is not None:
+        if eval_ds is None:
+            raise ValueError(
+                "Pretraining requires a non-empty validation split from the regular dataset."
+            )
+        pretrain_stage = build_pretraining_stage(cfg)
+        finetune_stage = build_finetune_stage(cfg)
+        run_data_metadata["pretraining"] = {
+            "enabled": True,
+            "masterlist_path": str(Path(cfg.pretrain_masterlist_path).resolve()),
+            "sheet_name": cfg.pretrain_masterlist_sheet_name,
+            "train_rows": int(len(pretrain_ds)),
+            "num_train_epochs": pretrain_stage.num_train_epochs,
+            "learning_rate": pretrain_stage.learning_rate,
+            "warmup_steps": pretrain_stage.warmup_steps,
+            "eval_every_n_epochs": pretrain_stage.eval_every_n_epochs,
+            "lr_scheduler_type": pretrain_stage.lr_scheduler_type,
+        }
+        if pretrain_upsampling_metrics is not None:
+            run_data_metadata["pretraining"]["upsampling"] = pretrain_upsampling_metrics
+        trainer, tokenizer = _train_with_pretraining(
+            cfg=cfg,
+            pretrain_stage=pretrain_stage,
+            finetune_stage=finetune_stage,
+            pretrain_ds=pretrain_ds,
+            train_ds=train_ds,
+            eval_ds=eval_ds,
+            run_data_metadata=run_data_metadata,
+            label2id=classifier_label2id,
+            id2label=classifier_id2label,
+        )
+    else:
+        trainer, tokenizer = _train_from_datasets(
+            cfg=cfg,
+            stage=build_train_stage(cfg),
+            train_ds=train_ds,
+            eval_ds=eval_ds,
+            run_data_metadata=run_data_metadata,
+            label2id=classifier_label2id,
+            id2label=classifier_id2label,
+        )
+    evaluate_test_split(
+        cfg=cfg,
+        trainer=trainer,
+        tokenizer=tokenizer,
+        test_ds=splits.test,
+        label2id=classifier_label2id,
+    )
+    return trainer, tokenizer, splits

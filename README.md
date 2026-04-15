@@ -294,7 +294,7 @@ tail -f logs/<job_id>.out
 - `SYNC_ENV` (`1` to run `uv sync`, default `1`)
 - `UV_SYNC_LOCK_FILE` (lock file used to serialize `uv sync`, default: `$RUN_STORAGE_DIR/.uv-sync.lock`)
 - `FORCE_REPROCESS` (`1` adds `--force-reprocess`, default `0`)
-- `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.train`)
+- `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.training`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
 - `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed-cache lock wait timeout, default: `900`)

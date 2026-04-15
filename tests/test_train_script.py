@@ -81,7 +81,7 @@ def test_train_script_loads_job_config_file(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Loading job config file" in result.stdout
-    assert "FAKE_UV_ARGS:run python -m codllm.train" in result.stdout
+    assert "FAKE_UV_ARGS:run python -m codllm.training" in result.stdout
     assert "ENV_CODLLM_HF_MODEL:google/flan-t5-base" in result.stdout
     assert "ENV_CODLLM_LR:9e-5" in result.stdout
     assert "ENV_CODLLM_NUM_TRAIN_EPOCHS:9" in result.stdout
@@ -279,7 +279,7 @@ def test_train_h100_script_loads_job_config_file(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Loading job config file" in result.stdout
-    assert "FAKE_UV_ARGS:run python -m codllm.train" in result.stdout
+    assert "FAKE_UV_ARGS:run python -m codllm.training" in result.stdout
     assert "ENV_CODLLM_LR:7e-5" in result.stdout
 
 
