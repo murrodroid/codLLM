@@ -132,9 +132,13 @@ class _StrictDecodeTokenizer:
         for sequence in sequences:
             for token_id in sequence:
                 if token_id < 0 or token_id > (2**32 - 1):
-                    raise OverflowError("out of range integral type conversion attempted")
+                    raise OverflowError(
+                        "out of range integral type conversion attempted"
+                    )
             if skip_special_tokens:
-                kept = [token_id for token_id in sequence if token_id != self.pad_token_id]
+                kept = [
+                    token_id for token_id in sequence if token_id != self.pad_token_id
+                ]
             else:
                 kept = sequence
             decoded.append(" ".join(str(token_id) for token_id in kept))

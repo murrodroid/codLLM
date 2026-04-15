@@ -4,6 +4,7 @@ from typing import Mapping, Sequence
 import pandas as pd
 
 from codllm.runtime.paths import resolve_source_path
+from codllm.settings.options import SUPPORTED_TRAINING_INPUTS
 from codllm.settings.schema import Config, DataSourceConfig
 from codllm.input.harmonization import _harmonize_processed_labels
 from codllm.input.mappings import DatasetMapping, MAPPING_REGISTRY
@@ -73,18 +74,36 @@ def load_source_dataset(
     mapping: DatasetMapping,
     training_input: Sequence[str],
     max_labels: int = 1,
-    label_separator: str = Config.DEFAULT_LABEL_SEPARATOR,
-    text_field_separator: str = Config.DEFAULT_TEXT_FIELD_SEPARATOR,
-    data_raw_dir: str = Config.DEFAULT_DATA_RAW_DIR,
-    text_column: str = Config.DEFAULT_DATASET_TEXT_COLUMN,
-    label_column: str = Config.DEFAULT_DATASET_LABEL_COLUMN,
+    label_separator: str | None = None,
+    text_field_separator: str | None = None,
+    data_raw_dir: str | None = None,
+    text_column: str | None = None,
+    label_column: str | None = None,
     drop_missing_label: bool = True,
 ) -> pd.DataFrame:
     """Load and process one source dataset into the canonical schema."""
     if max_labels < 1:
         raise ValueError("max_labels must be at least 1.")
+    default_cfg = Config()
     normalized_training_input = _normalize_training_input(training_input)
-    source_path = resolve_source_path(source.path, data_raw_dir)
+    effective_label_separator = (
+        default_cfg.label_separator if label_separator is None else label_separator
+    )
+    effective_text_field_separator = (
+        default_cfg.text_field_separator
+        if text_field_separator is None
+        else text_field_separator
+    )
+    effective_data_raw_dir = (
+        default_cfg.data_raw_dir if data_raw_dir is None else data_raw_dir
+    )
+    effective_text_column = (
+        default_cfg.dataset_text_column if text_column is None else text_column
+    )
+    effective_label_column = (
+        default_cfg.dataset_label_column if label_column is None else label_column
+    )
+    source_path = resolve_source_path(source.path, effective_data_raw_dir)
     raw_df = _read_raw_dataframe(source_path, source)
     combined_skip_rows = sorted(set(mapping.skip_rows + source.skip_rows))
     if combined_skip_rows:
@@ -120,18 +139,18 @@ def load_source_dataset(
             )
         ]
     result["source_path"] = [str(source_path)] * len(filtered_raw_df)
-    result[text_column] = filtered_raw_df.apply(
+    result[effective_text_column] = filtered_raw_df.apply(
         lambda row: _build_text(
             row,
             mapping,
             normalized_training_input,
-            field_separator=text_field_separator,
+            field_separator=effective_text_field_separator,
         ),
         axis=1,
     )
     result["y_codes"] = filtered_y_codes
-    result[label_column] = result["y_codes"].apply(
-        lambda codes: _build_label(codes, separator=label_separator)
+    result[effective_label_column] = result["y_codes"].apply(
+        lambda codes: _build_label(codes, separator=effective_label_separator)
     )
     return result
 
@@ -189,6 +208,7 @@ def load_dataset(
     sep: str = ",",
 ) -> pd.DataFrame:
     """Load one dataset into legacy text/y output format."""
+    default_cfg = Config()
     source = DataSourceConfig(
         source_id="inline_source",
         path=path,
@@ -198,18 +218,16 @@ def load_dataset(
     processed = load_source_dataset(
         source=source,
         mapping=mapping,
-        training_input=training_input or list(Config.SUPPORTED_TRAINING_INPUTS),
+        training_input=training_input or list(SUPPORTED_TRAINING_INPUTS),
         max_labels=max_labels,
         data_raw_dir="",
-        text_column=Config.DEFAULT_DATASET_TEXT_COLUMN,
-        label_column=Config.DEFAULT_DATASET_LABEL_COLUMN,
+        text_column=default_cfg.dataset_text_column,
+        label_column=default_cfg.dataset_label_column,
         drop_missing_label=False,
     )
     return pd.DataFrame(
         {
-            Config.DEFAULT_DATASET_TEXT_COLUMN: processed[
-                Config.DEFAULT_DATASET_TEXT_COLUMN
-            ],
+            default_cfg.dataset_text_column: processed[default_cfg.dataset_text_column],
             "y": processed["y_codes"],
         }
     )

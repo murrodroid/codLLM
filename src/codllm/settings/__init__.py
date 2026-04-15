@@ -1,10 +1,8 @@
 """Configuration schema and environment loading utilities."""
 
 from codllm.settings.env import config_from_env
-from codllm.settings.schema import (
+from codllm.settings.types import (
     BalanceStrategy,
-    Config,
-    DataSourceConfig,
     EvalStrategy,
     LRSchedulerType,
     ModelTask,
@@ -12,9 +10,13 @@ from codllm.settings.schema import (
     SaveStrategyBestMetric,
     TorchDType,
     TrainingInput,
-    WandbConfig,
     WandbLogModel,
     WandbMode,
+)
+from codllm.settings.schema import (
+    Config,
+    DataSourceConfig,
+    WandbConfig,
 )
 
 config = Config()

@@ -8,6 +8,7 @@
   * To run Python scripts, use `uv run <script-name>.py`.
   * To run other commands related to Python, prefix them with `uv run `, e.g., `uv run <command>`.
   * To run training locally, use `uv run python -m codllm.training`.
+  * To run inference locally, use `uv run python -m codllm.inference`.
 * The project uses `pytest` for testing. To run tests, use `uv run pytest tests/`.
 * The project uses `ruff` for linting and formatting:
     * To format code, use `uv run ruff format .`.

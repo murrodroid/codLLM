@@ -3,7 +3,9 @@ from typing import Any, Mapping, Sequence, cast
 
 import pandas as pd
 
-from codllm.settings.schema import Config, TrainingInput
+from codllm.settings.options import SUPPORTED_TRAINING_INPUTS
+from codllm.settings.schema import Config
+from codllm.settings.types import TrainingInput
 from codllm.input.mappings import DatasetMapping
 
 UNKNOWN_VALUE = "unknown"
@@ -27,7 +29,7 @@ def _processed_columns(text_column: str, label_column: str) -> list[str]:
 def _normalize_training_input(training_input: Sequence[str]) -> list[TrainingInput]:
     """Validate and normalize requested training input fields."""
     normalized: list[TrainingInput] = []
-    supported_inputs = Config.SUPPORTED_TRAINING_INPUTS
+    supported_inputs = SUPPORTED_TRAINING_INPUTS
     for feature in training_input:
         cleaned = feature.strip().lower()
         if cleaned not in supported_inputs:
@@ -88,10 +90,13 @@ def _build_text(
     row: pd.Series,
     mapping: DatasetMapping,
     training_input: Sequence[str],
-    field_separator: str = Config.DEFAULT_TEXT_FIELD_SEPARATOR,
+    field_separator: str | None = None,
 ) -> str:
     """Build text input from configured training input fields."""
     normalized_training_input = _normalize_training_input(training_input)
+    effective_field_separator = (
+        Config().text_field_separator if field_separator is None else field_separator
+    )
     parts: list[str] = []
     for feature in normalized_training_input:
         if feature == "cod":
@@ -108,7 +113,7 @@ def _build_text(
                 _get(row, mapping.sex_col) if mapping.sex_col is not None else None
             )
             parts.append(f"sex: {_format_sex(raw_sex, mapping.sex_map)}")
-    return field_separator.join(parts)
+    return effective_field_separator.join(parts)
 
 
 def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
@@ -132,11 +137,10 @@ def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
     return _collect_codes(row, mapping)
 
 
-def _build_label(
-    codes: list[str], separator: str = Config.DEFAULT_LABEL_SEPARATOR
-) -> str:
+def _build_label(codes: list[str], separator: str | None = None) -> str:
     """Convert code labels into a single seq2seq target string."""
-    return separator.join(codes)
+    effective_separator = Config().label_separator if separator is None else separator
+    return effective_separator.join(codes)
 
 
 def _normalize_code_value(value: Any) -> str:

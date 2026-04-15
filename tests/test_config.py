@@ -71,6 +71,7 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
+    "CODLLM_INFERENCE_VALIDATE_REGISTRY",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -170,6 +171,7 @@ def test_config_from_env_applies_runtime_overrides(
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
+    monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -257,6 +259,7 @@ def test_config_from_env_applies_runtime_overrides(
     ]
     assert cfg.pretrain_upsample_perturbations_per_sample == 2
     assert cfg.label_harmonization_enabled is True
+    assert cfg.inference_validate_registry is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"

@@ -159,9 +159,7 @@ def _write_masterlist_with_transfer(
         )
 
     with pd.ExcelWriter(path) as writer:
-        pd.DataFrame(master_rows).to_excel(
-            writer, sheet_name="Masterlist", index=False
-        )
+        pd.DataFrame(master_rows).to_excel(writer, sheet_name="Masterlist", index=False)
         pd.DataFrame(transfer_rows).to_excel(
             writer, sheet_name="2020to2024transfer", index=False
         )

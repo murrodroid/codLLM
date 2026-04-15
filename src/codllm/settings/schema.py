@@ -1,53 +1,29 @@
 from dataclasses import dataclass, field
-from typing import ClassVar, Literal, Optional
+from typing import Optional
 
 import torch
 
-
-TrainingInput = Literal["cod", "age", "sex"]
-BalanceStrategy = Literal["none", "upsample", "sqrt"]
-WandbMode = Literal["auto", "online", "offline", "disabled"]
-WandbLogModel = Literal["false", "end", "checkpoint"]
-TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
-EvalStrategy = Literal["no", "steps", "epoch"]
-SaveStrategy = Literal["no", "steps", "epoch", "best"]
-ModelTask = Literal["seq2seq", "sequence_classification"]
-LRSchedulerType = Literal[
-    "linear",
-    "cosine",
-    "cosine_with_restarts",
-    "polynomial",
-    "constant",
-    "constant_with_warmup",
-    "inverse_sqrt",
-    "reduce_lr_on_plateau",
-]
-SaveStrategyBestMetric = Literal[
-    "loss",
-    "accuracy",
-    "micro_precision",
-    "micro_recall",
-    "micro_f1",
-    "macro_precision",
-    "macro_recall",
-    "macro_f1",
-]
-
-
-def _default_device() -> torch.device:
-    """Choose the best available torch device."""
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
-def _default_device_map() -> Optional[str]:
-    """Choose a sensible default device map for the current hardware."""
-    if torch.cuda.is_available():
-        return "auto"
-    return None
+from codllm.settings.factories import (
+    default_balance_perturbations,
+    default_data_sources,
+    default_device,
+    default_device_map,
+    default_masterlist_inject_perturbations,
+    default_pretrain_perturbations,
+    default_training_input,
+)
+from codllm.settings.types import (
+    BalanceStrategy,
+    EvalStrategy,
+    LRSchedulerType,
+    ModelTask,
+    SaveStrategy,
+    SaveStrategyBestMetric,
+    TorchDType,
+    TrainingInput,
+    WandbLogModel,
+    WandbMode,
+)
 
 
 @dataclass
@@ -78,88 +54,9 @@ class WandbConfig:
     log_model: WandbLogModel = "end"
 
 
-def _default_data_sources() -> list[DataSourceConfig]:
-    """Return default data sources expected in the raw data directory."""
-    return [
-        DataSourceConfig(
-            source_id="belgium_1920_1930",
-            path="SOSA_EXTR_1920-1930 (belgium).xlsx",
-            mapping_id="belgium",
-        ),
-        DataSourceConfig(
-            source_id="amsterdam_1854_1926",
-            path="AMC_1854_1926_LM.csv",
-            mapping_id="amsterdam",
-            sep=";",
-        ),
-        DataSourceConfig(
-            source_id="copenhagen_may2025",
-            path="Copenhagen_burials_all_May2025.csv",
-            mapping_id="copenhagen",
-        ),
-        DataSourceConfig(
-            source_id="ipswich_1871_1911",
-            path="Ipswich_deaths_codllm.txt",
-            mapping_id="ipswich",
-            file_type="csv",
-            sep="|",
-            encoding="latin-1",
-        ),
-        DataSourceConfig(
-            source_id="madrid_1905_1927",
-            path="Madrid 1905_1927.csv",
-            mapping_id="madrid",
-        ),
-        DataSourceConfig(
-            source_id="historic_strings_en_2024",
-            path="ICD10H_HISTORICSTRINGSENGLISH_2024.2.xlsx",
-            mapping_id="historic_strings",
-            sheet_name="HistoricstringsEnglish2024 1.1",
-        ),
-    ]
-
-
 @dataclass
 class Config:
     """Configuration for Hugging Face training experiments."""
-
-    DEFAULT_LABEL_SEPARATOR: ClassVar[str] = ","
-    DEFAULT_TEXT_FIELD_SEPARATOR: ClassVar[str] = " | "
-    DEFAULT_DATASET_TEXT_COLUMN: ClassVar[str] = "text"
-    DEFAULT_DATASET_LABEL_COLUMN: ClassVar[str] = "label"
-    DEFAULT_DATA_RAW_DIR: ClassVar[str] = "data/raw"
-    DEFAULT_DATA_PROCESSED_DIR: ClassVar[str] = "data/processed"
-    SUPPORTED_TRAINING_INPUTS: ClassVar[tuple[TrainingInput, ...]] = (
-        "cod",
-        "age",
-        "sex",
-    )
-    SUPPORTED_SAVE_STRATEGY_BEST_METRICS: ClassVar[
-        tuple[SaveStrategyBestMetric, ...]
-    ] = (
-        "loss",
-        "accuracy",
-        "micro_precision",
-        "micro_recall",
-        "micro_f1",
-        "macro_precision",
-        "macro_recall",
-        "macro_f1",
-    )
-    SUPPORTED_LR_SCHEDULER_TYPES: ClassVar[tuple[LRSchedulerType, ...]] = (
-        "linear",
-        "cosine",
-        "cosine_with_restarts",
-        "polynomial",
-        "constant",
-        "constant_with_warmup",
-        "inverse_sqrt",
-        "reduce_lr_on_plateau",
-    )
-    SUPPORTED_MODEL_TASKS: ClassVar[tuple[ModelTask, ...]] = (
-        "seq2seq",
-        "sequence_classification",
-    )
 
     hf_model: str = "google/flan-t5-small"
     hf_token: Optional[str] = None
@@ -167,12 +64,12 @@ class Config:
 
     max_source_length: int = 256
     max_target_length: int = 32
-    label_separator: str = DEFAULT_LABEL_SEPARATOR
-    text_field_separator: str = DEFAULT_TEXT_FIELD_SEPARATOR
+    label_separator: str = ","
+    text_field_separator: str = " | "
     label_code_length: int = 7
     max_target_length_buffer: int = 4
-    dataset_text_column: str = DEFAULT_DATASET_TEXT_COLUMN
-    dataset_label_column: str = DEFAULT_DATASET_LABEL_COLUMN
+    dataset_text_column: str = "text"
+    dataset_label_column: str = "label"
 
     lr: float = 1e-5
     weight_decay: float = 0.0
@@ -203,21 +100,20 @@ class Config:
     cudnn_deterministic: bool = True
     cudnn_benchmark: bool = False
 
-    device: torch.device = field(default_factory=_default_device)
-    device_map: Optional[str] = field(default_factory=_default_device_map)
+    device: torch.device = field(default_factory=default_device)
+    device_map: Optional[str] = field(default_factory=default_device_map)
     load_in_8bit: bool = False
     use_safetensors: bool = False
     disable_safetensors_conversion: bool = True
     torch_dtype: Optional[TorchDType] = "auto"
 
-    data_raw_dir: str = DEFAULT_DATA_RAW_DIR
-    data_processed_dir: str = DEFAULT_DATA_PROCESSED_DIR
+    data_raw_dir: str = "data/raw"
+    data_processed_dir: str = "data/processed"
     processed_filename: str = "data.parquet"
-    data_sources: list[DataSourceConfig] = field(default_factory=_default_data_sources)
-    training_input: list[TrainingInput] = field(
-        default_factory=lambda: list(Config.SUPPORTED_TRAINING_INPUTS)
-    )
+    data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
+    training_input: list[TrainingInput] = field(default_factory=default_training_input)
     max_label_count: int = 1
+    inference_validate_registry: bool = False
 
     dataset_size: float = 0.5
     train_size: float = 0.9
@@ -234,23 +130,13 @@ class Config:
     pretrain_upsample_enabled: bool = True
     pretrain_upsample_target_per_label: int = 10
     pretrain_upsample_perturbations: list[str] = field(
-        default_factory=lambda: [
-            "swap_adjacent_chars",
-            "delete_random_char",
-            "accent_random_vowel",
-            "qwerty_misspell",
-        ]
+        default_factory=default_pretrain_perturbations
     )
     pretrain_upsample_perturbations_per_sample: int = 1
     masterlist_inject_enabled: bool = False
     masterlist_inject_target_per_label: int = 10
     masterlist_inject_perturbations: list[str] = field(
-        default_factory=lambda: [
-            "swap_adjacent_chars",
-            "delete_random_char",
-            "accent_random_vowel",
-            "qwerty_misspell",
-        ]
+        default_factory=default_masterlist_inject_perturbations
     )
     masterlist_inject_perturbations_per_sample: int = 1
     label_harmonization_enabled: bool = False
@@ -258,12 +144,7 @@ class Config:
     balance_strategy: BalanceStrategy = "sqrt"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
-        default_factory=lambda: [
-            "swap_adjacent_chars",
-            "delete_random_char",
-            "accent_random_vowel",
-            "qwerty_misspell",
-        ]
+        default_factory=default_balance_perturbations
     )
     balance_perturbations_per_sample: int = 1
     balance_upsample_labels: list[str] = field(default_factory=list)

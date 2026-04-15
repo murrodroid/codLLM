@@ -4,9 +4,17 @@ from typing import Optional, cast
 
 import torch
 
+from codllm.settings.options import (
+    SUPPORTED_LR_SCHEDULER_TYPES,
+    SUPPORTED_MODEL_TASKS,
+    SUPPORTED_SAVE_STRATEGY_BEST_METRICS,
+    SUPPORTED_TRAINING_INPUTS,
+)
 from codllm.settings.schema import (
-    BalanceStrategy,
     Config,
+)
+from codllm.settings.types import (
+    BalanceStrategy,
     EvalStrategy,
     LRSchedulerType,
     ModelTask,
@@ -58,7 +66,7 @@ def _parse_env_float(name: str) -> Optional[float]:
 
 def _parse_training_input(raw_value: str) -> list[TrainingInput]:
     """Parse comma-separated training_input env values."""
-    allowed_inputs = set(Config.SUPPORTED_TRAINING_INPUTS)
+    allowed_inputs = set(SUPPORTED_TRAINING_INPUTS)
     parsed: list[TrainingInput] = []
     for feature in raw_value.split(","):
         cleaned_feature = feature.strip().lower()
@@ -271,7 +279,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         and save_strategy_best_metric.strip() != ""
     ):
         normalized_best_metric = save_strategy_best_metric.strip().lower()
-        allowed_best_metrics = set(Config.SUPPORTED_SAVE_STRATEGY_BEST_METRICS)
+        allowed_best_metrics = set(SUPPORTED_SAVE_STRATEGY_BEST_METRICS)
         if normalized_best_metric not in allowed_best_metrics:
             allowed = ", ".join(sorted(allowed_best_metrics))
             raise ValueError(
@@ -284,7 +292,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     model_task = os.getenv("CODLLM_MODEL_TASK")
     if model_task is not None and model_task.strip() != "":
         normalized_model_task = model_task.strip().lower()
-        allowed_model_tasks = set(Config.SUPPORTED_MODEL_TASKS)
+        allowed_model_tasks = set(SUPPORTED_MODEL_TASKS)
         if normalized_model_task not in allowed_model_tasks:
             allowed = ", ".join(sorted(allowed_model_tasks))
             raise ValueError(f"CODLLM_MODEL_TASK must be one of: {allowed}.")
@@ -293,7 +301,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     lr_scheduler_type = os.getenv("CODLLM_LR_SCHEDULER_TYPE")
     if lr_scheduler_type is not None and lr_scheduler_type.strip() != "":
         normalized_lr_scheduler_type = lr_scheduler_type.strip().lower()
-        allowed_lr_schedulers = set(Config.SUPPORTED_LR_SCHEDULER_TYPES)
+        allowed_lr_schedulers = set(SUPPORTED_LR_SCHEDULER_TYPES)
         if normalized_lr_scheduler_type not in allowed_lr_schedulers:
             allowed = ", ".join(sorted(allowed_lr_schedulers))
             raise ValueError(f"CODLLM_LR_SCHEDULER_TYPE must be one of: {allowed}.")
@@ -381,7 +389,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         normalized_pretrain_lr_scheduler_type = (
             pretrain_lr_scheduler_type.strip().lower()
         )
-        allowed_lr_schedulers = set(Config.SUPPORTED_LR_SCHEDULER_TYPES)
+        allowed_lr_schedulers = set(SUPPORTED_LR_SCHEDULER_TYPES)
         if normalized_pretrain_lr_scheduler_type not in allowed_lr_schedulers:
             allowed = ", ".join(sorted(allowed_lr_schedulers))
             raise ValueError(
@@ -472,6 +480,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     label_harmonization_enabled = _parse_env_bool("CODLLM_LABEL_HARMONIZATION_ENABLED")
     if label_harmonization_enabled is not None:
         cfg.label_harmonization_enabled = label_harmonization_enabled
+
+    inference_validate_registry = _parse_env_bool("CODLLM_INFERENCE_VALIDATE_REGISTRY")
+    if inference_validate_registry is not None:
+        cfg.inference_validate_registry = inference_validate_registry
 
     output_dir = os.getenv("CODLLM_OUTPUT_DIR")
     if output_dir:
