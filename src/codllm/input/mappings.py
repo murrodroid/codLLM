@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from codllm.data_augmentation import (
+from codllm.data.augmentation import (
     accent_random_vowel,
     delete_random_char,
     insert_random_whitespace,

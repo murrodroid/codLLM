@@ -6,10 +6,10 @@ import pandas as pd
 import pytest
 from sklearn.model_selection import train_test_split
 
-import codllm.data_handler as data_handler_module
+import codllm.data.handler as data_handler_module
 from codllm.config import Config, DataSourceConfig
-from codllm.dataset_input import COPENHAGEN_MAPPING
-from codllm.data_handler import (
+from codllm.input import COPENHAGEN_MAPPING
+from codllm.data.handler import (
     DataHandler,
     DatasetMapping,
     MAPPING_REGISTRY,

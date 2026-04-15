@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from transformers import BitsAndBytesConfig
 
-import codllm.model_registry as model_registry
+import codllm.models.loaders as model_registry
 from codllm.config import Config
 
 

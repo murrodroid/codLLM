@@ -4,7 +4,7 @@ from typing import Any
 from transformers import Trainer
 
 from codllm.config import Config
-from codllm.data_handler import (
+from codllm.data import (
     DataHandler,
     DataSplits,
     prepare_sequence_classification_dataset,

@@ -3,8 +3,8 @@ import random
 import pytest
 
 from codllm.config import Config
-from codllm.reproducibility import configure_reproducibility
-import codllm.reproducibility as reproducibility_module
+from codllm.runtime.reproducibility import configure_reproducibility
+import codllm.runtime.reproducibility as reproducibility_module
 
 
 def test_configure_reproducibility_resets_python_random() -> None:

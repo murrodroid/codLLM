@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from codllm.config import Config
-from codllm.data_handler import DataHandler, DataSplits
+from codllm.data import DataHandler, DataSplits
 from codllm.training.stages import TrainingStage
 from transformers import TrainingArguments
 

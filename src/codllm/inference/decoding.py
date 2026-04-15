@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pydantic import ValidationError
 
-from codllm.icd10h_registry import is_valid_code, load_masterlist, set_valid_codes
-from codllm.schemas import ICD10hCode, ICD10hCodeList
+from codllm.labels.registry import is_valid_code, load_masterlist, set_valid_codes
+from codllm.labels.schemas import ICD10hCode, ICD10hCodeList
 
 
 @dataclass

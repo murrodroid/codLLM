@@ -4,7 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 from codllm.config import Config
-from codllm.preprocess import build_preprocess_fn
+from codllm.data.preprocess import build_preprocess_fn
 
 
 class TokenizedSeq2SeqDataset(Dataset):

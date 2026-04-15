@@ -12,7 +12,7 @@ import warnings
 import torch
 
 from codllm.config import Config
-from codllm.path_utils import resolve_source_path
+from codllm.runtime.paths import resolve_source_path
 
 
 def has_wandb_credentials() -> bool:

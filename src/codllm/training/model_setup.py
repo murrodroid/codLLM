@@ -4,9 +4,9 @@ import warnings
 import torch
 
 from codllm.config import Config
-from codllm.data_handler import DataHandler
-from codllm.model_registry import load_base_model
-from codllm.reproducibility import configure_reproducibility
+from codllm.data import DataHandler
+from codllm.models import load_base_model
+from codllm.runtime.reproducibility import configure_reproducibility
 
 
 def validate_trainable_model(model: Any) -> None:

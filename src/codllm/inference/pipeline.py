@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from codllm.config import Config
-from codllm.model_registry import load_base_model
+from codllm.models import load_base_model
 from codllm.runtime.paths import resolve_source_path
 from codllm.inference.decoding import (
     build_prediction_dataframe,

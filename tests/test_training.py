@@ -12,8 +12,8 @@ import codllm.run_directory as run_directory_module
 import codllm.trainer_logging as trainer_logging_module
 import codllm.wandb_utils as wandb_utils_module
 from codllm.config import Config, WandbConfig
-from codllm.data_handler import DataSplits
-from codllm.preprocess import build_preprocess_fn
+from codllm.data import DataSplits
+from codllm.data.preprocess import build_preprocess_fn
 from codllm.training import build_training_args
 import codllm.training.arguments as arguments_module
 import codllm.training.metadata as metadata_module

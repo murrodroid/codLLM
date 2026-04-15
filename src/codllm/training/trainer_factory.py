@@ -9,7 +9,7 @@ from transformers import (
 
 import codllm.wandb_utils as wandb_utils
 from codllm.config import Config
-from codllm.data_handler import (
+from codllm.data import (
     prepare_sequence_classification_dataset,
     prepare_training_dataset,
 )

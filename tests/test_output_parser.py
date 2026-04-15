@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from codllm.icd10h_registry import set_valid_codes
-from codllm.output_parser import parse_batch_outputs, parse_model_output
+from codllm.labels.registry import set_valid_codes
+from codllm.inference.decoding import parse_batch_outputs, parse_model_output
 
 
 # --- parse_model_output ---

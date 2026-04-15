@@ -68,7 +68,11 @@ def _macro_from_class_stats(
     classes: set[str] | None = None,
 ) -> dict[str, float]:
     """Compute macro P/R/F1 over the given class subset (or all classes)."""
-    all_classes = classes if classes is not None else (set(class_label_total) | set(class_pred_total))
+    all_classes = (
+        classes
+        if classes is not None
+        else (set(class_label_total) | set(class_pred_total))
+    )
     if not all_classes:
         return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
 
@@ -119,11 +123,15 @@ def _sanitize_token_ids_for_decoding(
     if max_token_id is not None:
         sanitized = np.where(sanitized > max_token_id, pad_token_id, sanitized)
     return sanitized
+
+
 def _macro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
 ) -> dict[str, float]:
     """Compute macro-averaged precision/recall/F1 across all classes."""
-    class_tp, class_label_total, class_pred_total = _per_class_stats(predictions, labels)
+    class_tp, class_label_total, class_pred_total = _per_class_stats(
+        predictions, labels
+    )
     raw = _macro_from_class_stats(class_tp, class_label_total, class_pred_total)
     return {f"macro_{k}": v for k, v in raw.items()}
 
@@ -139,7 +147,9 @@ def _seen_unseen_macro(
     - unseen_macro_*: metrics over eval classes never seen during training
     - seen_class_count / unseen_class_count: how many classes in each bucket
     """
-    class_tp, class_label_total, class_pred_total = _per_class_stats(predictions, labels)
+    class_tp, class_label_total, class_pred_total = _per_class_stats(
+        predictions, labels
+    )
     eval_classes = set(class_label_total) | set(class_pred_total)
 
     seen = eval_classes & train_classes
@@ -150,11 +160,15 @@ def _seen_unseen_macro(
         "unseen_class_count": float(len(unseen)),
     }
 
-    seen_stats = _macro_from_class_stats(class_tp, class_label_total, class_pred_total, seen)
+    seen_stats = _macro_from_class_stats(
+        class_tp, class_label_total, class_pred_total, seen
+    )
     for k, v in seen_stats.items():
         result[f"seen_macro_{k}"] = v
 
-    unseen_stats = _macro_from_class_stats(class_tp, class_label_total, class_pred_total, unseen)
+    unseen_stats = _macro_from_class_stats(
+        class_tp, class_label_total, class_pred_total, unseen
+    )
     for k, v in unseen_stats.items():
         result[f"unseen_macro_{k}"] = v
 
@@ -250,6 +264,7 @@ def build_exact_match_accuracy_metric(
 
 def build_sequence_classification_metric(
     id2label: Mapping[int, str],
+    train_classes: set[str] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build compute_metrics callback for single-label sequence classification."""
     normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
@@ -295,7 +310,9 @@ def build_sequence_classification_metric(
         result: dict[str, float] = {"accuracy": accuracy}
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
         if train_classes is not None:
-            result.update(_seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes))
+            result.update(
+                _seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes)
+            )
         return result
 
     return compute_metrics

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from codllm.schemas import ICD10hCode, ICD10hCodeList
+from codllm.labels.schemas import ICD10hCode, ICD10hCodeList
 
 
 # --- ICD10hCode ---

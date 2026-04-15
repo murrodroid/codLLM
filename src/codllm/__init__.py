@@ -1,1 +1,1 @@
-"""Training package for codllm."""
+"""codllm package."""

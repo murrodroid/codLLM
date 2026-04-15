@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codllm.icd10h_registry import (
+from codllm.labels.registry import (
     ICD10H_PATTERN,
     coarse_code,
     get_valid_codes,
