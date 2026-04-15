@@ -328,7 +328,7 @@ if [ "$SYNC_ENV" = "1" ]; then
   fi
 fi
 
-train_cmd=(uv run python -m codllm.train)
+train_cmd=(uv run python -m codllm.training)
 if [ "$FORCE_REPROCESS" = "1" ]; then
   train_cmd+=(--force-reprocess)
 fi

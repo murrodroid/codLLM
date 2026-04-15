@@ -19,4 +19,4 @@ RUN mkdir -p /app/runs /app/data/processed
 
 VOLUME ["/app/runs", "/app/data/processed"]
 
-CMD ["uv", "run", "python", "-m", "codllm.train"]
+CMD ["uv", "run", "python", "-m", "codllm.training"]
