@@ -1,8 +1,7 @@
-"""Public configuration entrypoint for codllm."""
+"""Configuration schema and environment loading utilities."""
 
-import torch
-
-from codllm.settings import (
+from codllm.settings.env import config_from_env
+from codllm.settings.schema import (
     BalanceStrategy,
     Config,
     DataSourceConfig,
@@ -16,9 +15,9 @@ from codllm.settings import (
     WandbConfig,
     WandbLogModel,
     WandbMode,
-    config,
-    config_from_env,
 )
+
+config = Config()
 
 __all__ = [
     "BalanceStrategy",
@@ -36,5 +35,4 @@ __all__ = [
     "WandbMode",
     "config",
     "config_from_env",
-    "torch",
 ]
