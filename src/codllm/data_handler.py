@@ -1,589 +1,50 @@
 import json
 import os
 import random
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping
 from uuid import uuid4
 import warnings
 
 from filelock import FileLock, Timeout
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
 
 from codllm.config import Config, DataSourceConfig
-import codllm.dataset_input as dataset_input
-from codllm.path_utils import resolve_source_path
-from codllm.preprocess import build_preprocess_fn
-
-DatasetMapping = dataset_input.DatasetMapping
-MAPPING_REGISTRY = dataset_input.MAPPING_REGISTRY
-PERTURBATION_REGISTRY = dataset_input.PERTURBATION_REGISTRY
-_build_text = dataset_input._build_text
-_build_y = dataset_input._build_y
-load_source_dataset = dataset_input.load_source_dataset
-build_processed_dataset = dataset_input.build_processed_dataset
-load_dataset = dataset_input.load_dataset
-
-PROCESSING_METADATA_VERSION = 7
-DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
-NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
-    {
-        "balance_strategy",
-        "balance_target_quantile",
-        "balance_perturbations",
-        "balance_perturbations_per_sample",
-        "balance_upsample_labels",
-        "balance_upsample_perturbation_rate",
-        "balance_upsample_inverse_power",
-        "balance_upsample_budget_ratio",
-        "balance_base_perturbation_rate",
-        "masterlist_inject_enabled",
-        "masterlist_inject_target_per_label",
-        "masterlist_inject_perturbations",
-        "masterlist_inject_perturbations_per_sample",
-    }
+from codllm.data.balancing import (
+    _contains_cod_segment,
+    _perturb_cod_segment,
+    _resolve_perturbation_functions,
+    _sample_upsample_rows,
+    manipulate_classes,
+    select_floor_upsample_targets,
+    select_upsample_targets,
+    upsample,
 )
-
-
-def _normalize_processing_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    """Drop metadata keys that do not affect processed dataset content."""
-    normalized = dict(metadata)
-    for key in NON_PROCESSING_METADATA_KEYS:
-        normalized.pop(key, None)
-    return normalized
-
-
-@dataclass
-class DataSplits:
-    """Container for train, validation, and test dataframe splits."""
-
-    train: pd.DataFrame
-    val: pd.DataFrame
-    test: pd.DataFrame
-
-
-class TokenizedSeq2SeqDataset(Dataset):
-    """Simple torch dataset wrapper for tokenized seq2seq features."""
-
-    def __init__(self, features: dict[str, list[Any]]) -> None:
-        if not features:
-            raise ValueError("Tokenized features must not be empty.")
-        lengths = {len(values) for values in features.values()}
-        if len(lengths) != 1:
-            raise ValueError("Tokenized feature lengths are inconsistent.")
-        self.features = features
-        self.length = lengths.pop()
-
-    def __len__(self) -> int:
-        """Return number of rows."""
-        return self.length
-
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        """Return one tokenized training sample."""
-        return {key: values[idx] for key, values in self.features.items()}
-
-
-def _tokenize_dataframe(
-    cfg: Config,
-    tokenizer: Any,
-    dataframe: pd.DataFrame,
-    target_max_length: int,
-) -> TokenizedSeq2SeqDataset:
-    """Convert a pandas dataframe into a tokenized seq2seq dataset."""
-    if dataframe.empty:
-        raise ValueError("Training dataframe is empty.")
-    if cfg.dataset_text_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing source column '{cfg.dataset_text_column}' in dataframe."
-        )
-    if cfg.dataset_label_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing label column '{cfg.dataset_label_column}' in dataframe."
-        )
-
-    sources = dataframe[cfg.dataset_text_column].fillna("").astype(str).tolist()
-    targets = dataframe[cfg.dataset_label_column].fillna("").astype(str).tolist()
-
-    model_inputs = tokenizer(
-        sources,
-        max_length=cfg.max_source_length,
-        truncation=True,
-    )
-    labels = tokenizer(
-        text_target=targets,
-        max_length=target_max_length,
-        truncation=True,
-    )
-    model_inputs["labels"] = labels["input_ids"]
-    return TokenizedSeq2SeqDataset(model_inputs)
-
-
-def prepare_training_dataset(
-    cfg: Config, tokenizer: Any, dataset: Any, target_max_length: int
-) -> Any:
-    """Convert a dataset into the tokenized format expected by Seq2SeqTrainer."""
-    if isinstance(dataset, pd.DataFrame):
-        return _tokenize_dataframe(cfg, tokenizer, dataset, target_max_length)
-
-    if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
-        preprocess = build_preprocess_fn(
-            cfg, tokenizer, max_target_length=target_max_length
-        )
-        return dataset.map(
-            preprocess, batched=True, remove_columns=dataset.column_names
-        )
-
-    raise TypeError(
-        "Unsupported dataset type. Expected pandas.DataFrame or a dataset with map/column_names."
-    )
-
-
-def _normalize_label_value(value: Any) -> str:
-    """Normalize one label value to a stripped string."""
-    if value is None:
-        return ""
-    if pd.isna(value):
-        return ""
-    return str(value).strip()
-
-
-def _tokenize_dataframe_for_sequence_classification(
-    cfg: Config,
-    tokenizer: Any,
-    dataframe: pd.DataFrame,
-    label2id: Mapping[str, int],
-) -> TokenizedSeq2SeqDataset:
-    """Convert a pandas dataframe into a tokenized sequence-classification dataset."""
-    if dataframe.empty:
-        raise ValueError("Training dataframe is empty.")
-    if cfg.dataset_text_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing source column '{cfg.dataset_text_column}' in dataframe."
-        )
-    if cfg.dataset_label_column not in dataframe.columns:
-        raise KeyError(
-            f"Missing label column '{cfg.dataset_label_column}' in dataframe."
-        )
-
-    sources = dataframe[cfg.dataset_text_column].fillna("").astype(str).tolist()
-    labels = [_normalize_label_value(value) for value in dataframe[cfg.dataset_label_column]]
-
-    unique_labels = set(labels)
-    unknown_labels = sorted(label for label in unique_labels if label not in label2id)
-    if unknown_labels:
-        preview = ", ".join(unknown_labels[:10])
-        raise ValueError(
-            "Found labels missing from classifier label space: "
-            f"{preview}."
-        )
-
-    model_inputs = tokenizer(
-        sources,
-        max_length=cfg.max_source_length,
-        truncation=True,
-    )
-    model_inputs["labels"] = [int(label2id[label]) for label in labels]
-    return TokenizedSeq2SeqDataset(model_inputs)
-
-
-def prepare_sequence_classification_dataset(
-    cfg: Config,
-    tokenizer: Any,
-    dataset: Any,
-    label2id: Mapping[str, int],
-) -> Any:
-    """Convert a dataset into tokenized format expected by Trainer classification."""
-    if isinstance(dataset, pd.DataFrame):
-        return _tokenize_dataframe_for_sequence_classification(
-            cfg=cfg,
-            tokenizer=tokenizer,
-            dataframe=dataset,
-            label2id=label2id,
-        )
-
-    if hasattr(dataset, "map") and hasattr(dataset, "column_names"):
-
-        def preprocess(batch: dict[str, Any]) -> dict[str, Any]:
-            if cfg.dataset_text_column not in batch:
-                raise KeyError(
-                    f"Missing source column '{cfg.dataset_text_column}' in batch."
-                )
-            if cfg.dataset_label_column not in batch:
-                raise KeyError(
-                    f"Missing label column '{cfg.dataset_label_column}' in batch."
-                )
-            sources = batch[cfg.dataset_text_column]
-            raw_labels = batch[cfg.dataset_label_column]
-            normalized_labels = [_normalize_label_value(value) for value in raw_labels]
-            unknown_labels = sorted(
-                label for label in set(normalized_labels) if label not in label2id
-            )
-            if unknown_labels:
-                preview = ", ".join(unknown_labels[:10])
-                raise ValueError(
-                    "Found labels missing from classifier label space: "
-                    f"{preview}."
-                )
-            model_inputs = tokenizer(
-                sources,
-                max_length=cfg.max_source_length,
-                truncation=True,
-            )
-            model_inputs["labels"] = [int(label2id[label]) for label in normalized_labels]
-            return model_inputs
-
-        return dataset.map(preprocess, batched=True, remove_columns=dataset.column_names)
-
-    raise TypeError(
-        "Unsupported dataset type. Expected pandas.DataFrame or a dataset with map/column_names."
-    )
-
-
-def resolve_training_frames(
-    splits: DataSplits,
-) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    """Return train and optional validation dataframes from split output."""
-    if splits.val.empty:
-        return splits.train, None
-    return splits.train, splits.val
-
-
-PerturbationFn = Callable[[str], str]
-
-
-def _resolve_perturbation_functions(
-    perturbation_names: Sequence[str] | None,
-) -> list[PerturbationFn]:
-    """Resolve configured perturbation names into callable functions."""
-    names = (
-        list(PERTURBATION_REGISTRY.keys())
-        if perturbation_names is None
-        else list(perturbation_names)
-    )
-    perturbation_fns: list[PerturbationFn] = []
-    for name in names:
-        if name not in PERTURBATION_REGISTRY:
-            available = ", ".join(sorted(PERTURBATION_REGISTRY.keys()))
-            raise ValueError(f"Unknown perturbation '{name}'. Available: {available}.")
-        perturbation_fns.append(PERTURBATION_REGISTRY[name])
-    return perturbation_fns
-
-
-def _apply_perturbation_with_seed(
-    perturbation_fn: PerturbationFn, text: str, seed: int
-) -> str:
-    """Apply one perturbation deterministically without leaking global RNG state."""
-    previous_state = random.getstate()
-    try:
-        random.seed(seed)
-        return perturbation_fn(text)
-    finally:
-        random.setstate(previous_state)
-
-
-def _perturb_cod_segment(
-    cfg: Config,
-    text: str,
-    perturbation_fns: Sequence[PerturbationFn],
-    perturbations_per_sample: int,
-    rng: random.Random,
-) -> str:
-    """Perturb only the cod: segment inside a configured training text."""
-    if perturbations_per_sample < 1 or not perturbation_fns:
-        return text
-
-    parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
-    cod_idx = next(
-        (idx for idx, part in enumerate(parts) if part.startswith("cod: ")), None
-    )
-    if cod_idx is None:
-        return text
-
-    cod_value = parts[cod_idx][len("cod: ") :]
-    for _ in range(perturbations_per_sample):
-        perturbation_fn = rng.choice(perturbation_fns)
-        cod_value = _apply_perturbation_with_seed(
-            perturbation_fn,
-            cod_value,
-            seed=rng.randint(0, 2_147_483_647),
-        )
-
-    parts[cod_idx] = f"cod: {cod_value}"
-    return (
-        cfg.text_field_separator.join(parts) if cfg.text_field_separator else parts[0]
-    )
-
-
-def _contains_cod_segment(cfg: Config, text: str) -> bool:
-    """Return whether a training text contains a cod: segment."""
-    parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
-    return any(part.startswith("cod: ") for part in parts)
-
-
-def _quantile_target_count(class_counts: pd.Series, target_quantile: float) -> int:
-    """Compute the class-count target used for quantile-based balancing."""
-    if target_quantile < 0 or target_quantile > 1:
-        raise ValueError("target_quantile must be between 0 and 1.")
-    if class_counts.empty:
-        return 0
-    return int(class_counts.quantile(target_quantile))
-
-
-def select_upsample_targets(
-    df: pd.DataFrame,
-    label_column: str,
-    target_quantile: float = 0.5,
-    candidate_labels: Sequence[str] | None = None,
-    inverse_power: float = 0.5,
-    budget_ratio: float = 0.1,
-) -> dict[Any, int]:
-    """Select per-class target counts for upsampling."""
-    if inverse_power <= 0 or inverse_power > 1:
-        raise ValueError("inverse_power must be in the interval (0, 1].")
-    if budget_ratio < 0 or budget_ratio > 1:
-        raise ValueError("budget_ratio must be between 0 and 1.")
-
-    class_counts = df[label_column].value_counts()
-    q_count = _quantile_target_count(class_counts, target_quantile)
-    if q_count <= 0 or budget_ratio == 0:
-        return {}
-
-    selected_labels: list[Any] = []
-    if candidate_labels is None:
-        for label, count in class_counts.items():
-            if count < q_count:
-                selected_labels.append(label)
-    else:
-        available_labels = set(class_counts.index.tolist())
-        for label in candidate_labels:
-            if label not in available_labels:
-                continue
-            if int(class_counts[label]) < q_count:
-                selected_labels.append(label)
-
-    if not selected_labels:
-        return {}
-
-    total_rows = int(len(df))
-    budget = int(round(budget_ratio * total_rows))
-    if budget <= 0:
-        return {}
-
-    per_label_pressure: dict[Any, float] = {}
-    pressure_denominator = 0.0
-    for label in selected_labels:
-        current_count = int(class_counts[label])
-        pressure = (q_count / current_count) ** inverse_power - 1.0
-        per_label_pressure[label] = pressure
-        pressure_denominator += current_count * pressure
-
-    if pressure_denominator <= 0:
-        return {}
-
-    lambda_scale = min(1.0, budget / pressure_denominator)
-    selected_targets: dict[Any, int] = {}
-    for label in selected_labels:
-        current_count = int(class_counts[label])
-        pressure = per_label_pressure[label]
-        target_float = current_count * (1.0 + lambda_scale * pressure)
-        target_count = int(round(target_float))
-        target_count = min(target_count, q_count)
-        target_count = max(current_count, target_count)
-        if target_count > current_count:
-            selected_targets[label] = target_count
-    return selected_targets
-
-
-def select_floor_upsample_targets(
-    df: pd.DataFrame,
-    label_column: str,
-    floor: int = 10,
-    decay: float = 0.1,
-) -> dict[Any, int]:
-    """Select per-class target counts by enforcing a minimum sample floor.
-
-    Classes below the floor are brought up towards it, with a gentle
-    log-decay so that the rarest classes get less boost and classes
-    closer to the floor get nearly the full floor. Classes at or above
-    the floor are untouched. Original ordering by class size is always
-    preserved.
-
-    Parameters
-    ----------
-    floor : int
-        Every class gets at least this many samples (before decay).
-    decay : float
-        Maximum fractional reduction for the smallest classes.
-        0.0 = no decay (all below-floor classes get exactly ``floor``).
-        0.1 = smallest classes get 10% less than ``floor``.
-    """
-    import math
-
-    if floor < 0:
-        raise ValueError("floor must be non-negative.")
-    if floor == 0:
-        return {}
-    if decay < 0 or decay > 1:
-        raise ValueError("decay must be between 0 and 1.")
-
-    class_counts = df[label_column].value_counts()
-    targets: dict[Any, int] = {}
-    for label, count in class_counts.items():
-        original = int(count)
-        if original >= floor:
-            continue
-        # t in [0, 1]: 0 = just below floor (biggest minority), 1 = smallest class
-        t = 1.0 - (original - 1) / max(floor - 1, 1)
-        # log curve: smallest classes lose up to `decay` of the floor
-        scale = 1.0 - decay * (math.log1p(t) / math.log(2))
-        target = max(original, round(floor * scale))
-        if target > original:
-            targets[label] = target
-    return targets
-
-
-def _sample_upsample_rows(
-    class_rows: pd.DataFrame, needed: int, rng: random.Random
-) -> list[dict[str, Any]]:
-    """Sample class rows with shuffled cycles to avoid repeatedly duplicating one row."""
-    if needed <= 0 or class_rows.empty:
-        return []
-
-    source_rows = class_rows.to_dict(orient="records")
-    sampled_rows: list[dict[str, Any]] = []
-    while len(sampled_rows) < needed:
-        shuffled_rows = list(source_rows)
-        rng.shuffle(shuffled_rows)
-        take = min(needed - len(sampled_rows), len(shuffled_rows))
-        sampled_rows.extend(dict(row) for row in shuffled_rows[:take])
-    return sampled_rows
-
-
-def upsample(
-    df: pd.DataFrame,
-    label_column: str,
-    target_counts: Mapping[Any, int],
-    seed: int = 42,
-    text_column: str | None = None,
-    perturbation_fns: Sequence[Any] | None = None,
-    perturbations_per_sample: int = 1,
-    text_field_separator: str = " | ",
-) -> pd.DataFrame:
-    """Upsample classes to target counts, perturbing synthetic rows proportionally.
-
-    When perturbation functions are provided, each synthetic row is perturbed
-    with probability proportional to the duplication ratio: a class going from
-    1→200 perturbs ~99.5% of copies, while 180→200 perturbs ~10%.
-    """
-    if not target_counts:
-        return df
-
-    rng = random.Random(seed)
-    class_counts = df[label_column].value_counts()
-
-    synthetic_rows: list[dict[str, Any]] = []
-    for label, target_count in target_counts.items():
-        if target_count <= 0:
-            continue
-
-        current_count = int(class_counts.get(label, 0))
-        if current_count == 0 or current_count >= target_count:
-            continue
-
-        class_rows = df[df[label_column] == label]
-        needed = target_count - current_count
-        new_rows = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
-
-        # Perturb synthetic rows proportional to duplication ratio
-        if text_column and perturbation_fns and new_rows:
-            perturb_rate = 1.0 - (current_count / target_count)
-            for row in new_rows:
-                if rng.random() < perturb_rate:
-                    text = str(row[text_column])
-                    for _ in range(perturbations_per_sample):
-                        fn = rng.choice(perturbation_fns)
-                        text = _apply_perturbation_with_seed(
-                            fn, text, seed=rng.randint(0, 2_147_483_647)
-                        )
-                    row[text_column] = text
-
-        synthetic_rows.extend(new_rows)
-
-    if not synthetic_rows:
-        return df
-
-    synthetic_df = pd.DataFrame(synthetic_rows, columns=df.columns)
-    return pd.concat([df, synthetic_df], ignore_index=True)
-
-
-def upsample_minority_classes(
-    df: pd.DataFrame,
-    label_column: str,
-    target_quantile: float = 0.5,
-    inverse_power: float = 0.5,
-    budget_ratio: float = 0.1,
-    seed: int = 42,
-) -> pd.DataFrame:
-    """Upsample classes selected from quantile-based minority detection."""
-    target_counts = select_upsample_targets(
-        df=df,
-        label_column=label_column,
-        target_quantile=target_quantile,
-        inverse_power=inverse_power,
-        budget_ratio=budget_ratio,
-    )
-    return upsample(
-        df=df,
-        label_column=label_column,
-        target_counts=target_counts,
-        seed=seed,
-    )
-
-
-def manipulate_classes(
-    cfg: Config,
-    df: pd.DataFrame,
-    text_column: str,
-    label_column: str,
-    target_labels: Sequence[str] | None = None,
-    perturbation_names: Sequence[str] | None = None,
-    perturbations_per_sample: int = 1,
-    sample_fraction: float = 1.0,
-    seed: int = 42,
-) -> pd.DataFrame:
-    """Perturb selected rows in-place without changing class counts."""
-    if sample_fraction <= 0 or sample_fraction > 1:
-        raise ValueError("sample_fraction must be in the interval (0, 1].")
-    if target_labels is not None and not target_labels:
-        return df
-
-    perturbation_fns = _resolve_perturbation_functions(perturbation_names)
-    if target_labels is None:
-        selected_indices = df.index.tolist()
-    else:
-        selected_mask = df[label_column].isin(set(target_labels))
-        selected_indices = df.index[selected_mask].tolist()
-    if not selected_indices:
-        return df
-
-    sample_size = max(1, int(round(len(selected_indices) * sample_fraction)))
-    sample_size = min(sample_size, len(selected_indices))
-    rng = random.Random(seed)
-    indices_to_perturb = rng.sample(selected_indices, sample_size)
-
-    manipulated_df = df.copy()
-    for index in indices_to_perturb:
-        text = str(manipulated_df.at[index, text_column])
-        manipulated_df.at[index, text_column] = _perturb_cod_segment(
-            cfg=cfg,
-            text=text,
-            perturbation_fns=perturbation_fns,
-            perturbations_per_sample=perturbations_per_sample,
-            rng=rng,
-        )
-    return manipulated_df
+from codllm.data.splits import DataSplits, resolve_training_frames
+from codllm.data.storage import (
+    DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS,
+    PROCESSING_METADATA_VERSION,
+    _normalize_processing_metadata,
+    build_and_save_processed_dataset,
+    save_processed_dataset,
+)
+from codllm.data.tokenization import (
+    prepare_sequence_classification_dataset,
+    prepare_training_dataset,
+)
+from codllm.input import (
+    DatasetMapping,
+    MAPPING_REGISTRY,
+    PERTURBATION_REGISTRY,
+    _build_text,
+    _build_y,
+    build_processed_dataset,
+    load_dataset,
+    load_source_dataset,
+)
+from codllm.runtime.paths import resolve_source_path
 
 
 class DataHandler:
@@ -727,7 +188,8 @@ class DataHandler:
 
                 if should_reprocess:
                     processed_df = build_processed_dataset(
-                        cfg=self.cfg, mapping_registry=self.mapping_registry
+                        cfg=self.cfg,
+                        mapping_registry=self.mapping_registry,
                     )
                     save_processed_dataset(processed_df, str(self.processed_path))
                     self._write_processing_metadata(self._build_processing_metadata())
@@ -775,12 +237,7 @@ class DataHandler:
             raise KeyError(
                 f"Masterlist dataframe is missing label column '{label_column}'."
             )
-        labels = (
-            masterlist_df[label_column]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-        )
+        labels = masterlist_df[label_column].fillna("").astype(str).str.strip()
         unique_labels = sorted(label for label in labels.unique().tolist() if label)
         if not unique_labels:
             raise ValueError("Masterlist label vocabulary is empty.")
@@ -826,7 +283,9 @@ class DataHandler:
             "mean": float(counts.mean()),
         }
 
-    def _apply_pretraining_upsample_policy(self, pretrain_df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_pretraining_upsample_policy(
+        self, pretrain_df: pd.DataFrame
+    ) -> pd.DataFrame:
         """Upsample pretraining rows per label and track perturbation diagnostics."""
         label_column = self.cfg.dataset_label_column
         text_column = self.cfg.dataset_text_column
@@ -1013,18 +472,12 @@ class DataHandler:
 
         for label, current_count in before_counts.items():
             current_count_int = int(current_count)
-            if current_count_int >= target_count:
-                needed = 0
-            else:
-                needed = target_count - current_count_int
-
+            needed = max(0, target_count - current_count_int)
             class_rows = masterlist_df[masterlist_df[label_column] == label]
 
-            # Always include originals
             for _, row in class_rows.iterrows():
                 synthetic_rows.append(dict(row))
 
-            # Add perturbed copies up to target
             if needed > 0:
                 sampled = _sample_upsample_rows(class_rows, needed=needed, rng=rng)
                 for row in sampled:
@@ -1136,7 +589,10 @@ class DataHandler:
         return df
 
     def _sample_dataframe_by_fraction(
-        self, df: pd.DataFrame, size: float, setting_name: str
+        self,
+        df: pd.DataFrame,
+        size: float,
+        setting_name: str,
     ) -> pd.DataFrame:
         """Subsample dataframe rows according to a configured fractional size."""
         if size <= 0 or size > 1:
@@ -1206,31 +662,23 @@ class DataHandler:
             raise ValueError("train_size, val_size, and test_size must sum to 1.0.")
 
 
-def save_processed_dataset(df: pd.DataFrame, output_path: str) -> None:
-    """Persist processed data as CSV or Parquet based on file extension."""
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    suffix = output.suffix.lower()
-    temporary_output = output.parent / f".{output.name}.{uuid4().hex}.tmp{suffix}"
-    try:
-        if suffix == ".csv":
-            df.to_csv(temporary_output, index=False)
-        elif suffix == ".parquet":
-            df.to_parquet(temporary_output, index=False)
-        else:
-            raise ValueError("Unsupported processed file format. Use .csv or .parquet.")
-        temporary_output.replace(output)
-    finally:
-        if temporary_output.exists():
-            temporary_output.unlink()
-
-
-def build_and_save_processed_dataset(
-    cfg: Config,
-    mapping_registry: Mapping[str, DatasetMapping] | None = None,
-) -> pd.DataFrame:
-    """Build and persist processed data using config output settings."""
-    processed_df = build_processed_dataset(cfg, mapping_registry=mapping_registry)
-    output_path = str(Path(cfg.data_processed_dir) / cfg.processed_filename)
-    save_processed_dataset(processed_df, output_path)
-    return processed_df
+__all__ = [
+    "DataHandler",
+    "DataSplits",
+    "DatasetMapping",
+    "MAPPING_REGISTRY",
+    "PERTURBATION_REGISTRY",
+    "_build_text",
+    "_build_y",
+    "build_and_save_processed_dataset",
+    "build_processed_dataset",
+    "load_dataset",
+    "load_source_dataset",
+    "manipulate_classes",
+    "prepare_sequence_classification_dataset",
+    "prepare_training_dataset",
+    "resolve_training_frames",
+    "save_processed_dataset",
+    "select_upsample_targets",
+    "upsample",
+]
