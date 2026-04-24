@@ -63,6 +63,23 @@ pip install uv
 uv sync
 ```
 
+## Inference
+
+Run inference directly through the package entrypoint:
+
+```bash
+uv run python -m codllm.inference data/inference/input.csv --output-path runs/inference/predictions.csv
+```
+
+Input formats:
+
+- `.txt`: one inference example per line
+- `.csv`, `.tsv`, `.jsonl`, `.parquet`: must contain the configured text column (`text` by default)
+
+When `--output-path` is omitted, the CLI writes compact JSONL predictions to stdout.
+Set `CODLLM_INFERENCE_VALIDATE_REGISTRY=1` to reject predicted codes that are absent from the configured ICD10h
+masterlist.
+
 ## Runtime Environment Variables
 
 Environment variables are supported, but only if they are explicitly read by the scripts.
@@ -206,6 +223,87 @@ Pretraining-specific knobs:
 ## HPC Usage (LSF, No Docker)
 
 Use this path when your cluster does not allow Docker.
+
+The recommended HPC workflow is now invoke-driven:
+
+- experiment intent lives in TOML specs under `experiments/configs/`
+- cluster resources live in named profiles in `hpc/lsf_profiles.toml`
+- generated LSF scripts and per-run env files are written to `jobs/generated/`
+- generated artifacts are ignored by git and can be inspected before submission
+
+List available tasks:
+
+```bash
+uv run invoke --list
+```
+
+List experiment specs and profiles:
+
+```bash
+uv run invoke experiments.list
+uv run invoke hpc.profiles
+```
+
+Inspect the concrete runs created by a spec:
+
+```bash
+uv run invoke experiments.plan --config experiments/configs/sweeps/pretraining-epochs.toml --profile h100
+```
+
+Generate an LSF submission without submitting it:
+
+```bash
+uv run invoke hpc.submit \
+  --config experiments/configs/sweeps/pretraining-epochs.toml \
+  --profile h100 \
+  --dry-run
+```
+
+Submit the generated job:
+
+```bash
+uv run invoke hpc.submit \
+  --config experiments/configs/runs/t5-large-h100.toml \
+  --profile h100
+```
+
+For sweep specs, the generated script uses an LSF job array and one generated env file per array index. The Python
+training code still receives ordinary `CODLLM_*` environment variables through `config_from_env`, so the model runtime
+does not need to know whether a run came from a local shell, an invoke task, or LSF.
+
+### Experiment Specs
+
+Experiment specs are TOML files. They can inherit from one or more base specs, define scalar env overrides, and define
+cartesian sweeps:
+
+```toml
+base = "../base/h100-large.toml"
+name = "pretraining-epochs"
+command = "train"
+force_reprocess = false
+
+[env]
+CODLLM_MODEL_TASK = "seq2seq"
+CODLLM_PRETRAIN_ENABLED = true
+
+[sweep]
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = [1, 10, 25]
+```
+
+Use `[env]` for values that should be present in every run. Use `[sweep]` for values that should expand to multiple
+runs. TOML booleans are converted to `1` or `0`, arrays in `[env]` are converted to comma-separated strings, and arrays
+in `[sweep]` expand into individual runs.
+
+### LSF Profiles
+
+LSF profiles keep scheduler details out of experiment specs. A profile defines queue, wall time, CPU/GPU resources,
+memory, module loads, storage defaults, and log locations. Edit `hpc/lsf_profiles.toml` when moving between queues or
+clusters instead of changing experiment specs.
+
+### Legacy shell wrappers
+
+The older handwritten shell wrappers remain available for compatibility, but new experiments should prefer the
+invoke/TOML workflow.
 
 Script: `jobs/train.sh`
 H100 script: `jobs/train_h100.sh`

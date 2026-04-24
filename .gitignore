@@ -4,4 +4,5 @@ api_keys.py
 .vscode
 .DS_Store
 data/cache/
+jobs/generated/
 .claude/

@@ -1,0 +1,12 @@
+base = "../base/h100-large.toml"
+name = "t5-large-h100"
+description = "Primary H100 sequence-classification run with masterlist pretraining and label harmonization."
+
+[env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_LABEL_HARMONIZATION_ENABLED = true
+CODLLM_PRETRAIN_TRANSFER_SHEET_NAME = "2020to2024transfer"
+CODLLM_PRETRAIN_MASTERLIST_PATH = "data/raw/ICD10h_Masterlist_2024.xlsx"
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 50
+CODLLM_PRETRAIN_LR_SCHEDULER_TYPE = "linear"
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 10

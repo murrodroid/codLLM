@@ -1,0 +1,33 @@
+[h100]
+queue = "gpuh100"
+wall_time = "10:00"
+cores = 8
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-fast]
+queue = "gpuh100"
+wall_time = "4:00"
+cores = 8
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[v100]
+queue = "gpuv100"
+wall_time = "10:00"
+cores = 4
+memory = "6GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+extra_resources = ["select[gpu32gb]"]

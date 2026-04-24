@@ -15,9 +15,31 @@
     * To lint code, use `uv run ruff check . --fix`.
 * The project uses `invoke` for task management. To see available tasks, use `uv run invoke --list` or refer to the
     `tasks.py` file.
-  * To sync dependencies and fetch the dataset, use `uv run invoke sync`.
+  * To sync dependencies, use `uv run invoke sync`.
+  * To list experiment specs, use `uv run invoke experiments.list`.
+  * To inspect expanded experiment runs, use `uv run invoke experiments.plan --config <path>`.
+  * To list configured LSF profiles, use `uv run invoke hpc.profiles`.
+  * To generate and submit an LSF job, use
+    `uv run invoke hpc.submit --config <path> --profile <profile>`.
+  * To generate an LSF job without submitting it, add `--dry-run`.
 * The project uses `pre-commit` for managing pre-commit hooks. To run all hooks on all files, use
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.
+
+# Application overview
+
+codLLM trains and evaluates transformer models for mapping historical free-text causes of death to ICD10h labels.
+The production runtime is the Python package under `src/codllm`, with explicit entrypoints for training
+(`python -m codllm.training`) and inference (`python -m codllm.inference`). Runtime behavior is configured through the
+`Config` dataclass in `src/codllm/settings/schema.py` and environment overrides parsed by
+`src/codllm/settings/env.py`. The core pipeline loads raw historical datasets, harmonizes input fields, preprocesses and
+balances data, optionally pretrains on the ICD10h masterlist, fine-tunes Hugging Face models, records metadata, and
+writes run-scoped outputs.
+
+Experiment orchestration is handled separately from model code. Human-editable experiment specs live under
+`experiments/configs/**/*.toml`, LSF resource profiles live in `hpc/lsf_profiles.toml`, and `tasks.py` exposes the
+supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
+`jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
+new handwritten shell scripts in `jobs/`.
 
 # Code style
 
@@ -46,4 +68,12 @@
 * Use Google style for docstrings.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners by default) and do not
   depend on local-only resources or hardware.
-* Update this `AGENTS.md` file if any new tools or commands are added to the project.
+* Update this `AGENTS.md` file whenever a change affects how future agents should work in this repo. This includes:
+  * adding, removing, or changing project commands, dependencies, task names, test commands, lint commands, or HPC
+    submission workflows;
+  * changing configuration ownership rules, environment variable behavior, experiment spec formats, generated file
+    locations, or required local/HPC setup;
+  * introducing new conventions for code style, documentation, tests, data handling, generated artifacts, or secrets;
+  * adding a tool or workflow that future agents should prefer over an older path.
+* Do not update `AGENTS.md` for ordinary feature code, bug fixes, or tests when the existing commands and conventions
+  remain accurate.
