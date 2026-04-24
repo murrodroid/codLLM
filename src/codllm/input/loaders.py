@@ -56,7 +56,9 @@ def _select_rows_with_valid_labels(
     drop_missing_label: bool,
 ) -> tuple[pd.DataFrame, pd.Series, list[int]]:
     """Filter raw rows before dataset assembly based on resolved label availability."""
-    y_codes = raw_df.apply(lambda row: _build_y(row, mapping), axis=1)
+    y_codes = raw_df.apply(
+        lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
+    )
     label_counts = y_codes.apply(len)
     keep_mask = label_counts <= max_labels
     if drop_missing_label:
