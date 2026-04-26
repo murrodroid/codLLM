@@ -130,7 +130,7 @@ def format_env_file(run: ExperimentRun, spec: ExperimentSpec) -> str:
     return "\n".join(lines) + "\n"
 
 
-def list_experiment_specs(root: Path | str = "experiments/configs") -> list[Path]:
+def list_experiment_specs(root: Path | str = "runs") -> list[Path]:
     """Return sorted TOML experiment specs below a root path."""
     root_path = Path(root)
     if root_path.is_file():

@@ -17,7 +17,7 @@ from codllm.experiments import (
     prepare_lsf_submission,
 )
 
-DEFAULT_EXPERIMENT_ROOT = Path("experiments/configs")
+DEFAULT_EXPERIMENT_ROOT = Path("runs")
 DEFAULT_PROFILE_PATH = Path("hpc/lsf_profiles.toml")
 
 
@@ -144,7 +144,7 @@ def hpc_storage(ctx: Context) -> None:
 def hpc_submit(
     ctx: Context,
     config: str,
-    profile: str = "h100",
+    profile: str = "h100-10h",
     profiles: str = str(DEFAULT_PROFILE_PATH),
     output_root: str = "jobs/generated",
     dry_run: bool = False,

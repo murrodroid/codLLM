@@ -1,5 +1,5 @@
 base = "../base/h100-large.toml"
-name = "pretraining-epochs"
+name = "pretraining"
 description = "Sweep masterlist pretraining duration while holding the fine-tuning setup fixed."
 force_reprocess = false
 

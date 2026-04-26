@@ -38,7 +38,7 @@ balances data, optionally pretrains on the ICD10h masterlist, fine-tunes Hugging
 writes run-scoped outputs.
 
 Experiment orchestration is handled separately from model code. Human-editable experiment specs live under
-`experiments/configs/**/*.toml`, LSF resource profiles live in `hpc/lsf_profiles.toml`, and `tasks.py` exposes the
+`runs/**/*.toml`, LSF resource profiles live in `hpc/lsf_profiles.toml`, and `tasks.py` exposes the
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
 new handwritten shell scripts in `jobs/`.
