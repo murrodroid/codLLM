@@ -4,6 +4,7 @@ description = "Sweep masterlist pretraining duration while holding the fine-tuni
 force_reprocess = false
 
 [env]
+CODLLM_TRAINING_INPUT = "cod"
 CODLLM_MODEL_TASK = "seq2seq"
 CODLLM_DATASET_SIZE = 0.5
 CODLLM_NUM_TRAIN_EPOCHS = 4
@@ -23,6 +24,8 @@ CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
   "qwerty_misspell",
 ]
 CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 5
+
 
 [sweep]
-CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = [1, 10, 25]
+CODLLM_PRETRAIN_ENABLED = [true,false]
