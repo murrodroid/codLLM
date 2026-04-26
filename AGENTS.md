@@ -19,6 +19,8 @@
   * To list experiment specs, use `uv run invoke experiments.list`.
   * To inspect expanded experiment runs, use `uv run invoke experiments.plan --config <path>`.
   * To list configured LSF profiles, use `uv run invoke hpc.profiles`.
+  * To inspect uv/cache paths before HPC work, source `hpc/env.sh` and run `bash hpc/storage-check.sh`.
+    If invoke is already installed, `uv run --no-sync invoke hpc.storage` provides the same check.
   * To generate and submit an LSF job, use
     `uv run invoke hpc.submit --config <path> --profile <profile>`.
   * To generate an LSF job without submitting it, add `--dry-run`.
@@ -40,6 +42,11 @@ Experiment orchestration is handled separately from model code. Human-editable e
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
 new handwritten shell scripts in `jobs/`.
+
+On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,
+`UV_PYTHON_INSTALL_DIR`, Hugging Face caches, torch caches, and W&B caches under the configured storage unit instead of
+personal user space. After syncing once, prefer `uv run --no-sync invoke ...` for plan/submit commands to avoid
+unexpected dependency downloads.
 
 # Code style
 

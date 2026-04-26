@@ -105,6 +105,41 @@ def hpc_profiles(ctx: Context, profiles: str = str(DEFAULT_PROFILE_PATH)) -> Non
         )
 
 
+@task(name="storage")
+def hpc_storage(ctx: Context) -> None:
+    """Print uv/cache paths and warn when they are outside RUN_STORAGE_DIR."""
+    run_storage_dir = os.getenv("RUN_STORAGE_DIR")
+    paths = {
+        "RUN_STORAGE_DIR": run_storage_dir,
+        "UV_CACHE_DIR": os.getenv("UV_CACHE_DIR"),
+        "UV_PROJECT_ENVIRONMENT": os.getenv("UV_PROJECT_ENVIRONMENT"),
+        "UV_PYTHON_INSTALL_DIR": os.getenv("UV_PYTHON_INSTALL_DIR"),
+        "HF_HOME": os.getenv("HF_HOME"),
+        "TORCH_HOME": os.getenv("TORCH_HOME"),
+        "XDG_CACHE_HOME": os.getenv("XDG_CACHE_HOME"),
+        "VIRTUAL_ENV": os.getenv("VIRTUAL_ENV"),
+    }
+    uv_cache = ctx.run("uv cache dir", hide=True).stdout.strip()
+    paths["uv cache dir"] = uv_cache
+
+    for key, value in paths.items():
+        print(f"{key}={value or '<unset>'}")
+
+    if run_storage_dir is None:
+        print(
+            "WARNING: RUN_STORAGE_DIR is unset. Source hpc/env.sh before running uv on HPC."
+        )
+        return
+
+    storage_root = Path(run_storage_dir).expanduser()
+    for key, value in paths.items():
+        if key == "RUN_STORAGE_DIR" or value is None:
+            continue
+        path = Path(value).expanduser()
+        if not _is_relative_to(path, storage_root):
+            print(f"WARNING: {key} is outside RUN_STORAGE_DIR: {value}")
+
+
 @task(name="submit")
 def hpc_submit(
     ctx: Context,
@@ -170,6 +205,15 @@ def _print_submission(submission: GeneratedSubmission) -> None:
     print(f"Submit with: {submission.bsub_command()}")
 
 
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    """Return True when path is below parent without requiring Python 3.9 fallback."""
+    try:
+        path.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 namespace = Collection()
 namespace.add_task(sync)
 namespace.add_task(train)
@@ -181,6 +225,7 @@ namespace.add_collection(experiments)
 
 hpc = Collection("hpc")
 hpc.add_task(hpc_profiles)
+hpc.add_task(hpc_storage)
 hpc.add_task(hpc_submit)
 namespace.add_collection(hpc)
 
