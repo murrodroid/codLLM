@@ -142,7 +142,7 @@ def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
         "CODLLM_MODEL_TASK",
         "CODLLM_DATASET_SIZE",
         "CODLLM_BALANCE_STRATEGY",
-        "CODLLM_WARMUP_STEPS",
+        "CODLLM_WARMUP_RATIO",
         "CODLLM_TRAIN_SIZE",
         "CODLLM_VAL_SIZE",
         "CODLLM_TEST_SIZE",

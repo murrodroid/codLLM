@@ -14,7 +14,7 @@ ENV_KEYS = [
     "CODLLM_DATALOADER_PERSISTENT_WORKERS",
     "CODLLM_DATALOADER_PREFETCH_FACTOR",
     "CODLLM_MAX_SOURCE_LENGTH",
-    "CODLLM_WARMUP_STEPS",
+    "CODLLM_WARMUP_RATIO",
     "CODLLM_NUM_TRAIN_EPOCHS",
     "CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE",
     "CODLLM_PER_DEVICE_EVAL_BATCH_SIZE",
@@ -113,7 +113,7 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
         "sex": "sex: ",
     }
     assert cfg.max_grad_norm == 0.5
-    assert cfg.warmup_steps == 1000
+    assert cfg.warmup_ratio == 0.1
     assert cfg.balance_strategy == "none"
 
 
@@ -132,7 +132,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_DATALOADER_PERSISTENT_WORKERS", "true")
     monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "4")
     monkeypatch.setenv("CODLLM_MAX_SOURCE_LENGTH", "300")
-    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
+    monkeypatch.setenv("CODLLM_WARMUP_RATIO", "0.25")
     monkeypatch.setenv("CODLLM_NUM_TRAIN_EPOCHS", "6")
     monkeypatch.setenv("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE", "6")
     monkeypatch.setenv("CODLLM_PER_DEVICE_EVAL_BATCH_SIZE", "5")
@@ -229,7 +229,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.dataloader_persistent_workers is True
     assert cfg.dataloader_prefetch_factor == 4
     assert cfg.max_source_length == 300
-    assert cfg.warmup_steps == 500
+    assert cfg.warmup_ratio == 0.25
     assert cfg.num_train_epochs == 6
     assert cfg.per_device_train_batch_size == 6
     assert cfg.per_device_eval_batch_size == 5
@@ -346,12 +346,12 @@ def test_config_from_env_rejects_invalid_dataloader_prefetch_factor(
         config_from_env()
 
 
-def test_config_from_env_rejects_negative_warmup_steps(
+def test_config_from_env_rejects_invalid_warmup_ratio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Warmup steps should be non-negative."""
+    """Warmup ratio should stay within the inclusive 0 to 1 range."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "-1")
+    monkeypatch.setenv("CODLLM_WARMUP_RATIO", "1.5")
     with pytest.raises(ValueError):
         config_from_env()
 

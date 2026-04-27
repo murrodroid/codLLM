@@ -183,7 +183,7 @@ def test_build_training_args_honors_stage_overrides(
         output_dir="/tmp/base-output",
         num_train_epochs=4,
         lr=1e-5,
-        warmup_steps=100,
+        warmup_ratio=0.1,
         lr_scheduler_type="linear",
     )
     stage = stages_module.TrainingStage(
@@ -191,7 +191,7 @@ def test_build_training_args_honors_stage_overrides(
         output_dir="/tmp/stage-output",
         num_train_epochs=2,
         learning_rate=3e-5,
-        warmup_steps=0,
+        warmup_ratio=0.0,
         lr_scheduler_type="constant",
     )
     args = build_training_args(
@@ -202,7 +202,7 @@ def test_build_training_args_honors_stage_overrides(
     assert args.output_dir == "/tmp/stage-output"
     assert args.num_train_epochs == 2
     assert args.learning_rate == pytest.approx(3e-5)
-    assert args.warmup_steps == 0
+    assert args.warmup_steps == 0.0
     scheduler = (
         args.lr_scheduler_type.value
         if hasattr(args.lr_scheduler_type, "value")
@@ -297,7 +297,7 @@ def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
         output_dir="/tmp/pretrain",
         num_train_epochs=1,
         learning_rate=1e-5,
-        warmup_steps=0,
+        warmup_ratio=0.0,
         lr_scheduler_type="linear",
         eval_every_n_epochs=10,
     )
@@ -315,7 +315,7 @@ def test_should_not_apply_eval_interval_callback_for_finetune_stage() -> None:
         output_dir="/tmp/finetune",
         num_train_epochs=1,
         learning_rate=1e-5,
-        warmup_steps=0,
+        warmup_ratio=0.0,
         lr_scheduler_type="linear",
         eval_every_n_epochs=10,
     )
@@ -1080,7 +1080,7 @@ def test_train_uses_pretraining_dataset_when_available(
     assert captured["run_data_metadata"]["pretraining"][
         "learning_rate"
     ] == pytest.approx(7e-6)
-    assert captured["run_data_metadata"]["pretraining"]["warmup_steps"] == 0
+    assert captured["run_data_metadata"]["pretraining"]["warmup_ratio"] == 0.0
     assert captured["run_data_metadata"]["pretraining"]["eval_every_n_epochs"] == 10
     assert (
         captured["run_data_metadata"]["pretraining"]["lr_scheduler_type"] == "constant"
@@ -1102,7 +1102,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         output_dir=str(tmp_path / "runs"),
         lr=2e-5,
         lr_scheduler_type="linear",
-        warmup_steps=300,
+        warmup_ratio=0.3,
         pretrain_num_train_epochs=5,
         pretrain_learning_rate=9e-6,
         pretrain_eval_every_n_epochs=10,
@@ -1177,13 +1177,13 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
     finetune_stage = captured_stages[1]
     assert pretrain_stage["name"] == "pretrain"
     assert pretrain_stage["learning_rate"] == pytest.approx(9e-6)
-    assert pretrain_stage["warmup_steps"] == 0
+    assert pretrain_stage["warmup_ratio"] == 0.0
     assert pretrain_stage["eval_every_n_epochs"] == 10
     assert pretrain_stage["lr_scheduler_type"] == "constant"
     assert Path(pretrain_stage["output_dir"]).name == "pretrain"
     assert finetune_stage["name"] == "finetune"
     assert finetune_stage["learning_rate"] == pytest.approx(2e-5)
-    assert finetune_stage["warmup_steps"] == 300
+    assert finetune_stage["warmup_ratio"] == 0.3
     assert finetune_stage["lr_scheduler_type"] == "linear"
     assert Path(finetune_stage["output_dir"]).name == "finetune"
 

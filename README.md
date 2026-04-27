@@ -133,7 +133,7 @@ export CODLLM_LOAD_IN_8BIT=0
 export CODLLM_VERBOSE=true
 export CODLLM_TORCH_DTYPE=auto
 export CODLLM_WANDB_LOG_MODEL=end
-export CODLLM_WARMUP_STEPS=1000
+export CODLLM_WARMUP_RATIO=0.1
 export CODLLM_NUM_TRAIN_EPOCHS=4
 export CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE=8
 export CODLLM_PER_DEVICE_EVAL_BATCH_SIZE=8
@@ -258,7 +258,7 @@ Pretraining-specific knobs:
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
-- Pretraining warmup is fixed to `0` steps.
+- Pretraining warmup is fixed to `0.0` ratio.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
 - For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
 - Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
@@ -471,7 +471,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_MAX_SOURCE_LENGTH` (default: `256`)
 - `CODLLM_MAX_TARGET_LENGTH` (default: `32`)
 - `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)
-- `CODLLM_WARMUP_STEPS` (default: `1000`)
+- `CODLLM_WARMUP_RATIO` (default: `0.1`)
 - `CODLLM_NUM_TRAIN_EPOCHS` (default: `4`)
 - `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE` (default: `8`)
 - `CODLLM_PER_DEVICE_EVAL_BATCH_SIZE` (default: `8`)

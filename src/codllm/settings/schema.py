@@ -80,7 +80,7 @@ class Config:
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 0.5
-    warmup_steps: int = 1000
+    warmup_ratio: float = 0.1
     dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False

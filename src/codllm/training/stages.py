@@ -16,7 +16,7 @@ class TrainingStage:
     output_dir: str
     num_train_epochs: int
     learning_rate: float
-    warmup_steps: int
+    warmup_ratio: float
     lr_scheduler_type: str
     eval_every_n_epochs: int = 1
 
@@ -31,7 +31,7 @@ class TrainingStage:
             "output_dir": self.output_dir,
             "num_train_epochs": self.num_train_epochs,
             "learning_rate": self.learning_rate,
-            "warmup_steps": self.warmup_steps,
+            "warmup_ratio": self.warmup_ratio,
             "eval_every_n_epochs": self.eval_every_n_epochs,
             "lr_scheduler_type": self.lr_scheduler_type,
         }
@@ -50,7 +50,7 @@ def build_train_stage(cfg: Config) -> TrainingStage:
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,
         learning_rate=cfg.lr,
-        warmup_steps=cfg.warmup_steps,
+        warmup_ratio=cfg.warmup_ratio,
         lr_scheduler_type=cfg.lr_scheduler_type,
     )
 
@@ -65,7 +65,7 @@ def build_pretraining_stage(cfg: Config) -> TrainingStage:
         output_dir=str(Path(cfg.output_dir) / "pretrain"),
         num_train_epochs=cfg.pretrain_num_train_epochs,
         learning_rate=pretrain_learning_rate,
-        warmup_steps=0,
+        warmup_ratio=0.0,
         lr_scheduler_type=cfg.pretrain_lr_scheduler_type,
         eval_every_n_epochs=cfg.pretrain_eval_every_n_epochs,
     )
@@ -78,7 +78,7 @@ def build_finetune_stage(cfg: Config) -> TrainingStage:
         output_dir=str(Path(cfg.output_dir) / "finetune"),
         num_train_epochs=cfg.num_train_epochs,
         learning_rate=cfg.lr,
-        warmup_steps=cfg.warmup_steps,
+        warmup_ratio=cfg.warmup_ratio,
         lr_scheduler_type=cfg.lr_scheduler_type,
     )
 

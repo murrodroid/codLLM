@@ -150,11 +150,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_DATALOADER_PREFETCH_FACTOR must be at least 1.")
         cfg.dataloader_prefetch_factor = dataloader_prefetch_factor
 
-    warmup_steps = _parse_env_int("CODLLM_WARMUP_STEPS")
-    if warmup_steps is not None:
-        if warmup_steps < 0:
-            raise ValueError("CODLLM_WARMUP_STEPS must be non-negative.")
-        cfg.warmup_steps = warmup_steps
+    warmup_ratio = _parse_env_float("CODLLM_WARMUP_RATIO")
+    if warmup_ratio is not None:
+        if warmup_ratio < 0 or warmup_ratio > 1:
+            raise ValueError("CODLLM_WARMUP_RATIO must be between 0 and 1.")
+        cfg.warmup_ratio = warmup_ratio
 
     num_train_epochs = _parse_env_int("CODLLM_NUM_TRAIN_EPOCHS")
     if num_train_epochs is not None:

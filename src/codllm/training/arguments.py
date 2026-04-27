@@ -102,8 +102,8 @@ def build_training_args(
         training_kwargs["greater_is_better"] = _metric_greater_is_better(
             cfg.save_strategy_best_metric
         )
-    if resolved_stage.warmup_steps >= 0:
-        training_kwargs["warmup_steps"] = resolved_stage.warmup_steps
+    if resolved_stage.warmup_ratio >= 0:
+        training_kwargs["warmup_steps"] = resolved_stage.warmup_ratio
     if cfg.model_task == "seq2seq":
         training_kwargs["predict_with_generate"] = True
         training_kwargs["generation_max_length"] = resolved_generation_max_length
