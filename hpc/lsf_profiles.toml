@@ -1,7 +1,7 @@
 [h100-24h]
 queue = "gpuh100"
 wall_time = "24:00"
-cores = 8
+cores = 17
 memory = "4GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
@@ -12,7 +12,7 @@ modules = ["cuda/12.2"]
 [h100-10h]
 queue = "gpuh100"
 wall_time = "10:00"
-cores = 8
+cores = 17
 memory = "4GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
@@ -23,7 +23,7 @@ modules = ["cuda/12.2"]
 [h100-5h]
 queue = "gpuh100"
 wall_time = "5:00"
-cores = 8
+cores = 17
 memory = "4GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
@@ -34,7 +34,7 @@ modules = ["cuda/12.2"]
 [h100-2h]
 queue = "gpuh100"
 wall_time = "2:00"
-cores = 8
+cores = 17
 memory = "4GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
