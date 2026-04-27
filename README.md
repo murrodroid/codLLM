@@ -35,23 +35,36 @@ The pipeline consists of:
 
 ```
 codLLM/
-├── main.py                         # Main entry point
 ├── pyproject.toml                  # Project metadata and dependencies
+├── tasks.py                        # Invoke tasks for local and LSF workflows
 ├── data/                           # Data directory (no raw data included)
 ├── dockerfiles/
 │   └── train.dockerfile
-├── models/
-│   └── placeholder.pth
+├── hpc/
+│   └── lsf_profiles.toml           # Named LSF queue/resource profiles
+├── experiments/
+│   └── configs/                    # TOML experiment specs and sweeps
+├── jobs/
+│   ├── train.sh                    # HPC training wrapper
+│   ├── inference.sh                # Inference wrapper
+│   ├── generated/                  # Generated LSF scripts/env files (gitignored)
+│   └── configs/
+│       └── inference.env           # Example inference runtime config
 ├── src/
 │   └── codllm/
-│       ├── config.py               # Project configuration
-│       ├── data_augmentation.py    # Data augmentation utilities
-│       ├── data_handler.py         # Dataset loading and mapping
-│       ├── model_registry.py       # Model loader registry
-│       ├── preprocess.py           # Tokenization preprocessing
-│       └── train.py                # Training scripts
+│       ├── config.py               # Public configuration entrypoint
+│       ├── training/               # Training package
+│       ├── inference/              # Inference package
+│       ├── settings/               # Config schema + env parsing
+│       ├── input/                  # Dataset mappings/loaders/transforms
+│       ├── data/                   # Data orchestration, balancing, tokenization, storage
+│       ├── experiments/            # Experiment spec and LSF rendering helpers
+│       ├── labels/                 # ICD10h schemas and registry helpers
+│       ├── models/                 # Model loading helpers
+│       └── runtime/                # Shared runtime helpers
 └── tests/
-    └── test_training.py            # Training tests
+    ├── test_training.py
+    └── test_inference.py
 ```
 
 ## Installation
@@ -251,6 +264,14 @@ uv run --no-sync invoke hpc.storage
 
 After `uv sync --frozen` has succeeded once, use `uv run --no-sync invoke ...` for planning and submission commands so
 uv does not unexpectedly resync while you are only inspecting specs.
+
+If you're having trouble with space, use the storage folder location:
+
+```bash
+source hpc/env.sh
+uv sync --frozen --no-dev
+```
+
 
 List experiment specs and profiles:
 
