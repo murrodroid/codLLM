@@ -226,7 +226,7 @@ Use this path when your cluster does not allow Docker.
 
 The recommended HPC workflow is now invoke-driven:
 
-- experiment intent lives in TOML specs under `experiments/configs/`
+- experiment intent lives in TOML specs under `runs/`
 - cluster resources live in named profiles in `hpc/lsf_profiles.toml`
 - generated LSF scripts and per-run env files are written to `jobs/generated/`
 - generated artifacts are ignored by git and can be inspected before submission
@@ -237,34 +237,48 @@ List available tasks:
 uv run invoke --list
 ```
 
+On HPC login nodes, source the storage bootstrap before running any `uv` command. This ensures uv packages, the project
+virtualenv, uv-managed Python installs, Hugging Face caches, torch caches, and W&B caches are placed under the storage
+unit instead of personal user space:
+
+```bash
+source hpc/env.sh
+bash hpc/storage-check.sh
+uv sync --frozen
+uv run --no-sync invoke hpc.storage
+```
+
+After `uv sync --frozen` has succeeded once, use `uv run --no-sync invoke ...` for planning and submission commands so
+uv does not unexpectedly resync while you are only inspecting specs.
+
 List experiment specs and profiles:
 
 ```bash
-uv run invoke experiments.list
-uv run invoke hpc.profiles
+uv run --no-sync invoke experiments.list
+uv run --no-sync invoke hpc.profiles
 ```
 
 Inspect the concrete runs created by a spec:
 
 ```bash
-uv run invoke experiments.plan --config experiments/configs/sweeps/pretraining-epochs.toml --profile h100
+uv run --no-sync invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
 ```
 
 Generate an LSF submission without submitting it:
 
 ```bash
-uv run invoke hpc.submit \
-  --config experiments/configs/sweeps/pretraining-epochs.toml \
-  --profile h100 \
+uv run --no-sync invoke hpc.submit \
+  --config runs/sweeps/pretraining.toml \
+  --profile h100-10h \
   --dry-run
 ```
 
 Submit the generated job:
 
 ```bash
-uv run invoke hpc.submit \
-  --config experiments/configs/runs/t5-large-h100.toml \
-  --profile h100
+uv run --no-sync invoke hpc.submit \
+  --config runs/sweeps/pretraining.toml \
+  --profile h100-10h
 ```
 
 For sweep specs, the generated script uses an LSF job array and one generated env file per array index. The Python
