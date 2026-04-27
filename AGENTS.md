@@ -22,7 +22,7 @@
   * To inspect uv/cache paths before HPC work, source `hpc/env.sh` and run `bash hpc/storage-check.sh`.
     If invoke is already installed, `uv run --no-sync invoke hpc.storage` provides the same check.
   * To generate and submit an LSF job, use
-    `uv run invoke hpc.submit --config <path> --profile <profile>`.
+    `uv run invoke hpc.submit --config <path> --profile <profile> --user <lucas|elias>`.
   * To generate an LSF job without submitting it, add `--dry-run`.
 * The project uses `pre-commit` for managing pre-commit hooks. To run all hooks on all files, use
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.

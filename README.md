@@ -270,6 +270,7 @@ Generate an LSF submission without submitting it:
 uv run --no-sync invoke hpc.submit \
   --config runs/sweeps/pretraining.toml \
   --profile h100-10h \
+  --user lucas \
   --dry-run
 ```
 
@@ -278,7 +279,8 @@ Submit the generated job:
 ```bash
 uv run --no-sync invoke hpc.submit \
   --config runs/sweeps/pretraining.toml \
-  --profile h100-10h
+  --profile h100-10h \
+  --user lucas
 ```
 
 For sweep specs, the generated script uses an LSF job array and one generated env file per array index. The Python

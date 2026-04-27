@@ -6,6 +6,7 @@ from codllm.experiments import (
     load_experiment_spec,
     prepare_lsf_submission,
 )
+from tasks import _profile_for_lsf_user
 
 
 def test_experiment_spec_inherits_env_and_expands_cartesian_sweep(
@@ -126,3 +127,20 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert "uv run python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest
+
+
+def test_profile_for_lsf_user_sets_notification_email() -> None:
+    """Submit-time user aliases should override the profile email."""
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        email="old@example.com",
+    )
+
+    updated = _profile_for_lsf_user(profile, "elias")
+
+    assert updated.email == "s234854@dtu.dk"
+    assert profile.email == "old@example.com"
