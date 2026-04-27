@@ -1,6 +1,7 @@
 from typing import Literal
 
 TrainingInput = Literal["cod", "age", "sex"]
+MultiCodSyntheticSourceScope = Literal["within_source", "any_source"]
 BalanceStrategy = Literal["none", "upsample", "sqrt"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]

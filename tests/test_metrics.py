@@ -168,3 +168,18 @@ def test_build_exact_match_accuracy_metric_sanitizes_invalid_prediction_ids() ->
     metrics = metric_fn((predictions, labels))
 
     assert "accuracy" in metrics
+
+
+def test_multilabel_accuracy_ignores_code_order() -> None:
+    """Multi-label exact-set accuracy should not depend on decoded code order."""
+    metric_fn = build_exact_match_accuracy_metric(
+        _StrictDecodeTokenizer(),
+        label_separator=" ",
+        max_label_count=2,
+    )
+    predictions = np.array([[1, 2, 0]], dtype=np.int64)
+    labels = np.array([[2, 1, -100]], dtype=np.int64)
+
+    metrics = metric_fn((predictions, labels))
+
+    assert metrics["accuracy"] == 1.0

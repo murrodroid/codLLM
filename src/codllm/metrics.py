@@ -238,11 +238,6 @@ def build_exact_match_accuracy_metric(
             _normalize_decoded_text(text) for text in decoded_predictions
         ]
         normalized_labels = [_normalize_decoded_text(text) for text in decoded_labels]
-        matches = [
-            prediction == label
-            for prediction, label in zip(normalized_predictions, normalized_labels)
-        ]
-        accuracy = float(np.mean(matches)) if matches else 0.0
         predicted_code_sets = [
             _split_predicted_codes(text, label_separator)
             for text in normalized_predictions
@@ -250,6 +245,17 @@ def build_exact_match_accuracy_metric(
         label_code_sets = [
             _split_predicted_codes(text, label_separator) for text in normalized_labels
         ]
+        if multi_label:
+            matches = [
+                prediction == label
+                for prediction, label in zip(predicted_code_sets, label_code_sets)
+            ]
+        else:
+            matches = [
+                prediction == label
+                for prediction, label in zip(normalized_predictions, normalized_labels)
+            ]
+        accuracy = float(np.mean(matches)) if matches else 0.0
 
         result: dict[str, float] = {"accuracy": accuracy}
         if multi_label:

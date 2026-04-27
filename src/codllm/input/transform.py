@@ -86,11 +86,32 @@ def _format_sex(raw_sex: str | None, sex_map: Mapping[str, str]) -> str:
     return UNKNOWN_VALUE
 
 
+def _input_field_prefix(
+    feature: TrainingInput,
+    input_field_prefixes: Mapping[TrainingInput, str] | None = None,
+) -> str:
+    """Return a validated configured prefix for one input field."""
+    prefixes = (
+        Config().input_field_prefixes
+        if input_field_prefixes is None
+        else input_field_prefixes
+    )
+    prefix = prefixes.get(feature)
+    if prefix is None:
+        raise KeyError(f"Missing input prefix for training input field '{feature}'.")
+    if prefix == "":
+        raise ValueError(
+            f"Input prefix for training input field '{feature}' must not be empty."
+        )
+    return prefix
+
+
 def _build_text(
     row: pd.Series,
     mapping: DatasetMapping,
     training_input: Sequence[str],
     field_separator: str | None = None,
+    input_field_prefixes: Mapping[TrainingInput, str] | None = None,
 ) -> str:
     """Build text input from configured training input fields."""
     normalized_training_input = _normalize_training_input(training_input)
@@ -99,20 +120,21 @@ def _build_text(
     )
     parts: list[str] = []
     for feature in normalized_training_input:
+        prefix = _input_field_prefix(feature, input_field_prefixes)
         if feature == "cod":
             cod_text = _get(row, mapping.text_col) or UNKNOWN_VALUE
             cod_text = re.sub(r"(?<=\w)\.(?=\w)", " ", cod_text)
-            parts.append(f"cod: {cod_text}")
+            parts.append(f"{prefix}{cod_text}")
         elif feature == "age":
             raw_age = (
                 _get(row, mapping.age_col) if mapping.age_col is not None else None
             )
-            parts.append(f"age: {_format_age(raw_age)}")
+            parts.append(f"{prefix}{_format_age(raw_age)}")
         else:
             raw_sex = (
                 _get(row, mapping.sex_col) if mapping.sex_col is not None else None
             )
-            parts.append(f"sex: {_format_sex(raw_sex, mapping.sex_map)}")
+            parts.append(f"{prefix}{_format_sex(raw_sex, mapping.sex_map)}")
     return effective_field_separator.join(parts)
 
 

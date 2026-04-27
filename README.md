@@ -148,10 +148,17 @@ export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
 export CODLLM_TRAINING_INPUT="cod,age,sex"
+export CODLLM_INPUT_PREFIX_COD="cod: "
+export CODLLM_INPUT_PREFIX_AGE="age: "
+export CODLLM_INPUT_PREFIX_SEX="sex: "
 export CODLLM_MAX_LABEL_COUNT=2
 export CODLLM_LABEL_CODE_LENGTH=7
 export CODLLM_LABEL_SEPARATOR=" | "
 export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
+export CODLLM_MULTICOD_SHUFFLE_LABELS=1
+export CODLLM_MULTICOD_SYNTHETIC_RATIO=0.25
+export CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE=within_source
+export CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR="; "
 export CODLLM_PRETRAIN_ENABLED=1
 export CODLLM_PRETRAIN_MASTERLIST_PATH=data/raw/ICD10h_Masterlist_2024.xlsx
 export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME=Masterlist
@@ -193,6 +200,28 @@ Each training invocation writes checkpoints under a run-scoped folder:
 (and `LSB_JOBINDEX` when present). Locally, `<id>` is an auto-incremented number.
 
 ## Feature Implementations
+
+### Multi-COD Training Data
+
+Multi-label COD training is controlled through `Config` and matching `CODLLM_*` env vars:
+
+- `max_label_count`: maximum number of ICD10h labels per row. Values greater than `1` enable seq2seq multi-label
+  targets.
+- `input_field_prefixes`: processed text prefixes for `cod`, `age`, and `sex`. The matching environment variables are
+  `CODLLM_INPUT_PREFIX_COD`, `CODLLM_INPUT_PREFIX_AGE`, and `CODLLM_INPUT_PREFIX_SEX`.
+- `multicod_shuffle_labels`: shuffles multi-label target order deterministically from `data_seed`, so the model does
+  not learn that source column order is semantically meaningful. Default: `true`.
+- `multicod_synthetic_ratio`: number of synthetic multi-COD rows to create as a ratio of eligible single-COD rows.
+  `0.25` creates roughly one synthetic row for every four single-COD rows. Default: `0.0`.
+- `multicod_synthetic_source_scope`: `"within_source"` merges single-COD examples only inside the same source dataset;
+  `"any_source"` permits cross-source combinations. Default: `"within_source"`.
+- `multicod_synthetic_text_separator`: separator used when merging `cod:` text fragments. Default: `"; "`.
+
+Synthetic rows are added only to the training split after train/validation/test splitting. They merge the `cod:` text
+segments from sampled single-label rows, keep the non-COD fields from the anchor row, and rebuild `y_codes` plus the
+configured label column. The default source scope is deliberately conservative: combining across datasets can create
+unrealistic examples because datasets differ in language, time period, field coverage, and coding practice. Use
+`"any_source"` only for explicit stress testing.
 
 ### Data Augmentation and Upsampling
 
@@ -463,6 +492,14 @@ tail -f logs/<job_id>.out
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
+- `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
+- `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
+- `CODLLM_INPUT_PREFIX_SEX` (default: `"sex: "`)
+- `CODLLM_MAX_LABEL_COUNT` (default: `1`; use values greater than `1` for seq2seq multi-COD training)
+- `CODLLM_MULTICOD_SHUFFLE_LABELS` (`1`/`0`; default: `1`)
+- `CODLLM_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
+- `CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE` (`within_source`, `any_source`; default: `within_source`)
+- `CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
 - `CODLLM_PRETRAIN_ENABLED` (`1`/`0`; when enabled, runs masterlist pretraining before normal training)
 - `CODLLM_PRETRAIN_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
 - `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)

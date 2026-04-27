@@ -66,6 +66,11 @@ unexpected dependency downloads.
     `Config`; wire code to `Config` so behavior updates dynamically when config changes.
   * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
     all relevant call sites and tests use the config-driven value.
+  * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
+    `cod: `, `age: `, or `sex: ` when building or parsing processed text.
+  * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
+    label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
+    rather than the default.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners
   by default) and do not depend on local-only resources or hardware.
 

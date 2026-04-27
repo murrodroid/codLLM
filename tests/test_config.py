@@ -30,6 +30,13 @@ ENV_KEYS = [
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
+    "CODLLM_INPUT_PREFIX_COD",
+    "CODLLM_INPUT_PREFIX_AGE",
+    "CODLLM_INPUT_PREFIX_SEX",
+    "CODLLM_MULTICOD_SHUFFLE_LABELS",
+    "CODLLM_MULTICOD_SYNTHETIC_RATIO",
+    "CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE",
+    "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
     "CODLLM_MAX_TARGET_LENGTH",
     "CODLLM_LABEL_CODE_LENGTH",
     "CODLLM_MAX_TARGET_LENGTH_BUFFER",
@@ -100,6 +107,11 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
 
     assert cfg.model_task == "seq2seq"
     assert cfg.training_input == ["cod", "age", "sex"]
+    assert cfg.input_field_prefixes == {
+        "cod": "cod: ",
+        "age": "age: ",
+        "sex": "sex: ",
+    }
     assert cfg.max_grad_norm == 0.5
     assert cfg.warmup_steps == 1000
     assert cfg.balance_strategy == "none"
@@ -136,6 +148,13 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_COD", "cause=")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_AGE", "years=")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_SEX", "gender=")
+    monkeypatch.setenv("CODLLM_MULTICOD_SHUFFLE_LABELS", "false")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_RATIO", "0.25")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE", "any_source")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH", "18")
     monkeypatch.setenv("CODLLM_LABEL_CODE_LENGTH", "7")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH_BUFFER", "6")
@@ -226,6 +245,15 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
+    assert cfg.input_field_prefixes == {
+        "cod": "cause=",
+        "age": "years=",
+        "sex": "gender=",
+    }
+    assert cfg.multicod_shuffle_labels is False
+    assert cfg.multicod_synthetic_ratio == 0.25
+    assert cfg.multicod_synthetic_source_scope == "any_source"
+    assert cfg.multicod_synthetic_text_separator == " + "
     assert cfg.max_target_length == 18
     assert cfg.label_code_length == 7
     assert cfg.max_target_length_buffer == 6
@@ -454,6 +482,36 @@ def test_config_from_env_rejects_invalid_training_input(
     """training_input override should reject unsupported values."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_TRAINING_INPUT", "cod,city")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_empty_input_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Input prefix overrides should not allow empty strings."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_COD", "")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_multicod_synthetic_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic multi-COD ratio should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_RATIO", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_multicod_synthetic_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic multi-COD source scope should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE", "cross_period")
     with pytest.raises(ValueError):
         config_from_env()
 

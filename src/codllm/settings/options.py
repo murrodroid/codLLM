@@ -1,6 +1,7 @@
 from codllm.settings.types import (
     LRSchedulerType,
     ModelTask,
+    MultiCodSyntheticSourceScope,
     SaveStrategyBestMetric,
     TrainingInput,
 )
@@ -33,4 +34,8 @@ SUPPORTED_LR_SCHEDULER_TYPES: tuple[LRSchedulerType, ...] = (
 SUPPORTED_MODEL_TASKS: tuple[ModelTask, ...] = (
     "seq2seq",
     "sequence_classification",
+)
+SUPPORTED_MULTICOD_SYNTHETIC_SOURCE_SCOPES: tuple[MultiCodSyntheticSourceScope, ...] = (
+    "within_source",
+    "any_source",
 )

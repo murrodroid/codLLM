@@ -75,6 +75,15 @@ def default_training_input() -> list[TrainingInput]:
     return list(SUPPORTED_TRAINING_INPUTS)
 
 
+def default_input_field_prefixes() -> dict[TrainingInput, str]:
+    """Return default text prefixes for processed training input fields."""
+    return {
+        "cod": "cod: ",
+        "age": "age: ",
+        "sex": "sex: ",
+    }
+
+
 def default_pretrain_perturbations() -> list[str]:
     """Return default perturbations for synthetic pretraining rows."""
     return [

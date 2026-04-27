@@ -43,6 +43,8 @@ from codllm.input import (
     build_processed_dataset,
     load_dataset,
     load_source_dataset,
+    prepare_multicod_training_split,
+    shuffle_multicod_label_order,
 )
 from codllm.runtime.paths import resolve_source_path
 
@@ -137,6 +139,7 @@ class DataHandler:
             "version": PROCESSING_METADATA_VERSION,
             "data_raw_dir": str(Path(self.cfg.data_raw_dir).resolve()),
             "training_input": list(self.cfg.training_input),
+            "input_field_prefixes": dict(self.cfg.input_field_prefixes),
             "max_label_count": self.cfg.max_label_count,
             "label_separator": self.cfg.label_separator,
             "text_field_separator": self.cfg.text_field_separator,
@@ -206,6 +209,9 @@ class DataHandler:
         processed_df = self.ensure_processed(force_reprocess=force_reprocess)
         sampled_df = self._apply_dataset_size(processed_df)
         splits = self.split_dataframe(sampled_df)
+        splits.train = prepare_multicod_training_split(splits.train, self.cfg)
+        splits.val = shuffle_multicod_label_order(splits.val, self.cfg)
+        splits.test = shuffle_multicod_label_order(splits.test, self.cfg)
         if not splits.train.empty:
             splits.train = self._apply_balance_policy(splits.train)
         if self.cfg.masterlist_inject_enabled and not splits.train.empty:
@@ -264,6 +270,7 @@ class DataHandler:
             max_labels=self.cfg.max_label_count,
             label_separator=self.cfg.label_separator,
             text_field_separator=self.cfg.text_field_separator,
+            input_field_prefixes=self.cfg.input_field_prefixes,
             data_raw_dir=self.cfg.data_raw_dir,
             text_column=self.cfg.dataset_text_column,
             label_column=self.cfg.dataset_label_column,

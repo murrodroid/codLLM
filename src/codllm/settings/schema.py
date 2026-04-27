@@ -8,6 +8,7 @@ from codllm.settings.factories import (
     default_data_sources,
     default_device,
     default_device_map,
+    default_input_field_prefixes,
     default_masterlist_inject_perturbations,
     default_pretrain_perturbations,
     default_training_input,
@@ -17,6 +18,7 @@ from codllm.settings.types import (
     EvalStrategy,
     LRSchedulerType,
     ModelTask,
+    MultiCodSyntheticSourceScope,
     SaveStrategy,
     SaveStrategyBestMetric,
     TorchDType,
@@ -112,7 +114,14 @@ class Config:
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
     training_input: list[TrainingInput] = field(default_factory=default_training_input)
+    input_field_prefixes: dict[TrainingInput, str] = field(
+        default_factory=default_input_field_prefixes
+    )
     max_label_count: int = 1
+    multicod_shuffle_labels: bool = True
+    multicod_synthetic_ratio: float = 0.0
+    multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
+    multicod_synthetic_text_separator: str = "; "
     inference_validate_registry: bool = False
 
     dataset_size: float = 0.5
@@ -178,6 +187,19 @@ class Config:
     def resolved_data_seed(self) -> int:
         """Return data seed, defaulting to the global seed when unset."""
         return self.seed if self.data_seed is None else self.data_seed
+
+    def input_field_prefix(self, feature: TrainingInput) -> str:
+        """Return the configured text prefix for one training input field."""
+        prefix = self.input_field_prefixes.get(feature)
+        if prefix is None:
+            raise KeyError(
+                f"Missing input prefix for training input field '{feature}'."
+            )
+        if prefix == "":
+            raise ValueError(
+                f"Input prefix for training input field '{feature}' must not be empty."
+            )
+        return prefix
 
     def uses_cuda(self) -> bool:
         """Return True when config targets CUDA and CUDA runtime is available."""
