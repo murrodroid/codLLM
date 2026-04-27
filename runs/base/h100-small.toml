@@ -1,10 +1,10 @@
-name = "h100-large-base"
+name = "h100-small-base"
 command = "train"
-description = "H100 runtime setup for flan-t5-large training through invoke-generated LSF jobs."
+description = "H100 runtime setup for flan-t5-small training through invoke-generated LSF jobs."
 force_reprocess = false
 
 [env]
-CODLLM_HF_MODEL = "google/flan-t5-large"
+CODLLM_HF_MODEL = "google/flan-t5-small"
 CODLLM_MAX_SOURCE_LENGTH = 256
 CODLLM_MAX_TARGET_LENGTH = 32
 CODLLM_DATALOADER_NUM_WORKERS = 4

@@ -185,7 +185,8 @@ Each training invocation writes checkpoints under a run-scoped folder:
 
 Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 
-- `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling.
+- `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling,
+  `"sqrt"` enables square-root class balancing. Default: `"none"`.
 - `balance_target_quantile`: quantile used to compute the target class count for upsampling.
 - `balance_upsample_labels`: optional allow-list of labels that may be upsampled (empty = all eligible minority labels).
 - `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
@@ -434,10 +435,10 @@ tail -f logs/<job_id>.out
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
-- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `accuracy`)
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `macro_f1`)
 - `CODLLM_MODEL_TASK` (`seq2seq`, `sequence_classification`; default: `seq2seq`)
 - `CODLLM_LR_SCHEDULER_TYPE` (`linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`, `inverse_sqrt`, `reduce_lr_on_plateau`; default: `linear`)
-- `CODLLM_LR` (default: `3e-5`)
+- `CODLLM_LR` (default: `1e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)

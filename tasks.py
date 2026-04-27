@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from invoke import Collection, Context, Exit, task
@@ -9,6 +10,7 @@ from codllm.experiments import (
     ExperimentRun,
     ExperimentSpec,
     GeneratedSubmission,
+    LsfProfile,
     SpecError,
     list_experiment_specs,
     load_experiment_spec,
@@ -19,6 +21,10 @@ from codllm.experiments import (
 
 DEFAULT_EXPERIMENT_ROOT = Path("runs")
 DEFAULT_PROFILE_PATH = Path("hpc/lsf_profiles.toml")
+LSF_USER_EMAILS = {
+    "lucas": "s234805@dtu.dk",
+    "elias": "s234854@dtu.dk",
+}
 
 
 @task
@@ -145,6 +151,7 @@ def hpc_submit(
     ctx: Context,
     config: str,
     profile: str = "h100-10h",
+    user: str | None = None,
     profiles: str = str(DEFAULT_PROFILE_PATH),
     output_root: str = "jobs/generated",
     dry_run: bool = False,
@@ -152,6 +159,8 @@ def hpc_submit(
     """Generate and optionally submit an LSF job for an experiment specification."""
     spec = load_experiment_spec(config)
     lsf_profile = load_lsf_profile(profile, profiles)
+    if user is not None:
+        lsf_profile = _profile_for_lsf_user(lsf_profile, user)
     submission = prepare_lsf_submission(
         spec,
         lsf_profile,
@@ -193,6 +202,19 @@ def _format_sweep(run: ExperimentRun) -> str:
         return ""
     values = ", ".join(f"{key}={value}" for key, value in run.sweep_values.items())
     return f" ({values})"
+
+
+def _profile_for_lsf_user(profile: LsfProfile, user: str) -> LsfProfile:
+    """Return a profile with the selected user's LSF notification email."""
+    normalized_user = user.strip().lower()
+    try:
+        email = LSF_USER_EMAILS[normalized_user]
+    except KeyError as exc:
+        allowed = ", ".join(sorted(LSF_USER_EMAILS))
+        raise Exit(
+            f"Unknown LSF user '{user}'. Use one of: {allowed}.", code=2
+        ) from exc
+    return replace(profile, email=email)
 
 
 def _print_submission(submission: GeneratedSubmission) -> None:

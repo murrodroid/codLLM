@@ -77,7 +77,7 @@ class Config:
     per_device_train_batch_size: int = 8
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
-    max_grad_norm: float = 0.1
+    max_grad_norm: float = 0.5
     warmup_steps: int = 1000
     dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
@@ -88,13 +88,13 @@ class Config:
     save_steps: int = 5000
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
-    save_strategy_best_metric: SaveStrategyBestMetric = "accuracy"
+    save_strategy_best_metric: SaveStrategyBestMetric = "macro_f1"
     model_task: ModelTask = "seq2seq"
     lr_scheduler_type: LRSchedulerType = "linear"
     verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
-    data_seed: Optional[int] = None
+    data_seed: Optional[int] = 333
     deterministic_algorithms: bool = True
     deterministic_algorithms_warn_only: bool = True
     cudnn_deterministic: bool = True
@@ -141,7 +141,7 @@ class Config:
     masterlist_inject_perturbations_per_sample: int = 1
     label_harmonization_enabled: bool = False
 
-    balance_strategy: BalanceStrategy = "sqrt"
+    balance_strategy: BalanceStrategy = "none"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
         default_factory=default_balance_perturbations

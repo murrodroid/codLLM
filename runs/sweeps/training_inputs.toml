@@ -1,16 +1,13 @@
 base = "../base/h100-large.toml"
 name = "inputs"
-description = "Sweep masterlist pretraining duration while holding the fine-tuning setup fixed."
+description = "Sweep seq2seq fine-tuning input features while holding the training setup fixed."
 force_reprocess = false
 
 [env]
-CODLLM_MODEL_TASK = "seq2seq"
+CODLLM_LR = 2.5e-5
 CODLLM_DATASET_SIZE = 0.5
 CODLLM_NUM_TRAIN_EPOCHS = 8
 CODLLM_SAVE_STRATEGY = "no"
-CODLLM_BALANCE_STRATEGY = "none"
-CODLLM_PRETRAIN_ENABLED = false
-
 
 [sweep]
-CODLLM_TRAINING_INPUT = ["cod","cod,age,sex"]
+CODLLM_TRAINING_INPUT = ["cod", "cod,age,sex"]
