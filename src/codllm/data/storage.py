@@ -7,7 +7,7 @@ import pandas as pd
 from codllm.config import Config
 from codllm.input import DatasetMapping, build_processed_dataset
 
-PROCESSING_METADATA_VERSION = 7
+PROCESSING_METADATA_VERSION = 8
 DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
 NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
     {

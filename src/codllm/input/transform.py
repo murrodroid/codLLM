@@ -116,25 +116,43 @@ def _build_text(
     return effective_field_separator.join(parts)
 
 
-def _collect_codes(row: pd.Series, mapping: DatasetMapping) -> list[str]:
-    """Collect code values from multi-code columns first, then single-code fallback."""
+def _collect_unique_codes(row: pd.Series, columns: Sequence[int]) -> list[str]:
+    """Collect unique code values from positional columns in order."""
     codes: list[str] = []
     seen_codes: set[str] = set()
-    for col in mapping.multi_code_cols or []:
+    for col in columns:
         code = _get(row, col)
         if code and code not in seen_codes:
             codes.append(code)
             seen_codes.add(code)
-    if not codes:
-        single_code = _get(row, mapping.single_code_col)
-        if single_code:
-            codes.append(single_code)
     return codes
 
 
-def _build_y(row: pd.Series, mapping: DatasetMapping) -> list[str]:
+def _collect_codes(
+    row: pd.Series,
+    mapping: DatasetMapping,
+    max_labels: int | None = None,
+) -> list[str]:
+    """Collect code values according to the configured maximum label count."""
+    if max_labels is not None and max_labels < 1:
+        raise ValueError("max_labels must be at least 1.")
+
+    if max_labels == 1:
+        return _collect_unique_codes(row, [mapping.single_code_col])
+
+    codes = _collect_unique_codes(row, mapping.multi_code_cols or [])
+    if not codes:
+        codes = _collect_unique_codes(row, [mapping.single_code_col])
+    return codes
+
+
+def _build_y(
+    row: pd.Series,
+    mapping: DatasetMapping,
+    max_labels: int | None = None,
+) -> list[str]:
     """Build complete target code list for one source row."""
-    return _collect_codes(row, mapping)
+    return _collect_codes(row, mapping, max_labels=max_labels)
 
 
 def _build_label(codes: list[str], separator: str | None = None) -> str:

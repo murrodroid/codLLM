@@ -219,7 +219,7 @@ class TestLoaders:
         assert list(result.columns) == ["text", "y"]
         assert result.iloc[0]["text"] == "cod: cholera | age: 2.4 | sex: male"
         assert result.iloc[0]["y"] == ["A00"]
-        assert result.iloc[1]["y"] == ["J18"]
+        assert result.iloc[1]["y"] == ["A01"]
 
     def test_load_source_dataset_emits_canonical_columns(self, tmp_path: Path) -> None:
         """Source loader should create canonical processed columns."""
@@ -271,6 +271,34 @@ class TestLoaders:
         assert len(result) == 1
         assert result.iloc[0]["record_id"] == "RID-002"
         assert result.iloc[0]["label"] == "A01"
+
+    def test_load_source_dataset_uses_single_code_when_max_labels_is_one(
+        self, tmp_path: Path
+    ) -> None:
+        """Single-label processing should use the configured single cause column."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                ["text-one", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"],
+                ["text-two", "B01.001", "B02.002", "2", "21", "RID-002", ""],
+            ]
+        ).to_csv(csv_path, index=False)
+
+        source = DataSourceConfig(
+            source_id="test_source", path=str(csv_path), mapping_id="test_mapping"
+        )
+        mapping = _make_mapping(multi_code_cols=[2, 6])
+        result = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=["cod", "age", "sex"],
+            max_labels=1,
+            data_raw_dir="",
+        )
+
+        assert result["record_id"].tolist() == ["RID-001", "RID-002"]
+        assert result["y_codes"].tolist() == [["A00.000"], ["B01.001"]]
+        assert result["label"].tolist() == ["A00.000", "B01.001"]
 
     def test_build_processed_dataset_supports_copenhagen_mapping(
         self, tmp_path: Path
@@ -335,7 +363,7 @@ class TestLoaders:
         )
         assert len(result) == 4
         assert sorted(result["source_id"].unique()) == ["csv_source", "xlsx_source"]
-        assert set(result["label"]) == {"A00", "J18"}
+        assert set(result["label"]) == {"A00", "A01"}
 
     def test_build_processed_dataset_uses_configured_text_and_label_columns(
         self, tmp_path: Path
@@ -422,20 +450,29 @@ class TestLoaders:
         csv_path = tmp_path / "sample.csv"
         pd.DataFrame(
             [
-                ["text-one", "A00.000", "J18.100", "1", "20", "RID-001", "R99.900"],
-                ["text-two", "B01.001", "B01.001", "1", "21", "RID-002", ""],
+                [
+                    "text-one",
+                    "A00.000",
+                    "J18.100",
+                    "1",
+                    "20",
+                    "RID-001",
+                    "R99.900",
+                    "I10.000",
+                ],
+                ["text-two", "B01.001", "B01.001", "1", "21", "RID-002", "", ""],
             ]
         ).to_csv(csv_path, index=False)
 
         source = DataSourceConfig(
             source_id="test_source", path=str(csv_path), mapping_id="test_mapping"
         )
-        mapping = _make_mapping(multi_code_cols=[2, 6])
+        mapping = _make_mapping(multi_code_cols=[2, 6, 7])
         result = load_source_dataset(
             source=source,
             mapping=mapping,
             training_input=["cod", "age", "sex"],
-            max_labels=1,
+            max_labels=2,
             data_raw_dir="",
         )
         assert len(result) == 1
@@ -914,7 +951,7 @@ class TestDataHandler:
                 )
             ],
             training_input=["cod", "age", "sex"],
-            max_label_count=1,
+            max_label_count=2,
             dataset_size=1.0,
             train_size=1.0,
             val_size=0.0,
@@ -934,6 +971,134 @@ class TestDataHandler:
         _ = handler.get_splits()
         second_processed = pd.read_csv(handler.processed_path)
         assert second_processed.iloc[0]["label"] == "B01.001"
+
+    def test_get_splits_reprocesses_training_input_change_for_all_splits(
+        self, tmp_path: Path
+    ) -> None:
+        """Changing training_input should refresh text in train, validation, and test."""
+        raw_path = tmp_path / "raw.csv"
+        pd.DataFrame(
+            [
+                [
+                    f"cause-{idx}",
+                    f"A{idx:03d}",
+                    "",
+                    "1" if idx % 2 == 0 else "2",
+                    str(20 + idx),
+                    f"RID-{idx:03d}",
+                ]
+                for idx in range(20)
+            ]
+        ).to_csv(raw_path, index=False)
+        processed_dir = tmp_path / "processed"
+        data_sources = [
+            DataSourceConfig(
+                source_id="csv_source",
+                path="raw.csv",
+                mapping_id="test_mapping",
+            )
+        ]
+        common_config = dict(
+            data_raw_dir=str(tmp_path),
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            data_sources=data_sources,
+            dataset_size=1.0,
+            train_size=0.5,
+            val_size=0.25,
+            test_size=0.25,
+            balance_strategy="none",
+            balance_base_perturbation_rate=0.0,
+        )
+        mapping_registry = {"test_mapping": _make_mapping()}
+
+        initial_handler = DataHandler(
+            Config(training_input=["cod", "age", "sex"], **common_config),
+            mapping_registry=mapping_registry,
+        )
+        _ = initial_handler.get_splits()
+        initial_processed = pd.read_csv(initial_handler.processed_path)
+        assert initial_processed["text"].str.startswith("cod:").all()
+
+        changed_handler = DataHandler(
+            Config(training_input=["sex", "age"], **common_config),
+            mapping_registry=mapping_registry,
+        )
+        splits = changed_handler.get_splits()
+
+        for split in [splits.train, splits.val, splits.test]:
+            assert not split.empty
+            assert split["text"].str.startswith("sex:").all()
+            assert split["text"].str.contains("age:").all()
+            assert not split["text"].str.contains("cod:").any()
+
+        refreshed_processed = pd.read_csv(changed_handler.processed_path)
+        assert refreshed_processed["text"].str.startswith("sex:").all()
+        assert not refreshed_processed["text"].str.contains("cod:").any()
+
+    def test_get_splits_reprocesses_max_label_count_change_for_all_splits(
+        self, tmp_path: Path
+    ) -> None:
+        """Changing max_label_count should refresh labels across train, val, and test."""
+        raw_path = tmp_path / "raw.csv"
+        pd.DataFrame(
+            [
+                [
+                    f"cause-{idx}",
+                    f"A{idx:03d}.000",
+                    f"J{idx:03d}.100",
+                    "1",
+                    str(20 + idx),
+                    f"RID-{idx:03d}",
+                    f"R{idx:03d}.900",
+                ]
+                for idx in range(20)
+            ]
+        ).to_csv(raw_path, index=False)
+        processed_dir = tmp_path / "processed"
+        data_sources = [
+            DataSourceConfig(
+                source_id="csv_source",
+                path="raw.csv",
+                mapping_id="test_mapping",
+            )
+        ]
+        common_config = dict(
+            data_raw_dir=str(tmp_path),
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            data_sources=data_sources,
+            training_input=["cod", "age", "sex"],
+            dataset_size=1.0,
+            train_size=0.5,
+            val_size=0.25,
+            test_size=0.25,
+            balance_strategy="none",
+            balance_base_perturbation_rate=0.0,
+        )
+        mapping_registry = {"test_mapping": _make_mapping(multi_code_cols=[2, 6])}
+
+        initial_handler = DataHandler(
+            Config(max_label_count=1, **common_config),
+            mapping_registry=mapping_registry,
+        )
+        initial_splits = initial_handler.get_splits()
+        for split in [initial_splits.train, initial_splits.val, initial_splits.test]:
+            assert not split["label"].str.contains(",").any()
+
+        changed_handler = DataHandler(
+            Config(max_label_count=2, **common_config),
+            mapping_registry=mapping_registry,
+        )
+        changed_splits = changed_handler.get_splits()
+
+        for split in [changed_splits.train, changed_splits.val, changed_splits.test]:
+            assert not split.empty
+            assert split["label"].str.contains(",").all()
+            assert split["y_codes"].apply(len).eq(2).all()
+
+        refreshed_processed = pd.read_csv(changed_handler.processed_path)
+        assert refreshed_processed["label"].str.contains(",").all()
 
     def test_get_splits_applies_dataset_size_sampling(self, tmp_path: Path) -> None:
         """dataset_size should downsample data before split."""

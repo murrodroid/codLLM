@@ -35,23 +35,36 @@ The pipeline consists of:
 
 ```
 codLLM/
-├── main.py                         # Main entry point
 ├── pyproject.toml                  # Project metadata and dependencies
+├── tasks.py                        # Invoke tasks for local and LSF workflows
 ├── data/                           # Data directory (no raw data included)
 ├── dockerfiles/
 │   └── train.dockerfile
-├── models/
-│   └── placeholder.pth
+├── hpc/
+│   └── lsf_profiles.toml           # Named LSF queue/resource profiles
+├── experiments/
+│   └── configs/                    # TOML experiment specs and sweeps
+├── jobs/
+│   ├── train.sh                    # HPC training wrapper
+│   ├── inference.sh                # Inference wrapper
+│   ├── generated/                  # Generated LSF scripts/env files (gitignored)
+│   └── configs/
+│       └── inference.env           # Example inference runtime config
 ├── src/
 │   └── codllm/
-│       ├── config.py               # Project configuration
-│       ├── data_augmentation.py    # Data augmentation utilities
-│       ├── data_handler.py         # Dataset loading and mapping
-│       ├── model_registry.py       # Model loader registry
-│       ├── preprocess.py           # Tokenization preprocessing
-│       └── train.py                # Training scripts
+│       ├── config.py               # Public configuration entrypoint
+│       ├── training/               # Training package
+│       ├── inference/              # Inference package
+│       ├── settings/               # Config schema + env parsing
+│       ├── input/                  # Dataset mappings/loaders/transforms
+│       ├── data/                   # Data orchestration, balancing, tokenization, storage
+│       ├── experiments/            # Experiment spec and LSF rendering helpers
+│       ├── labels/                 # ICD10h schemas and registry helpers
+│       ├── models/                 # Model loading helpers
+│       └── runtime/                # Shared runtime helpers
 └── tests/
-    └── test_training.py            # Training tests
+    ├── test_training.py
+    └── test_inference.py
 ```
 
 ## Installation
@@ -62,6 +75,23 @@ cd codllm
 pip install uv
 uv sync
 ```
+
+## Inference
+
+Run inference directly through the package entrypoint:
+
+```bash
+uv run python -m codllm.inference data/inference/input.csv --output-path runs/inference/predictions.csv
+```
+
+Input formats:
+
+- `.txt`: one inference example per line
+- `.csv`, `.tsv`, `.jsonl`, `.parquet`: must contain the configured text column (`text` by default)
+
+When `--output-path` is omitted, the CLI writes compact JSONL predictions to stdout.
+Set `CODLLM_INFERENCE_VALIDATE_REGISTRY=1` to reject predicted codes that are absent from the configured ICD10h
+masterlist.
 
 ## Runtime Environment Variables
 
@@ -168,7 +198,8 @@ Each training invocation writes checkpoints under a run-scoped folder:
 
 Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 
-- `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling.
+- `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling,
+  `"sqrt"` enables square-root class balancing. Default: `"none"`.
 - `balance_target_quantile`: quantile used to compute the target class count for upsampling.
 - `balance_upsample_labels`: optional allow-list of labels that may be upsampled (empty = all eligible minority labels).
 - `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
@@ -206,6 +237,111 @@ Pretraining-specific knobs:
 ## HPC Usage (LSF, No Docker)
 
 Use this path when your cluster does not allow Docker.
+
+The recommended HPC workflow is now invoke-driven:
+
+- experiment intent lives in TOML specs under `runs/`
+- cluster resources live in named profiles in `hpc/lsf_profiles.toml`
+- generated LSF scripts and per-run env files are written to `jobs/generated/`
+- generated artifacts are ignored by git and can be inspected before submission
+
+List available tasks:
+
+```bash
+uv run invoke --list
+```
+
+On HPC login nodes, source the storage bootstrap before running any `uv` command. This ensures uv packages, the project
+virtualenv, uv-managed Python installs, Hugging Face caches, torch caches, and W&B caches are placed under the storage
+unit instead of personal user space:
+
+```bash
+source hpc/env.sh
+bash hpc/storage-check.sh
+uv sync --frozen
+uv run --no-sync invoke hpc.storage
+```
+
+After `uv sync --frozen` has succeeded once, use `uv run --no-sync invoke ...` for planning and submission commands so
+uv does not unexpectedly resync while you are only inspecting specs.
+
+If you're having trouble with space, use the storage folder location:
+
+```bash
+source hpc/env.sh
+uv sync --frozen --no-dev
+```
+
+
+List experiment specs and profiles:
+
+```bash
+uv run --no-sync invoke experiments.list
+uv run --no-sync invoke hpc.profiles
+```
+
+Inspect the concrete runs created by a spec:
+
+```bash
+uv run --no-sync invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
+```
+
+Generate an LSF submission without submitting it:
+
+```bash
+uv run --no-sync invoke hpc.submit \
+  --config runs/sweeps/pretraining.toml \
+  --profile h100-10h \
+  --user lucas \
+  --dry-run
+```
+
+Submit the generated job:
+
+```bash
+uv run --no-sync invoke hpc.submit \
+  --config runs/sweeps/pretraining.toml \
+  --profile h100-10h \
+  --user lucas
+```
+
+For sweep specs, the generated script uses an LSF job array and one generated env file per array index. The Python
+training code still receives ordinary `CODLLM_*` environment variables through `config_from_env`, so the model runtime
+does not need to know whether a run came from a local shell, an invoke task, or LSF.
+
+### Experiment Specs
+
+Experiment specs are TOML files. They can inherit from one or more base specs, define scalar env overrides, and define
+cartesian sweeps:
+
+```toml
+base = "../base/h100-large.toml"
+name = "pretraining-epochs"
+command = "train"
+force_reprocess = false
+
+[env]
+CODLLM_MODEL_TASK = "seq2seq"
+CODLLM_PRETRAIN_ENABLED = true
+
+[sweep]
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = [1, 10, 25]
+```
+
+Use `[env]` for values that should be present in every run. Use `[sweep]` for values that should expand to multiple
+runs. TOML booleans are converted to `1` or `0`, arrays in `[env]` are converted to comma-separated strings, and arrays
+in `[sweep]` expand into individual runs.
+
+### LSF Profiles
+
+LSF profiles keep scheduler details out of experiment specs. A profile defines queue, wall time, CPU/GPU resources,
+memory, module loads, storage defaults, and log locations. Edit `hpc/lsf_profiles.toml` when moving between queues or
+clusters instead of changing experiment specs.
+
+### Legacy shell wrappers
+
+The older handwritten shell wrappers remain available for compatibility, but new experiments should prefer the
+invoke/TOML workflow.
 
 Script: `jobs/train.sh`
 H100 script: `jobs/train_h100.sh`
@@ -320,10 +456,10 @@ tail -f logs/<job_id>.out
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
-- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `accuracy`)
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `macro_f1`)
 - `CODLLM_MODEL_TASK` (`seq2seq`, `sequence_classification`; default: `seq2seq`)
 - `CODLLM_LR_SCHEDULER_TYPE` (`linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`, `inverse_sqrt`, `reduce_lr_on_plateau`; default: `linear`)
-- `CODLLM_LR` (default: `3e-5`)
+- `CODLLM_LR` (default: `1e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)

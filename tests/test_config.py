@@ -94,6 +94,17 @@ def _clear_relevant_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
+    """Defaults should keep simplified run specs aligned with the stable seq2seq baseline."""
+    cfg = Config()
+
+    assert cfg.model_task == "seq2seq"
+    assert cfg.training_input == ["cod", "age", "sex"]
+    assert cfg.max_grad_norm == 0.5
+    assert cfg.warmup_steps == 1000
+    assert cfg.balance_strategy == "none"
+
+
 def test_config_from_env_applies_runtime_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
