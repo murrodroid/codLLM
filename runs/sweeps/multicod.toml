@@ -1,6 +1,6 @@
 base = "../base/h100-large.toml"
 name = "multicod"
-description = "Sweep seq2seq fine-tuning input features while holding the training setup fixed."
+description = "Sweep to test multicod synthetic data effectiveness"
 force_reprocess = false
 
 [env]

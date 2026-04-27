@@ -1,6 +1,6 @@
 base = "../base/h100-large.toml"
-name = "multicod"
-description = "Sweep seq2seq fine-tuning input features while holding the training setup fixed."
+name = "scheduler"
+description = "Sweep different lr schedulers"
 force_reprocess = false
 
 [env]
