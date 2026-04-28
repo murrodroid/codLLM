@@ -22,10 +22,18 @@ LRSchedulerType = Literal[
 SaveStrategyBestMetric = Literal[
     "loss",
     "accuracy",
+    "exact_match",
     "micro_precision",
     "micro_recall",
     "micro_f1",
+    "micro_jaccard",
     "macro_precision",
     "macro_recall",
     "macro_f1",
+    "sample_precision",
+    "sample_recall",
+    "sample_f1",
+    "sample_jaccard",
+    "hamming_loss",
+    "hamming_score",
 ]

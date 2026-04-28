@@ -1,3 +1,4 @@
+from collections.abc import Mapping as MappingABC
 from typing import Any, Callable, Mapping
 
 import numpy as np
@@ -18,10 +19,36 @@ def _split_predicted_codes(text: str, label_separator: str) -> set[str]:
     return {token.strip() for token in tokens if token.strip()}
 
 
+def collect_label_classes(
+    dataset: Any,
+    label_column: str,
+    label_separator: str,
+) -> set[str]:
+    """Collect normalized label classes from a raw training dataset."""
+    label_values = None
+    if hasattr(dataset, "columns") and label_column in dataset.columns:
+        label_values = dataset[label_column].tolist()
+    elif isinstance(dataset, MappingABC) and label_column in dataset:
+        label_values = dataset[label_column]
+    elif hasattr(dataset, "column_names") and label_column in dataset.column_names:
+        label_values = dataset[label_column]
+
+    if label_values is None:
+        return set()
+
+    classes: set[str] = set()
+    for value in label_values:
+        if isinstance(value, list | tuple | set):
+            classes.update(str(item).strip() for item in value if str(item).strip())
+        else:
+            classes.update(_split_predicted_codes(str(value), label_separator))
+    return classes
+
+
 def _micro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
 ) -> dict[str, float]:
-    """Compute micro-averaged precision/recall/F1 over per-example code sets."""
+    """Compute micro-averaged precision/recall/F1/Jaccard over per-example code sets."""
     tp = 0
     fp = 0
     fn = 0
@@ -37,10 +64,117 @@ def _micro_precision_recall_f1(
         if (precision + recall) > 0
         else 0.0
     )
+    jaccard = float(tp / (tp + fp + fn)) if (tp + fp + fn) > 0 else 0.0
     return {
         "micro_precision": precision,
         "micro_recall": recall,
         "micro_f1": f1,
+        "micro_jaccard": jaccard,
+    }
+
+
+def _sample_precision_recall_f1(
+    predictions: list[set[str]], labels: list[set[str]]
+) -> dict[str, float]:
+    """Compute sample-averaged set overlap metrics for multi-label predictions."""
+    if not predictions:
+        return {
+            "sample_precision": 0.0,
+            "sample_recall": 0.0,
+            "sample_f1": 0.0,
+            "sample_jaccard": 0.0,
+        }
+
+    per_sample_precision = []
+    per_sample_recall = []
+    per_sample_f1 = []
+    per_sample_jaccard = []
+    for predicted_codes, label_codes in zip(predictions, labels):
+        tp = len(predicted_codes.intersection(label_codes))
+        pred_total = len(predicted_codes)
+        label_total = len(label_codes)
+        union_total = len(predicted_codes.union(label_codes))
+
+        precision = tp / pred_total if pred_total > 0 else float(label_total == 0)
+        recall = tp / label_total if label_total > 0 else float(pred_total == 0)
+        f1 = (
+            (2 * tp) / (pred_total + label_total)
+            if (pred_total + label_total) > 0
+            else 1.0
+        )
+        jaccard = tp / union_total if union_total > 0 else 1.0
+
+        per_sample_precision.append(precision)
+        per_sample_recall.append(recall)
+        per_sample_f1.append(f1)
+        per_sample_jaccard.append(jaccard)
+
+    return {
+        "sample_precision": float(np.mean(per_sample_precision)),
+        "sample_recall": float(np.mean(per_sample_recall)),
+        "sample_f1": float(np.mean(per_sample_f1)),
+        "sample_jaccard": float(np.mean(per_sample_jaccard)),
+    }
+
+
+def _multilabel_diagnostic_metrics(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    label_universe: set[str] | None = None,
+) -> dict[str, float]:
+    """Compute multi-label diagnostics for label count and per-label errors."""
+    observed_classes = (
+        set().union(*predictions, *labels) if predictions or labels else set()
+    )
+    effective_universe = set(label_universe or set()) | observed_classes
+    sample_count = len(predictions)
+
+    false_positives = []
+    false_negatives = []
+    predicted_counts = []
+    label_counts = []
+    label_count_errors = []
+    hamming_errors = 0
+    for predicted_codes, label_codes in zip(predictions, labels):
+        false_positive_count = len(predicted_codes.difference(label_codes))
+        false_negative_count = len(label_codes.difference(predicted_codes))
+        predicted_count = len(predicted_codes)
+        label_count = len(label_codes)
+
+        false_positives.append(false_positive_count)
+        false_negatives.append(false_negative_count)
+        predicted_counts.append(predicted_count)
+        label_counts.append(label_count)
+        label_count_errors.append(abs(predicted_count - label_count))
+        hamming_errors += false_positive_count + false_negative_count
+
+    hamming_denominator = sample_count * len(effective_universe)
+    hamming_loss = (
+        float(hamming_errors / hamming_denominator) if hamming_denominator > 0 else 0.0
+    )
+    empty_prediction_count = sum(
+        1 for predicted_codes in predictions if not predicted_codes
+    )
+
+    return {
+        "hamming_loss": hamming_loss,
+        "hamming_score": 1.0 - hamming_loss,
+        "avg_predicted_label_count": float(np.mean(predicted_counts))
+        if predicted_counts
+        else 0.0,
+        "avg_true_label_count": float(np.mean(label_counts)) if label_counts else 0.0,
+        "label_count_mae": float(np.mean(label_count_errors))
+        if label_count_errors
+        else 0.0,
+        "avg_false_positives_per_sample": float(np.mean(false_positives))
+        if false_positives
+        else 0.0,
+        "avg_false_negatives_per_sample": float(np.mean(false_negatives))
+        if false_negatives
+        else 0.0,
+        "empty_prediction_rate": float(empty_prediction_count / sample_count)
+        if sample_count > 0
+        else 0.0,
     }
 
 
@@ -257,12 +391,26 @@ def build_exact_match_accuracy_metric(
             ]
         accuracy = float(np.mean(matches)) if matches else 0.0
 
-        result: dict[str, float] = {"accuracy": accuracy}
+        result: dict[str, float] = {"accuracy": accuracy, "exact_match": accuracy}
         if multi_label:
             result.update(
                 _micro_precision_recall_f1(predicted_code_sets, label_code_sets)
             )
+            result.update(
+                _sample_precision_recall_f1(predicted_code_sets, label_code_sets)
+            )
+            result.update(
+                _multilabel_diagnostic_metrics(
+                    predicted_code_sets,
+                    label_code_sets,
+                    label_universe=train_classes,
+                )
+            )
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
+        if train_classes is not None:
+            result.update(
+                _seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes)
+            )
         return result
 
     return compute_metrics
@@ -313,7 +461,7 @@ def build_sequence_classification_metric(
 
         predicted_code_sets = [{label} for label in normalized_predictions]
         label_code_sets = [{label} for label in normalized_labels]
-        result: dict[str, float] = {"accuracy": accuracy}
+        result: dict[str, float] = {"accuracy": accuracy, "exact_match": accuracy}
         result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
         if train_classes is not None:
             result.update(

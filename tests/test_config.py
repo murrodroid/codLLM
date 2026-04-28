@@ -416,6 +416,18 @@ def test_config_from_env_rejects_invalid_save_strategy_best_metric(
         config_from_env()
 
 
+def test_config_from_env_accepts_multicod_save_strategy_best_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best-save metric override should accept multi-COD evaluation metrics."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "sample_f1")
+
+    cfg = config_from_env()
+
+    assert cfg.save_strategy_best_metric == "sample_f1"
+
+
 def test_config_from_env_rejects_invalid_device(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -485,7 +485,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
-- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `macro_f1`)
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `exact_match`, `micro_precision`, `micro_recall`, `micro_f1`, `micro_jaccard`, `macro_precision`, `macro_recall`, `macro_f1`, `sample_precision`, `sample_recall`, `sample_f1`, `sample_jaccard`, `hamming_loss`, `hamming_score`; default: `macro_f1`)
 - `CODLLM_MODEL_TASK` (`seq2seq`, `sequence_classification`; default: `seq2seq`)
 - `CODLLM_LR_SCHEDULER_TYPE` (`linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`, `inverse_sqrt`, `reduce_lr_on_plateau`; default: `linear`)
 - `CODLLM_LR` (default: `1e-5`)

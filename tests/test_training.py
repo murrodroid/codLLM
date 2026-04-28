@@ -407,6 +407,25 @@ def test_build_training_args_best_loss_metric_uses_lower_is_better(
     assert args.greater_is_better is False
 
 
+def test_build_training_args_best_hamming_loss_uses_lower_is_better(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should minimize Hamming loss for multi-label runs."""
+    monkeypatch.setattr(
+        arguments_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        save_strategy="best",
+        save_strategy_best_metric="hamming_loss",
+        max_label_count=2,
+    )
+    args = build_training_args(cfg, has_eval=True)
+    assert args.metric_for_best_model == "hamming_loss"
+    assert args.greater_is_better is False
+
+
 def test_build_training_args_best_save_strategy_requires_eval_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -424,7 +443,7 @@ def test_build_training_args_best_save_strategy_requires_eval_data(
 def test_build_training_args_best_micro_metric_requires_multi_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Best save strategy should reject micro metrics for single-label runs."""
+    """Best save strategy should reject multi-label metrics for single-label runs."""
     monkeypatch.setattr(
         arguments_module.wandb_utils,
         "resolve_wandb_reporting",
@@ -433,6 +452,24 @@ def test_build_training_args_best_micro_metric_requires_multi_label(
     cfg = Config(
         save_strategy="best",
         save_strategy_best_metric="micro_f1",
+        max_label_count=1,
+    )
+    with pytest.raises(ValueError, match="max_label_count > 1"):
+        build_training_args(cfg, has_eval=True)
+
+
+def test_build_training_args_best_sample_metric_requires_multi_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best save strategy should reject sample metrics for single-label runs."""
+    monkeypatch.setattr(
+        arguments_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        save_strategy="best",
+        save_strategy_best_metric="sample_f1",
         max_label_count=1,
     )
     with pytest.raises(ValueError, match="max_label_count > 1"):

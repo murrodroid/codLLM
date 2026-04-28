@@ -14,6 +14,16 @@ def _metric_greater_is_better(metric_name: str) -> bool:
     return not normalized_metric.endswith("loss")
 
 
+def _metric_requires_multi_label(metric_name: str) -> bool:
+    """Return whether a best-checkpoint metric is emitted only for multi-label runs."""
+    normalized_metric = metric_name.strip().lower()
+    return (
+        normalized_metric.startswith("micro_")
+        or normalized_metric.startswith("sample_")
+        or normalized_metric in {"hamming_loss", "hamming_score"}
+    )
+
+
 def build_training_args(
     cfg: Config,
     has_eval: bool,
@@ -32,11 +42,11 @@ def build_training_args(
         )
     if (
         cfg.save_strategy == "best"
-        and cfg.save_strategy_best_metric.startswith("micro_")
+        and _metric_requires_multi_label(cfg.save_strategy_best_metric)
         and cfg.max_label_count <= 1
     ):
         raise ValueError(
-            "save_strategy_best_metric with a 'micro_' prefix requires "
+            "The configured save_strategy_best_metric is only emitted when "
             "max_label_count > 1."
         )
     using_cuda = cfg.uses_cuda()

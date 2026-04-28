@@ -16,6 +16,7 @@ from codllm.data import (
 from codllm.metrics import (
     build_exact_match_accuracy_metric,
     build_sequence_classification_metric,
+    collect_label_classes,
 )
 from codllm.trainer_logging import (
     EvaluateEveryNEpochsCallback,
@@ -80,6 +81,11 @@ def run_training_stage(
                 target_max_length,
             )
         collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+        train_classes = collect_label_classes(
+            train_ds,
+            label_column=cfg.dataset_label_column,
+            label_separator=cfg.label_separator,
+        )
 
     stage_run_data_metadata = build_stage_run_metadata(
         run_data_metadata=run_data_metadata,
@@ -153,6 +159,7 @@ def run_training_stage(
                     tokenizer,
                     label_separator=cfg.label_separator,
                     max_label_count=cfg.max_label_count,
+                    train_classes=train_classes or None,
                 )
                 if processed_eval_ds is not None
                 else None

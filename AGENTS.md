@@ -71,6 +71,8 @@ unexpected dependency downloads.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default.
+  * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
+    `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners
   by default) and do not depend on local-only resources or hardware.
 
