@@ -4,6 +4,7 @@ from codllm.settings.env import config_from_env
 from codllm.settings.types import (
     BalanceStrategy,
     EvalStrategy,
+    HoldOutEvaluatePer,
     LRSchedulerType,
     ModelTask,
     MultiCodSyntheticSourceScope,
@@ -27,6 +28,7 @@ __all__ = [
     "Config",
     "DataSourceConfig",
     "EvalStrategy",
+    "HoldOutEvaluatePer",
     "LRSchedulerType",
     "ModelTask",
     "MultiCodSyntheticSourceScope",

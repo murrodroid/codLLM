@@ -1375,6 +1375,45 @@ class TestDataHandler:
         with pytest.raises(ValueError, match="missing_source"):
             handler.get_splits()
 
+    def test_get_splits_samples_holdout_eval_when_enabled(self, tmp_path: Path) -> None:
+        """hold_out_evaluate_ratio should sample holdout rows for interim eval."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.concat(
+            [
+                _processed_df(num_rows=10),
+                _processed_df(num_rows=20).assign(
+                    source_id="external",
+                    record_id=lambda df: [f"EXT-{idx:03d}" for idx in range(len(df))],
+                ),
+            ],
+            ignore_index=True,
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            hold_out_dataset="external",
+            hold_out_evaluate_per="epoch",
+            hold_out_evaluate_ratio=0.25,
+            dataset_size=1.0,
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        assert splits.holdout is not None
+        assert splits.holdout_eval is not None
+        assert len(splits.holdout) == 20
+        assert len(splits.holdout_eval) == 5
+        assert set(splits.holdout_eval["source_id"]) == {"external"}
+
     def test_get_splits_applies_base_perturbation_to_all_labels(
         self, tmp_path: Path
     ) -> None:

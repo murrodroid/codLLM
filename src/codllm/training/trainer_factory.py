@@ -20,6 +20,7 @@ from codllm.metrics import (
 )
 from codllm.trainer_logging import (
     EvaluateEveryNEpochsCallback,
+    HoldoutEvaluationCallback,
     StageScopedSeq2SeqTrainer,
     StageScopedTrainer,
 )
@@ -39,6 +40,7 @@ def run_training_stage(
     disable_fp16: bool,
     train_ds: Any,
     eval_ds: Any | None = None,
+    holdout_eval_ds: Any | None = None,
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
@@ -64,6 +66,14 @@ def run_training_stage(
                 dataset=eval_ds,
                 label2id=label2id,
             )
+        processed_holdout_eval_ds = None
+        if holdout_eval_ds is not None:
+            processed_holdout_eval_ds = prepare_sequence_classification_dataset(
+                cfg=cfg,
+                tokenizer=tokenizer,
+                dataset=holdout_eval_ds,
+                label2id=label2id,
+            )
         collator: Any = DataCollatorWithPadding(tokenizer=tokenizer)
     else:
         processed_train_ds = prepare_training_dataset(
@@ -78,6 +88,14 @@ def run_training_stage(
                 cfg,
                 tokenizer,
                 eval_ds,
+                target_max_length,
+            )
+        processed_holdout_eval_ds = None
+        if holdout_eval_ds is not None:
+            processed_holdout_eval_ds = prepare_training_dataset(
+                cfg,
+                tokenizer,
+                holdout_eval_ds,
                 target_max_length,
             )
         collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
@@ -127,6 +145,14 @@ def run_training_stage(
         has_eval_dataset=processed_eval_ds is not None,
     ):
         callbacks.append(EvaluateEveryNEpochsCallback(stage.eval_every_n_epochs))
+    holdout_callback = None
+    if processed_holdout_eval_ds is not None and cfg.hold_out_evaluate_per is not None:
+        holdout_callback = HoldoutEvaluationCallback(
+            evaluate_per=cfg.hold_out_evaluate_per,
+            eval_dataset=processed_holdout_eval_ds,
+            eval_steps=cfg.eval_steps,
+        )
+        callbacks.append(holdout_callback)
 
     if cfg.model_task == "sequence_classification":
         trainer = StageScopedTrainer(
@@ -140,7 +166,13 @@ def run_training_stage(
             callbacks=callbacks or None,
             compute_metrics=(
                 build_sequence_classification_metric(id2label=id2label)
-                if processed_eval_ds is not None and id2label is not None
+                if (
+                    (
+                        processed_eval_ds is not None
+                        or processed_holdout_eval_ds is not None
+                    )
+                    and id2label is not None
+                )
                 else None
             ),
         )
@@ -162,9 +194,13 @@ def run_training_stage(
                     train_classes=train_classes or None,
                 )
                 if processed_eval_ds is not None
+                or processed_holdout_eval_ds is not None
                 else None
             ),
         )
+
+    if holdout_callback is not None:
+        holdout_callback.attach_trainer(trainer)
 
     trainer.train()
     return trainer

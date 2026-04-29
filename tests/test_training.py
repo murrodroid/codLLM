@@ -381,6 +381,91 @@ def test_evaluate_every_n_epochs_callback_runs_on_interval_and_final_epoch(
     assert final_updated.should_evaluate is True
 
 
+def test_holdout_evaluation_callback_runs_on_epoch(tmp_path: Path) -> None:
+    """Hold-out callback should evaluate sampled holdout rows at epoch boundaries."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="epoch",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording holdout evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    callback.on_epoch_end(
+        args=trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out")),
+        state=trainer_logging_module.TrainerState(epoch=1.0),
+        control=trainer_logging_module.TrainerControl(),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout",
+        }
+    ]
+
+
+def test_holdout_evaluation_callback_runs_on_eval_steps(tmp_path: Path) -> None:
+    """Hold-out callback should evaluate sampled holdout rows at eval-step intervals."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="steps",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording holdout evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    args = trainer_logging_module.TrainingArguments(
+        output_dir=str(tmp_path / "out"),
+        eval_steps=5,
+    )
+    callback.on_step_end(
+        args=args,
+        state=trainer_logging_module.TrainerState(global_step=4),
+        control=trainer_logging_module.TrainerControl(),
+    )
+    callback.on_step_end(
+        args=args,
+        state=trainer_logging_module.TrainerState(global_step=5),
+        control=trainer_logging_module.TrainerControl(),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout",
+        }
+    ]
+
+
 def test_build_training_args_best_save_strategy_sets_metric(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -754,6 +839,7 @@ def test_train_uses_validation_split_from_data_handler(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -821,6 +907,7 @@ def test_train_sequence_classification_builds_masterlist_label_space(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -932,6 +1019,7 @@ def test_train_omits_eval_when_validation_is_empty(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1041,7 +1129,11 @@ def test_train_runs_holdout_evaluation_when_available(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """train should evaluate a configured held-out source after normal test eval."""
-    cfg = Config(output_dir=str(tmp_path / "runs"), hold_out_dataset="external")
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        hold_out_dataset="external",
+        hold_out_evaluate_per="epoch",
+    )
     holdout_df = pd.DataFrame(
         {
             "source_id": ["external", "external"],
@@ -1049,11 +1141,13 @@ def test_train_runs_holdout_evaluation_when_available(
             "label": ["A04", "A05"],
         }
     )
+    holdout_eval_df = holdout_df.iloc[:1].copy()
     splits = DataSplits(
         train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
         val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),
         test=pd.DataFrame({"text": ["x1"], "label": ["A02"]}),
         holdout=holdout_df,
+        holdout_eval=holdout_eval_df,
     )
 
     class DummyDataHandler:
@@ -1062,10 +1156,26 @@ def test_train_runs_holdout_evaluation_when_available(
         def get_splits(self, force_reprocess: bool = False) -> DataSplits:
             return splits
 
+    captured_train: dict[str, Any] = {}
+
+    def fake_train_from_datasets(
+        cfg: Config,
+        stage: stages_module.TrainingStage,
+        train_ds: Any,
+        eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
+        run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
+    ) -> tuple[str, str]:
+        del cfg, stage, train_ds, eval_ds, run_data_metadata, label2id, id2label
+        captured_train["holdout_eval_ds"] = holdout_eval_ds
+        return "trainer", "tokenizer"
+
     monkeypatch.setattr(
         pipeline_module,
         "_train_from_datasets",
-        lambda *args, **kwargs: ("trainer", "tokenizer"),
+        fake_train_from_datasets,
     )
     captured_calls: list[dict[str, Any]] = []
 
@@ -1091,6 +1201,7 @@ def test_train_runs_holdout_evaluation_when_available(
     )
     pipeline_module.train(cfg, data_handler=DummyDataHandler())
 
+    assert captured_train["holdout_eval_ds"] is holdout_eval_df
     assert captured_calls == [
         {
             "test_ds": splits.test,
@@ -1154,6 +1265,7 @@ def test_train_uses_pretraining_dataset_when_available(
         pretrain_ds: Any,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1250,6 +1362,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         disable_fp16: bool,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1261,6 +1374,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
             disable_fp16,
             train_ds,
             eval_ds,
+            holdout_eval_ds,
             run_data_metadata,
             label2id,
             id2label,

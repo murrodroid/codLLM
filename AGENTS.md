@@ -76,7 +76,10 @@ unexpected dependency downloads.
   * Dataset leave-one-source-out evaluation is controlled by `Config.hold_out_dataset` and
     `CODLLM_HOLD_OUT_DATASET`. Hold-out matching uses processed `source_id` values, removes the entire matching source
     from train/val/test splitting, keeps normal val/test splits on the remaining sources, and evaluates the held-out
-    rows after training with `holdout_*` metrics.
+    rows after training with `holdout_*` metrics. During-training sampled hold-out evaluation is controlled separately
+    by `Config.hold_out_evaluate_per`, `Config.hold_out_evaluate_ratio`, `CODLLM_HOLD_OUT_EVALUATE_PER`, and
+    `CODLLM_HOLD_OUT_EVALUATE_RATIO`; the final post-training hold-out evaluation must always use the full held-out
+    source.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
     `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners

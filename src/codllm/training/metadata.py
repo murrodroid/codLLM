@@ -66,12 +66,14 @@ def build_data_metadata(
         "val": _source_distribution(splits.val),
         "test": _source_distribution(splits.test),
         "holdout": _source_distribution(splits.holdout),
+        "holdout_eval": _source_distribution(splits.holdout_eval),
     }
     label_stats = {
         "train": _label_stats(splits.train, cfg.dataset_label_column),
         "val": _label_stats(splits.val, cfg.dataset_label_column),
         "test": _label_stats(splits.test, cfg.dataset_label_column),
         "holdout": _label_stats(splits.holdout, cfg.dataset_label_column),
+        "holdout_eval": _label_stats(splits.holdout_eval, cfg.dataset_label_column),
     }
 
     default_processed_path = Path(cfg.data_processed_dir) / cfg.processed_filename
@@ -104,6 +106,9 @@ def build_data_metadata(
     holdout_rows = dataset_row_count(splits.holdout)
     if holdout_rows is not None:
         payload["split_rows"]["holdout"] = holdout_rows
+    holdout_eval_rows = dataset_row_count(splits.holdout_eval)
+    if holdout_eval_rows is not None:
+        payload["split_rows"]["holdout_eval"] = holdout_eval_rows
     fingerprint = _load_json_file(processed_metadata_path)
     if fingerprint is not None:
         payload["processed_fingerprint"] = fingerprint
