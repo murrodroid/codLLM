@@ -8,6 +8,7 @@ from codllm.settings.factories import (
     default_data_sources,
     default_device,
     default_device_map,
+    default_input_field_prefixes,
     default_masterlist_inject_perturbations,
     default_pretrain_perturbations,
     default_training_input,
@@ -17,6 +18,7 @@ from codllm.settings.types import (
     EvalStrategy,
     LRSchedulerType,
     ModelTask,
+    MultiCodSyntheticSourceScope,
     SaveStrategy,
     SaveStrategyBestMetric,
     TorchDType,
@@ -78,7 +80,7 @@ class Config:
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 0.5
-    warmup_steps: int = 1000
+    warmup_ratio: float = 0.1
     dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False
@@ -90,7 +92,7 @@ class Config:
     save_strategy: SaveStrategy = "epoch"
     save_strategy_best_metric: SaveStrategyBestMetric = "macro_f1"
     model_task: ModelTask = "seq2seq"
-    lr_scheduler_type: LRSchedulerType = "linear"
+    lr_scheduler_type: LRSchedulerType = "cosine"
     verbose: bool = False
     output_dir: str = "./runs"
     seed: int = 42
@@ -112,7 +114,14 @@ class Config:
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
     training_input: list[TrainingInput] = field(default_factory=default_training_input)
+    input_field_prefixes: dict[TrainingInput, str] = field(
+        default_factory=default_input_field_prefixes
+    )
     max_label_count: int = 1
+    multicod_shuffle_labels: bool = True
+    multicod_synthetic_ratio: float = 0.0
+    multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
+    multicod_synthetic_text_separator: str = "; "
     inference_validate_registry: bool = False
 
     dataset_size: float = 0.5
@@ -125,6 +134,7 @@ class Config:
     pretrain_transfer_sheet_name: str = "2020to2024transfer"
     pretrain_num_train_epochs: int = 1
     pretrain_learning_rate: float | None = None
+    pretrain_warmup_ratio: float = 0.0
     pretrain_eval_every_n_epochs: int = 1
     pretrain_lr_scheduler_type: LRSchedulerType = "linear"
     pretrain_upsample_enabled: bool = True
@@ -178,6 +188,19 @@ class Config:
     def resolved_data_seed(self) -> int:
         """Return data seed, defaulting to the global seed when unset."""
         return self.seed if self.data_seed is None else self.data_seed
+
+    def input_field_prefix(self, feature: TrainingInput) -> str:
+        """Return the configured text prefix for one training input field."""
+        prefix = self.input_field_prefixes.get(feature)
+        if prefix is None:
+            raise KeyError(
+                f"Missing input prefix for training input field '{feature}'."
+            )
+        if prefix == "":
+            raise ValueError(
+                f"Input prefix for training input field '{feature}' must not be empty."
+            )
+        return prefix
 
     def uses_cuda(self) -> bool:
         """Return True when config targets CUDA and CUDA runtime is available."""

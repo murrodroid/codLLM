@@ -7,6 +7,7 @@ import torch
 from codllm.settings.options import (
     SUPPORTED_LR_SCHEDULER_TYPES,
     SUPPORTED_MODEL_TASKS,
+    SUPPORTED_MULTICOD_SYNTHETIC_SOURCE_SCOPES,
     SUPPORTED_SAVE_STRATEGY_BEST_METRICS,
     SUPPORTED_TRAINING_INPUTS,
 )
@@ -18,6 +19,7 @@ from codllm.settings.types import (
     EvalStrategy,
     LRSchedulerType,
     ModelTask,
+    MultiCodSyntheticSourceScope,
     SaveStrategy,
     SaveStrategyBestMetric,
     TorchDType,
@@ -86,6 +88,22 @@ def _parse_training_input(raw_value: str) -> list[TrainingInput]:
     return parsed
 
 
+def _apply_input_prefix_env(cfg: Config) -> None:
+    """Apply optional processed-input prefix overrides from environment."""
+    env_names: dict[TrainingInput, str] = {
+        "cod": "CODLLM_INPUT_PREFIX_COD",
+        "age": "CODLLM_INPUT_PREFIX_AGE",
+        "sex": "CODLLM_INPUT_PREFIX_SEX",
+    }
+    for feature, env_name in env_names.items():
+        prefix = os.getenv(env_name)
+        if prefix is None:
+            continue
+        if prefix == "":
+            raise ValueError(f"{env_name} must not be empty.")
+        cfg.input_field_prefixes[feature] = prefix
+
+
 def config_from_env(base: Optional[Config] = None) -> Config:
     """Create runtime config with environment overrides for training and reproducibility."""
     cfg = deepcopy(base) if base is not None else Config()
@@ -132,11 +150,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_DATALOADER_PREFETCH_FACTOR must be at least 1.")
         cfg.dataloader_prefetch_factor = dataloader_prefetch_factor
 
-    warmup_steps = _parse_env_int("CODLLM_WARMUP_STEPS")
-    if warmup_steps is not None:
-        if warmup_steps < 0:
-            raise ValueError("CODLLM_WARMUP_STEPS must be non-negative.")
-        cfg.warmup_steps = warmup_steps
+    warmup_ratio = _parse_env_float("CODLLM_WARMUP_RATIO")
+    if warmup_ratio is not None:
+        if warmup_ratio < 0 or warmup_ratio > 1:
+            raise ValueError("CODLLM_WARMUP_RATIO must be between 0 and 1.")
+        cfg.warmup_ratio = warmup_ratio
 
     num_train_epochs = _parse_env_int("CODLLM_NUM_TRAIN_EPOCHS")
     if num_train_epochs is not None:
@@ -185,6 +203,40 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if max_label_count < 1:
             raise ValueError("CODLLM_MAX_LABEL_COUNT must be at least 1.")
         cfg.max_label_count = max_label_count
+
+    multicod_shuffle_labels = _parse_env_bool("CODLLM_MULTICOD_SHUFFLE_LABELS")
+    if multicod_shuffle_labels is not None:
+        cfg.multicod_shuffle_labels = multicod_shuffle_labels
+
+    multicod_synthetic_ratio = _parse_env_float("CODLLM_MULTICOD_SYNTHETIC_RATIO")
+    if multicod_synthetic_ratio is not None:
+        if multicod_synthetic_ratio < 0:
+            raise ValueError("CODLLM_MULTICOD_SYNTHETIC_RATIO must be non-negative.")
+        cfg.multicod_synthetic_ratio = multicod_synthetic_ratio
+
+    multicod_synthetic_source_scope = os.getenv(
+        "CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE"
+    )
+    if (
+        multicod_synthetic_source_scope is not None
+        and multicod_synthetic_source_scope.strip() != ""
+    ):
+        normalized_scope = multicod_synthetic_source_scope.strip().lower()
+        allowed_scopes = set(SUPPORTED_MULTICOD_SYNTHETIC_SOURCE_SCOPES)
+        if normalized_scope not in allowed_scopes:
+            allowed = ", ".join(sorted(allowed_scopes))
+            raise ValueError(
+                f"CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE must be one of: {allowed}."
+            )
+        cfg.multicod_synthetic_source_scope = cast(
+            MultiCodSyntheticSourceScope, normalized_scope
+        )
+
+    multicod_synthetic_text_separator = os.getenv(
+        "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR"
+    )
+    if multicod_synthetic_text_separator is not None:
+        cfg.multicod_synthetic_text_separator = multicod_synthetic_text_separator
 
     max_source_length = _parse_env_int("CODLLM_MAX_SOURCE_LENGTH")
     if max_source_length is not None:
@@ -375,6 +427,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_PRETRAIN_LEARNING_RATE must be positive.")
         cfg.pretrain_learning_rate = pretrain_learning_rate
 
+    pretrain_warmup_ratio = _parse_env_float("CODLLM_PRETRAIN_WARMUP_RATIO")
+    if pretrain_warmup_ratio is not None:
+        if pretrain_warmup_ratio < 0 or pretrain_warmup_ratio > 1:
+            raise ValueError("CODLLM_PRETRAIN_WARMUP_RATIO must be between 0 and 1.")
+        cfg.pretrain_warmup_ratio = pretrain_warmup_ratio
+
     pretrain_eval_every_n_epochs = _parse_env_int("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS")
     if pretrain_eval_every_n_epochs is not None:
         if pretrain_eval_every_n_epochs < 1:
@@ -525,6 +583,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     training_input = os.getenv("CODLLM_TRAINING_INPUT")
     if training_input is not None and training_input.strip() != "":
         cfg.training_input = _parse_training_input(training_input)
+    _apply_input_prefix_env(cfg)
 
     data_raw_dir = os.getenv("CODLLM_DATA_RAW_DIR")
     if data_raw_dir:

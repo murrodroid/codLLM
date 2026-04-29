@@ -4,6 +4,7 @@ from codllm.experiments import (
     LsfProfile,
     format_env_file,
     load_experiment_spec,
+    load_lsf_profiles,
     prepare_lsf_submission,
 )
 from tasks import _profile_for_lsf_user
@@ -127,6 +128,58 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert "uv run python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest
+
+
+def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
+    """Input-feature sweep should leave config-default training choices implicit."""
+    spec = load_experiment_spec("runs/sweeps/training_inputs.toml")
+
+    assert spec.env["CODLLM_LR"] == "2.5e-05"
+    assert spec.env["CODLLM_NUM_TRAIN_EPOCHS"] == "8"
+    assert spec.env["CODLLM_SAVE_STRATEGY"] == "no"
+
+    for key in {
+        "CODLLM_MODEL_TASK",
+        "CODLLM_DATASET_SIZE",
+        "CODLLM_BALANCE_STRATEGY",
+        "CODLLM_WARMUP_RATIO",
+        "CODLLM_TRAIN_SIZE",
+        "CODLLM_VAL_SIZE",
+        "CODLLM_TEST_SIZE",
+        "CODLLM_PRETRAIN_ENABLED",
+    }:
+        assert key not in spec.env
+
+
+def test_h100_base_leaves_model_dtype_to_config_default() -> None:
+    """H100 runtime bases should not force model-load precision."""
+    large = load_experiment_spec("runs/base/h100-large.toml")
+    small = load_experiment_spec("runs/base/h100-small.toml")
+
+    assert "CODLLM_TORCH_DTYPE" not in large.env
+    assert "CODLLM_TORCH_DTYPE" not in small.env
+
+
+def test_h100_base_uses_high_throughput_dataloader_settings() -> None:
+    """H100 runtime bases should request enough input pipeline capacity."""
+    large = load_experiment_spec("runs/base/h100-large.toml")
+    small = load_experiment_spec("runs/base/h100-small.toml")
+
+    for spec in (large, small):
+        assert spec.env["CODLLM_DATALOADER_NUM_WORKERS"] == "16"
+        assert spec.env["CODLLM_DATALOADER_PERSISTENT_WORKERS"] == "1"
+        assert spec.env["CODLLM_DATALOADER_PREFETCH_FACTOR"] == "2"
+
+    assert large.env["CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"] == "96"
+    assert small.env["CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"] == "256"
+
+
+def test_h100_lsf_profiles_match_dataloader_worker_capacity() -> None:
+    """H100 LSF profiles should reserve one CPU slot per worker plus the main process."""
+    profiles = load_lsf_profiles("hpc/lsf_profiles.toml")
+
+    for profile_name in ("h100-24h", "h100-10h", "h100-5h", "h100-2h"):
+        assert profiles[profile_name].cores == 17
 
 
 def test_profile_for_lsf_user_sets_notification_email() -> None:

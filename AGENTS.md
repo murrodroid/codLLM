@@ -42,6 +42,7 @@ Experiment orchestration is handled separately from model code. Human-editable e
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
 new handwritten shell scripts in `jobs/`.
+H100 profiles request 17 CPU cores so H100 runtime specs can use 16 DataLoader workers plus the main process.
 
 On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,
 `UV_PYTHON_INSTALL_DIR`, Hugging Face caches, torch caches, and W&B caches under the configured storage unit instead of
@@ -65,6 +66,15 @@ unexpected dependency downloads.
     `Config`; wire code to `Config` so behavior updates dynamically when config changes.
   * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
     all relevant call sites and tests use the config-driven value.
+  * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
+    `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
+  * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
+    `cod: `, `age: `, or `sex: ` when building or parsing processed text.
+  * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
+    label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
+    rather than the default.
+  * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
+    `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners
   by default) and do not depend on local-only resources or hardware.
 

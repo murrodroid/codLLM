@@ -317,13 +317,23 @@ def log_wandb_run_metadata(
     # Pin key metrics to summary for easy comparison across runs
     for key in [
         "eval/accuracy",
+        "eval/exact_match",
         "eval/macro_f1",
         "eval/macro_precision",
         "eval/macro_recall",
+        "eval/micro_jaccard",
+        "eval/sample_f1",
+        "eval/sample_jaccard",
+        "eval/hamming_score",
         "eval/seen_macro_f1",
         "eval/unseen_macro_f1",
     ]:
         wandb.define_metric(key, summary="max")
+    for key in [
+        "eval/hamming_loss",
+        "eval/label_count_mae",
+    ]:
+        wandb.define_metric(key, summary="min")
 
     sanitized_metadata = _sanitize_for_wandb(dict(metadata))
     wandb.config.update(sanitized_metadata, allow_val_change=True)

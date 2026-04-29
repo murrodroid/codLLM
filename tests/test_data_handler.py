@@ -192,6 +192,28 @@ class TestBuildText:
         )
         assert result == "cod: cholera || age: 2.4 || sex: male"
 
+    def test_build_text_uses_configured_input_prefixes(self) -> None:
+        """Text should use configured field prefixes for each input field."""
+        mapping = _make_mapping()
+        row = _row("cholera", "A00", "", "1", "2.4", "RID-001")
+        cfg = Config(
+            input_field_prefixes={
+                "cod": "cause=",
+                "age": "years=",
+                "sex": "gender=",
+            }
+        )
+
+        result = _build_text(
+            row,
+            mapping,
+            ["cod", "age", "sex"],
+            field_separator=cfg.text_field_separator,
+            input_field_prefixes=cfg.input_field_prefixes,
+        )
+
+        assert result == "cause=cholera | years=2.4 | gender=male"
+
 
 class TestBuildY:
     def test_build_y_collects_all_available_labels(self) -> None:
@@ -430,6 +452,11 @@ class TestLoaders:
                 )
             ],
             training_input=["cod", "age", "sex"],
+            input_field_prefixes={
+                "cod": "cause=",
+                "age": "years=",
+                "sex": "gender=",
+            },
             max_label_count=2,
             label_separator=",",
         )
@@ -442,6 +469,136 @@ class TestLoaders:
             cfg, mapping_registry={"test_mapping": mapping}
         )
         assert result.iloc[0]["label"] == "J18.100,R99.900"
+
+    def test_get_splits_shuffles_multicod_label_order(self, tmp_path: Path) -> None:
+        """Multi-COD labels should be shuffled deterministically from data_seed."""
+        csv_path = tmp_path / "sample.csv"
+        pd.DataFrame(
+            [
+                [
+                    "text",
+                    "A00.000",
+                    "J18.100",
+                    "1",
+                    "20",
+                    "RID-001",
+                    "R99.900",
+                    "I10.000",
+                ],
+                ["other", "K11.111", "", "1", "21", "RID-002", "", ""],
+            ]
+        ).to_csv(csv_path, index=False)
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=3,
+            label_separator=",",
+            data_seed=7,
+            multicod_shuffle_labels=True,
+            data_processed_dir=str(tmp_path / "processed"),
+            processed_filename="training.csv",
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+            balance_base_perturbation_rate=0.0,
+        )
+        mapping = _make_mapping(multi_code_cols=[2, 6, 7])
+
+        handler = DataHandler(cfg, mapping_registry={"test_mapping": mapping})
+        splits = handler.get_splits()
+        row = splits.train[splits.train["record_id"] == "RID-001"].iloc[0]
+
+        assert row["y_codes"] == ["I10.000", "J18.100", "R99.900"]
+        assert row["label"] == "I10.000,J18.100,R99.900"
+
+    def test_get_splits_merges_single_cods_within_source_for_train_only(
+        self, tmp_path: Path
+    ) -> None:
+        """Synthetic multi-COD rows should merge single-label rows without crossing sources."""
+        source_one_path = tmp_path / "source_one.csv"
+        source_two_path = tmp_path / "source_two.csv"
+        pd.DataFrame(
+            [
+                ["alpha", "A00.000", "", "1", "20", "ONE-001"],
+                ["beta", "B01.001", "", "1", "21", "ONE-002"],
+            ]
+        ).to_csv(source_one_path, index=False)
+        pd.DataFrame(
+            [
+                ["gamma", "C02.002", "", "2", "30", "TWO-001"],
+                ["delta", "D03.003", "", "2", "31", "TWO-002"],
+            ]
+        ).to_csv(source_two_path, index=False)
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="source_one",
+                    path="source_one.csv",
+                    mapping_id="test_mapping",
+                ),
+                DataSourceConfig(
+                    source_id="source_two",
+                    path="source_two.csv",
+                    mapping_id="test_mapping",
+                ),
+            ],
+            training_input=["cod", "age", "sex"],
+            input_field_prefixes={
+                "cod": "cause=",
+                "age": "years=",
+                "sex": "gender=",
+            },
+            max_label_count=2,
+            label_separator=",",
+            multicod_shuffle_labels=False,
+            multicod_synthetic_ratio=1.0,
+            multicod_synthetic_source_scope="within_source",
+            multicod_synthetic_text_separator="; ",
+            data_processed_dir=str(tmp_path / "processed"),
+            processed_filename="training.csv",
+            dataset_size=1.0,
+            train_size=1.0,
+            val_size=0.0,
+            test_size=0.0,
+            balance_base_perturbation_rate=0.0,
+        )
+        mapping = _make_mapping(multi_code_cols=[])
+
+        handler = DataHandler(cfg, mapping_registry={"test_mapping": mapping})
+        splits = handler.get_splits()
+
+        result = splits.train
+        synthetic = result[result["source_id"].str.startswith("synthetic_multicod:")]
+        persisted = pd.read_csv(handler.processed_path)
+        assert len(result) == 8
+        assert len(synthetic) == 4
+        assert len(persisted) == 4
+        assert not persisted["source_id"].str.startswith("synthetic_multicod:").any()
+        assert splits.val.empty
+        assert splits.test.empty
+        assert {frozenset(codes) for codes in synthetic["y_codes"].tolist()} <= {
+            frozenset({"A00.000", "B01.001"}),
+            frozenset({"C02.002", "D03.003"}),
+        }
+        for _, row in synthetic.iterrows():
+            text = row["text"]
+            codes = set(row["y_codes"])
+            assert text.startswith("cause=")
+            assert "years=" in text
+            assert "gender=" in text
+            if codes == {"A00.000", "B01.001"}:
+                assert "alpha" in text and "beta" in text
+            if codes == {"C02.002", "D03.003"}:
+                assert "gamma" in text and "delta" in text
 
     def test_load_source_dataset_excludes_rows_above_max_label_count(
         self, tmp_path: Path
@@ -751,6 +908,39 @@ class TestDataHandler:
             manipulated[manipulated["label"] == "C00"]["text"].tolist()
             == source[source["label"] == "C00"]["text"].tolist()
         )
+
+    def test_manipulate_classes_uses_configured_cod_prefix(self) -> None:
+        """Manipulation should find the configured COD segment prefix."""
+        cfg = Config(
+            text_field_separator=" | ",
+            input_field_prefixes={
+                "cod": "cause=",
+                "age": "years=",
+                "sex": "gender=",
+            },
+        )
+        source = pd.DataFrame(
+            {
+                "text": ["cause=alpha | years=1 | gender=male"],
+                "label": ["A00"],
+            }
+        )
+
+        manipulated = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=["A00"],
+            perturbation_names=["delete_random_char"],
+            perturbations_per_sample=1,
+            sample_fraction=1.0,
+            seed=9,
+        )
+
+        assert manipulated.iloc[0]["text"] != source.iloc[0]["text"]
+        assert manipulated.iloc[0]["text"].startswith("cause=")
+        assert "years=1 | gender=male" in manipulated.iloc[0]["text"]
 
     def test_split_dataframe_uses_configured_sizes(self) -> None:
         """Split sizes should be respected for train/validation/test output."""

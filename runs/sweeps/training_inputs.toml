@@ -5,7 +5,6 @@ force_reprocess = false
 
 [env]
 CODLLM_LR = 2.5e-5
-CODLLM_DATASET_SIZE = 0.5
 CODLLM_NUM_TRAIN_EPOCHS = 8
 CODLLM_SAVE_STRATEGY = "no"
 

@@ -6,6 +6,7 @@ import pandas as pd
 from codllm.runtime.paths import resolve_source_path
 from codllm.settings.options import SUPPORTED_TRAINING_INPUTS
 from codllm.settings.schema import Config, DataSourceConfig
+from codllm.settings.types import TrainingInput
 from codllm.input.harmonization import _harmonize_processed_labels
 from codllm.input.mappings import DatasetMapping, MAPPING_REGISTRY
 from codllm.input.transform import (
@@ -78,6 +79,7 @@ def load_source_dataset(
     max_labels: int = 1,
     label_separator: str | None = None,
     text_field_separator: str | None = None,
+    input_field_prefixes: Mapping[TrainingInput, str] | None = None,
     data_raw_dir: str | None = None,
     text_column: str | None = None,
     label_column: str | None = None,
@@ -95,6 +97,11 @@ def load_source_dataset(
         default_cfg.text_field_separator
         if text_field_separator is None
         else text_field_separator
+    )
+    effective_input_field_prefixes = (
+        default_cfg.input_field_prefixes
+        if input_field_prefixes is None
+        else input_field_prefixes
     )
     effective_data_raw_dir = (
         default_cfg.data_raw_dir if data_raw_dir is None else data_raw_dir
@@ -147,6 +154,7 @@ def load_source_dataset(
             mapping,
             normalized_training_input,
             field_separator=effective_text_field_separator,
+            input_field_prefixes=effective_input_field_prefixes,
         ),
         axis=1,
     )
@@ -183,6 +191,7 @@ def build_processed_dataset(
                 max_labels=cfg.max_label_count,
                 label_separator=cfg.label_separator,
                 text_field_separator=cfg.text_field_separator,
+                input_field_prefixes=cfg.input_field_prefixes,
                 data_raw_dir=cfg.data_raw_dir,
                 text_column=cfg.dataset_text_column,
                 label_column=cfg.dataset_label_column,
@@ -222,6 +231,7 @@ def load_dataset(
         mapping=mapping,
         training_input=training_input or list(SUPPORTED_TRAINING_INPUTS),
         max_labels=max_labels,
+        input_field_prefixes=default_cfg.input_field_prefixes,
         data_raw_dir="",
         text_column=default_cfg.dataset_text_column,
         label_column=default_cfg.dataset_label_column,

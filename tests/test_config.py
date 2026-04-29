@@ -14,7 +14,7 @@ ENV_KEYS = [
     "CODLLM_DATALOADER_PERSISTENT_WORKERS",
     "CODLLM_DATALOADER_PREFETCH_FACTOR",
     "CODLLM_MAX_SOURCE_LENGTH",
-    "CODLLM_WARMUP_STEPS",
+    "CODLLM_WARMUP_RATIO",
     "CODLLM_NUM_TRAIN_EPOCHS",
     "CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE",
     "CODLLM_PER_DEVICE_EVAL_BATCH_SIZE",
@@ -30,6 +30,13 @@ ENV_KEYS = [
     "CODLLM_MAX_GRAD_NORM",
     "CODLLM_WEIGHT_DECAY",
     "CODLLM_MAX_LABEL_COUNT",
+    "CODLLM_INPUT_PREFIX_COD",
+    "CODLLM_INPUT_PREFIX_AGE",
+    "CODLLM_INPUT_PREFIX_SEX",
+    "CODLLM_MULTICOD_SHUFFLE_LABELS",
+    "CODLLM_MULTICOD_SYNTHETIC_RATIO",
+    "CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE",
+    "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
     "CODLLM_MAX_TARGET_LENGTH",
     "CODLLM_LABEL_CODE_LENGTH",
     "CODLLM_MAX_TARGET_LENGTH_BUFFER",
@@ -64,6 +71,7 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_TRANSFER_SHEET_NAME",
     "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
     "CODLLM_PRETRAIN_LEARNING_RATE",
+    "CODLLM_PRETRAIN_WARMUP_RATIO",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
     "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
     "CODLLM_PRETRAIN_UPSAMPLE_ENABLED",
@@ -100,8 +108,13 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
 
     assert cfg.model_task == "seq2seq"
     assert cfg.training_input == ["cod", "age", "sex"]
+    assert cfg.input_field_prefixes == {
+        "cod": "cod: ",
+        "age": "age: ",
+        "sex": "sex: ",
+    }
     assert cfg.max_grad_norm == 0.5
-    assert cfg.warmup_steps == 1000
+    assert cfg.warmup_ratio == 0.1
     assert cfg.balance_strategy == "none"
 
 
@@ -120,7 +133,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_DATALOADER_PERSISTENT_WORKERS", "true")
     monkeypatch.setenv("CODLLM_DATALOADER_PREFETCH_FACTOR", "4")
     monkeypatch.setenv("CODLLM_MAX_SOURCE_LENGTH", "300")
-    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "500")
+    monkeypatch.setenv("CODLLM_WARMUP_RATIO", "0.25")
     monkeypatch.setenv("CODLLM_NUM_TRAIN_EPOCHS", "6")
     monkeypatch.setenv("CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE", "6")
     monkeypatch.setenv("CODLLM_PER_DEVICE_EVAL_BATCH_SIZE", "5")
@@ -136,6 +149,13 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_MAX_GRAD_NORM", "0.25")
     monkeypatch.setenv("CODLLM_WEIGHT_DECAY", "0.03")
     monkeypatch.setenv("CODLLM_MAX_LABEL_COUNT", "2")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_COD", "cause=")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_AGE", "years=")
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_SEX", "gender=")
+    monkeypatch.setenv("CODLLM_MULTICOD_SHUFFLE_LABELS", "false")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_RATIO", "0.25")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE", "any_source")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH", "18")
     monkeypatch.setenv("CODLLM_LABEL_CODE_LENGTH", "7")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH_BUFFER", "6")
@@ -172,6 +192,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "2020to2024transfer")
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
+    monkeypatch.setenv("CODLLM_PRETRAIN_WARMUP_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
     monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_ENABLED", "true")
@@ -210,7 +231,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.dataloader_persistent_workers is True
     assert cfg.dataloader_prefetch_factor == 4
     assert cfg.max_source_length == 300
-    assert cfg.warmup_steps == 500
+    assert cfg.warmup_ratio == 0.25
     assert cfg.num_train_epochs == 6
     assert cfg.per_device_train_batch_size == 6
     assert cfg.per_device_eval_batch_size == 5
@@ -226,6 +247,15 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.max_grad_norm == 0.25
     assert cfg.weight_decay == 0.03
     assert cfg.max_label_count == 2
+    assert cfg.input_field_prefixes == {
+        "cod": "cause=",
+        "age": "years=",
+        "sex": "gender=",
+    }
+    assert cfg.multicod_shuffle_labels is False
+    assert cfg.multicod_synthetic_ratio == 0.25
+    assert cfg.multicod_synthetic_source_scope == "any_source"
+    assert cfg.multicod_synthetic_text_separator == " + "
     assert cfg.max_target_length == 18
     assert cfg.label_code_length == 7
     assert cfg.max_target_length_buffer == 6
@@ -260,6 +290,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_transfer_sheet_name == "2020to2024transfer"
     assert cfg.pretrain_num_train_epochs == 2
     assert cfg.pretrain_learning_rate == 8e-6
+    assert cfg.pretrain_warmup_ratio == 0.2
     assert cfg.pretrain_eval_every_n_epochs == 10
     assert cfg.pretrain_lr_scheduler_type == "linear"
     assert cfg.pretrain_upsample_enabled is True
@@ -318,12 +349,12 @@ def test_config_from_env_rejects_invalid_dataloader_prefetch_factor(
         config_from_env()
 
 
-def test_config_from_env_rejects_negative_warmup_steps(
+def test_config_from_env_rejects_invalid_warmup_ratio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Warmup steps should be non-negative."""
+    """Warmup ratio should stay within the inclusive 0 to 1 range."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_WARMUP_STEPS", "-1")
+    monkeypatch.setenv("CODLLM_WARMUP_RATIO", "1.5")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -386,6 +417,18 @@ def test_config_from_env_rejects_invalid_save_strategy_best_metric(
     monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "bleu")
     with pytest.raises(ValueError):
         config_from_env()
+
+
+def test_config_from_env_accepts_multicod_save_strategy_best_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Best-save metric override should accept multi-COD evaluation metrics."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_SAVE_STRATEGY_BEST_METRIC", "sample_f1")
+
+    cfg = config_from_env()
+
+    assert cfg.save_strategy_best_metric == "sample_f1"
 
 
 def test_config_from_env_rejects_invalid_device(
@@ -458,6 +501,36 @@ def test_config_from_env_rejects_invalid_training_input(
         config_from_env()
 
 
+def test_config_from_env_rejects_empty_input_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Input prefix overrides should not allow empty strings."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_INPUT_PREFIX_COD", "")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_multicod_synthetic_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic multi-COD ratio should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_RATIO", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_multicod_synthetic_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic multi-COD source scope should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE", "cross_period")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
 def test_config_from_env_rejects_invalid_balance_base_perturbation_rate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -504,6 +577,16 @@ def test_config_from_env_rejects_non_positive_pretrain_learning_rate(
     """Pretraining learning rate must be positive when provided."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_warmup_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining warmup ratio should stay inside [0, 1]."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_WARMUP_RATIO", "1.2")
     with pytest.raises(ValueError):
         config_from_env()
 

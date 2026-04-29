@@ -133,7 +133,7 @@ export CODLLM_LOAD_IN_8BIT=0
 export CODLLM_VERBOSE=true
 export CODLLM_TORCH_DTYPE=auto
 export CODLLM_WANDB_LOG_MODEL=end
-export CODLLM_WARMUP_STEPS=1000
+export CODLLM_WARMUP_RATIO=0.1
 export CODLLM_NUM_TRAIN_EPOCHS=4
 export CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE=8
 export CODLLM_PER_DEVICE_EVAL_BATCH_SIZE=8
@@ -148,14 +148,22 @@ export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
 export CODLLM_TRAINING_INPUT="cod,age,sex"
+export CODLLM_INPUT_PREFIX_COD="cod: "
+export CODLLM_INPUT_PREFIX_AGE="age: "
+export CODLLM_INPUT_PREFIX_SEX="sex: "
 export CODLLM_MAX_LABEL_COUNT=2
 export CODLLM_LABEL_CODE_LENGTH=7
 export CODLLM_LABEL_SEPARATOR=" | "
 export CODLLM_MAX_TARGET_LENGTH_BUFFER=4
+export CODLLM_MULTICOD_SHUFFLE_LABELS=1
+export CODLLM_MULTICOD_SYNTHETIC_RATIO=0.25
+export CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE=within_source
+export CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR="; "
 export CODLLM_PRETRAIN_ENABLED=1
 export CODLLM_PRETRAIN_MASTERLIST_PATH=data/raw/ICD10h_Masterlist_2024.xlsx
 export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME=Masterlist
 export CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS=1
+export CODLLM_PRETRAIN_WARMUP_RATIO=0.0
 export CODLLM_PRETRAIN_UPSAMPLE_ENABLED=1
 export CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL=10
 export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS=swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell
@@ -194,6 +202,28 @@ Each training invocation writes checkpoints under a run-scoped folder:
 
 ## Feature Implementations
 
+### Multi-COD Training Data
+
+Multi-label COD training is controlled through `Config` and matching `CODLLM_*` env vars:
+
+- `max_label_count`: maximum number of ICD10h labels per row. Values greater than `1` enable seq2seq multi-label
+  targets.
+- `input_field_prefixes`: processed text prefixes for `cod`, `age`, and `sex`. The matching environment variables are
+  `CODLLM_INPUT_PREFIX_COD`, `CODLLM_INPUT_PREFIX_AGE`, and `CODLLM_INPUT_PREFIX_SEX`.
+- `multicod_shuffle_labels`: shuffles multi-label target order deterministically from `data_seed`, so the model does
+  not learn that source column order is semantically meaningful. Default: `true`.
+- `multicod_synthetic_ratio`: number of synthetic multi-COD rows to create as a ratio of eligible single-COD rows.
+  `0.25` creates roughly one synthetic row for every four single-COD rows. Default: `0.0`.
+- `multicod_synthetic_source_scope`: `"within_source"` merges single-COD examples only inside the same source dataset;
+  `"any_source"` permits cross-source combinations. Default: `"within_source"`.
+- `multicod_synthetic_text_separator`: separator used when merging `cod:` text fragments. Default: `"; "`.
+
+Synthetic rows are added only to the training split after train/validation/test splitting. They merge the `cod:` text
+segments from sampled single-label rows, keep the non-COD fields from the anchor row, and rebuild `y_codes` plus the
+configured label column. The default source scope is deliberately conservative: combining across datasets can create
+unrealistic examples because datasets differ in language, time period, field coverage, and coding practice. Use
+`"any_source"` only for explicit stress testing.
+
 ### Data Augmentation and Upsampling
 
 Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
@@ -223,13 +253,14 @@ Pretraining-specific knobs:
 
 - `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` controls pretraining epochs.
 - `CODLLM_PRETRAIN_LEARNING_RATE` optionally overrides pretraining LR (falls back to `CODLLM_LR`).
+- `CODLLM_PRETRAIN_WARMUP_RATIO` controls pretraining warmup ratio (default: `0.0`).
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` controls the pretraining scheduler (default: `linear`).
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` runs pretraining validation every N epochs (final epoch is always evaluated).
 - `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` enables label-wise pretraining upsampling (default: enabled).
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
-- Pretraining warmup is fixed to `0` steps.
+- Fine-tuning warmup remains controlled separately by `CODLLM_WARMUP_RATIO`.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
 - For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
 - Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
@@ -442,7 +473,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_MAX_SOURCE_LENGTH` (default: `256`)
 - `CODLLM_MAX_TARGET_LENGTH` (default: `32`)
 - `CODLLM_WANDB_LOG_MODEL` (`false`, `end`, `checkpoint`; default: `end`)
-- `CODLLM_WARMUP_STEPS` (default: `1000`)
+- `CODLLM_WARMUP_RATIO` (default: `0.1`)
 - `CODLLM_NUM_TRAIN_EPOCHS` (default: `4`)
 - `CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE` (default: `8`)
 - `CODLLM_PER_DEVICE_EVAL_BATCH_SIZE` (default: `8`)
@@ -456,18 +487,27 @@ tail -f logs/<job_id>.out
 - `CODLLM_SAVE_STEPS` (default: `5000`)
 - `CODLLM_EVAL_STRATEGY` (`no`, `steps`, `epoch`; default: `epoch`)
 - `CODLLM_SAVE_STRATEGY` (`no`, `steps`, `epoch`, `best`; default: `epoch`)
-- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `micro_precision`, `micro_recall`, `micro_f1`, `macro_precision`, `macro_recall`, `macro_f1`; default: `macro_f1`)
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` (`loss`, `accuracy`, `exact_match`, `micro_precision`, `micro_recall`, `micro_f1`, `micro_jaccard`, `macro_precision`, `macro_recall`, `macro_f1`, `sample_precision`, `sample_recall`, `sample_f1`, `sample_jaccard`, `hamming_loss`, `hamming_score`; default: `macro_f1`)
 - `CODLLM_MODEL_TASK` (`seq2seq`, `sequence_classification`; default: `seq2seq`)
 - `CODLLM_LR_SCHEDULER_TYPE` (`linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`, `inverse_sqrt`, `reduce_lr_on_plateau`; default: `linear`)
 - `CODLLM_LR` (default: `1e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
+- `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
+- `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
+- `CODLLM_INPUT_PREFIX_SEX` (default: `"sex: "`)
+- `CODLLM_MAX_LABEL_COUNT` (default: `1`; use values greater than `1` for seq2seq multi-COD training)
+- `CODLLM_MULTICOD_SHUFFLE_LABELS` (`1`/`0`; default: `1`)
+- `CODLLM_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
+- `CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE` (`within_source`, `any_source`; default: `within_source`)
+- `CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
 - `CODLLM_PRETRAIN_ENABLED` (`1`/`0`; when enabled, runs masterlist pretraining before normal training)
 - `CODLLM_PRETRAIN_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
 - `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
 - `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` (default: `1`)
 - `CODLLM_PRETRAIN_LEARNING_RATE` (optional; defaults to `CODLLM_LR` when unset)
+- `CODLLM_PRETRAIN_WARMUP_RATIO` (default: `0.0`)
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` (default: `linear`)
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` (default: `1`)
 - `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` (`1`/`0`; default: `1`)

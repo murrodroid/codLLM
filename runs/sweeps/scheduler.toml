@@ -1,0 +1,12 @@
+base = "../base/h100-large.toml"
+name = "scheduler"
+description = "Sweep different lr schedulers"
+force_reprocess = false
+
+[env]
+CODLLM_LR = 2.5e-5
+CODLLM_NUM_TRAIN_EPOCHS = 8
+CODLLM_SAVE_STRATEGY = "no"
+
+[sweep]
+CODLLM_LR_SCHEDULER_TYPE = ["cosine","linear","constant_with_warmup"]

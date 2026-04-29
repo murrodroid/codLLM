@@ -223,7 +223,7 @@ def train(
             "train_rows": int(len(pretrain_ds)),
             "num_train_epochs": pretrain_stage.num_train_epochs,
             "learning_rate": pretrain_stage.learning_rate,
-            "warmup_steps": pretrain_stage.warmup_steps,
+            "warmup_ratio": pretrain_stage.warmup_ratio,
             "eval_every_n_epochs": pretrain_stage.eval_every_n_epochs,
             "lr_scheduler_type": pretrain_stage.lr_scheduler_type,
         }

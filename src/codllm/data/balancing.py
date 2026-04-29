@@ -49,19 +49,20 @@ def _perturb_cod_segment(
     perturbations_per_sample: int,
     rng: random.Random,
 ) -> str:
-    """Perturb only the cod: segment inside a configured training text."""
+    """Perturb only the configured COD segment inside a training text."""
     if perturbations_per_sample < 1 or not perturbation_fns:
         return text
 
+    cod_prefix = cfg.input_field_prefix("cod")
     parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
     cod_idx = next(
-        (idx for idx, part in enumerate(parts) if part.startswith("cod: ")),
+        (idx for idx, part in enumerate(parts) if part.strip().startswith(cod_prefix)),
         None,
     )
     if cod_idx is None:
         return text
 
-    cod_value = parts[cod_idx][len("cod: ") :]
+    cod_value = parts[cod_idx].strip()[len(cod_prefix) :]
     for _ in range(perturbations_per_sample):
         perturbation_fn = rng.choice(perturbation_fns)
         cod_value = _apply_perturbation_with_seed(
@@ -70,16 +71,17 @@ def _perturb_cod_segment(
             seed=rng.randint(0, 2_147_483_647),
         )
 
-    parts[cod_idx] = f"cod: {cod_value}"
+    parts[cod_idx] = f"{cod_prefix}{cod_value}"
     return (
         cfg.text_field_separator.join(parts) if cfg.text_field_separator else parts[0]
     )
 
 
 def _contains_cod_segment(cfg: Config, text: str) -> bool:
-    """Return whether a training text contains a cod: segment."""
+    """Return whether a training text contains the configured COD segment."""
+    cod_prefix = cfg.input_field_prefix("cod")
     parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
-    return any(part.startswith("cod: ") for part in parts)
+    return any(part.strip().startswith(cod_prefix) for part in parts)
 
 
 def _quantile_target_count(class_counts: pd.Series, target_quantile: float) -> int:

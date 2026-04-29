@@ -17,6 +17,11 @@ from codllm.input.mappings import (
     MAPPING_REGISTRY,
     PERTURBATION_REGISTRY,
 )
+from codllm.input.multicod import (
+    build_synthetic_multicod_rows,
+    prepare_multicod_training_split,
+    shuffle_multicod_label_order,
+)
 from codllm.input.transform import _build_text, _build_y
 
 __all__ = [
@@ -33,6 +38,9 @@ __all__ = [
     "_build_text",
     "_build_y",
     "build_processed_dataset",
+    "build_synthetic_multicod_rows",
     "load_dataset",
     "load_source_dataset",
+    "prepare_multicod_training_split",
+    "shuffle_multicod_label_order",
 ]
