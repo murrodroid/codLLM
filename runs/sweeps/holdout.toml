@@ -4,6 +4,7 @@ description = "Sweep to test holdout of different datasets"
 force_reprocess = false
 
 [env]
+CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 32
 CODLLM_SAVE_STRATEGY = "no"
