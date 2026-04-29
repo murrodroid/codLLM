@@ -147,6 +147,7 @@ export CODLLM_SAVE_STRATEGY_BEST_METRIC=macro_f1
 export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
+export CODLLM_HOLD_OUT_DATASET=
 export CODLLM_TRAINING_INPUT="cod,age,sex"
 export CODLLM_INPUT_PREFIX_COD="cod: "
 export CODLLM_INPUT_PREFIX_AGE="age: "
@@ -493,6 +494,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_LR` (default: `1e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
+- `CODLLM_HOLD_OUT_DATASET` (optional processed `source_id`; removes that entire source from train/val/test splits and evaluates it after training with `holdout_*` metrics)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
 - `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
 - `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
@@ -517,6 +519,45 @@ tail -f logs/<job_id>.out
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 
+
+## Hold-Out Dataset Evaluation
+
+Set `CODLLM_HOLD_OUT_DATASET` to one processed `source_id` to run a leave-one-source-out experiment. The matching
+source is removed before `dataset_size` sampling and before train/validation/test splitting, so the model still trains
+and evaluates normally on the remaining sources. After training, the full held-out source is evaluated separately and
+logged with `holdout_*` metrics in the top-level W&B `holdout` section.
+
+Leave `CODLLM_HOLD_OUT_DATASET` unset or empty to disable hold-out evaluation. Do not use the literal string `None`;
+that would be interpreted as a source id.
+
+```bash
+export CODLLM_HOLD_OUT_DATASET=amsterdam_1854_1926
+uv run python -m codllm.training
+```
+
+Default source ids:
+
+- `belgium_1920_1930`
+- `amsterdam_1854_1926`
+- `copenhagen_may2025`
+- `ipswich_1871_1911`
+- `madrid_1905_1927`
+- `historic_strings_en_2024`
+
+For TOML sweeps, use quoted source ids and `""` for the no-holdout baseline:
+
+```toml
+[sweep]
+CODLLM_HOLD_OUT_DATASET = [
+  "",
+  "belgium_1920_1930",
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "ipswich_1871_1911",
+  "madrid_1905_1927",
+  "historic_strings_en_2024",
+]
+```
 
 ## License
 

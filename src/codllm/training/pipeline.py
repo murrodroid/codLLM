@@ -108,8 +108,9 @@ def evaluate_test_split(
     tokenizer: Any,
     test_ds: Any,
     label2id: dict[str, int] | None = None,
+    metric_key_prefix: str = "test",
 ) -> dict[str, float] | None:
-    """Run final evaluation on the test split and emit test-prefixed metrics."""
+    """Run final evaluation on one split and emit metrics with the requested prefix."""
     if dataset_row_count(test_ds) in (None, 0):
         return None
     if not hasattr(trainer, "evaluate"):
@@ -136,7 +137,7 @@ def evaluate_test_split(
         )
     raw_metrics = trainer.evaluate(
         eval_dataset=processed_test_ds,
-        metric_key_prefix="test",
+        metric_key_prefix=metric_key_prefix,
     )
     return {key: float(value) for key, value in raw_metrics.items()}
 
@@ -257,4 +258,13 @@ def train(
         test_ds=splits.test,
         label2id=classifier_label2id,
     )
+    if dataset_row_count(splits.holdout) not in (None, 0):
+        evaluate_test_split(
+            cfg=cfg,
+            trainer=trainer,
+            tokenizer=tokenizer,
+            test_ds=splits.holdout,
+            label2id=classifier_label2id,
+            metric_key_prefix="holdout",
+        )
     return trainer, tokenizer, splits

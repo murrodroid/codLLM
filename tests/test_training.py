@@ -227,11 +227,12 @@ def test_build_training_args_disables_fp16_when_requested(
 
 def test_scope_metric_logs_for_pretrain_stage() -> None:
     """Pretraining metrics should be logged under the pretraining category."""
-    logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
+    logs = {"loss": 1.2, "eval_loss": 0.9, "holdout_accuracy": 0.6, "epoch": 1.0}
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretrain")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
+    assert scoped["holdout/accuracy"] == 0.6
     assert scoped["epoch"] == 1.0
     assert "loss" not in scoped
     assert "eval_loss" not in scoped
@@ -252,6 +253,7 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "loss": 1.2,
         "eval_loss": 0.9,
         "test_f1": 0.8,
+        "holdout_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
     }
     rewritten = wandb_utils_module.rewrite_logs_preserving_scoped_metric_keys(logs)
@@ -259,6 +261,7 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
     assert rewritten["train/loss"] == 1.2
     assert rewritten["eval/loss"] == 0.9
     assert rewritten["test/f1"] == 0.8
+    assert rewritten["holdout/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
     assert "train/pretraining/val/loss" not in rewritten
 
@@ -282,12 +285,18 @@ def test_patch_transformers_wandb_log_rewrite_preserves_scoped_keys() -> None:
 
 def test_scope_metric_logs_for_finetune_stage() -> None:
     """Fine-tuning metrics should route to train/val/test categories."""
-    logs = {"loss": 1.2, "eval_accuracy": 0.8, "test_f1": 0.7}
+    logs = {
+        "loss": 1.2,
+        "eval_accuracy": 0.8,
+        "test_f1": 0.7,
+        "holdout_exact_match": 0.6,
+    }
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "finetune")
 
     assert scoped["train/loss"] == 1.2
     assert scoped["val/accuracy"] == 0.8
     assert scoped["test/f1"] == 0.7
+    assert scoped["holdout/exact_match"] == 0.6
 
 
 def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
@@ -1026,6 +1035,74 @@ def test_train_runs_final_test_evaluation(
     assert captured["trainer"] == "trainer"
     assert captured["tokenizer"] == "tokenizer"
     assert captured["test_ds"] is splits.test
+
+
+def test_train_runs_holdout_evaluation_when_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """train should evaluate a configured held-out source after normal test eval."""
+    cfg = Config(output_dir=str(tmp_path / "runs"), hold_out_dataset="external")
+    holdout_df = pd.DataFrame(
+        {
+            "source_id": ["external", "external"],
+            "text": ["h1", "h2"],
+            "label": ["A04", "A05"],
+        }
+    )
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A02"]}),
+        holdout=holdout_df,
+    )
+
+    class DummyDataHandler:
+        """Stub data handler that returns fixed splits with a holdout split."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "_train_from_datasets",
+        lambda *args, **kwargs: ("trainer", "tokenizer"),
+    )
+    captured_calls: list[dict[str, Any]] = []
+
+    def fake_evaluate_test_split(
+        cfg: Config,
+        trainer: Any,
+        tokenizer: Any,
+        test_ds: Any,
+        label2id: Optional[dict[str, int]] = None,
+        metric_key_prefix: str = "test",
+    ) -> dict[str, float]:
+        captured_calls.append(
+            {
+                "test_ds": test_ds,
+                "label2id": label2id,
+                "metric_key_prefix": metric_key_prefix,
+            }
+        )
+        return {f"{metric_key_prefix}_accuracy": 1.0}
+
+    monkeypatch.setattr(
+        pipeline_module, "evaluate_test_split", fake_evaluate_test_split
+    )
+    pipeline_module.train(cfg, data_handler=DummyDataHandler())
+
+    assert captured_calls == [
+        {
+            "test_ds": splits.test,
+            "label2id": None,
+            "metric_key_prefix": "test",
+        },
+        {
+            "test_ds": holdout_df,
+            "label2id": None,
+            "metric_key_prefix": "holdout",
+        },
+    ]
 
 
 def test_train_uses_pretraining_dataset_when_available(

@@ -1,0 +1,20 @@
+base = "../base/h100-small.toml"
+name = "holdout"
+description = "Sweep to test holdout of different datasets"
+force_reprocess = false
+
+[env]
+CODLLM_LR = 2.5e-5
+CODLLM_NUM_TRAIN_EPOCHS = 16
+CODLLM_MAX_LABEL_COUNT = 3
+CODLLM_SAVE_STRATEGY = "no"
+CODLLM_TRAIN_SIZE = 0.95
+CODLLM_VAL_SIZE = 0.025
+CODLLM_TEST_SIZE = 0.025
+
+[sweep]
+CODLLM_HOLD_OUT_DATASET = [
+  "belgium_1920_1930",
+  "madrid_1905_1927",
+  "",
+]

@@ -110,6 +110,9 @@ def rewrite_logs_preserving_scoped_metric_keys(
         if key.startswith("test_"):
             rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
             continue
+        if key.startswith("holdout_"):
+            rewritten_logs[f"holdout/{key.removeprefix('holdout_')}"] = value
+            continue
         rewritten_logs[f"train/{key}"] = value
     return rewritten_logs
 

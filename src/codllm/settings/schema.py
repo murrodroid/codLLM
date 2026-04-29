@@ -113,6 +113,7 @@ class Config:
     data_processed_dir: str = "data/processed"
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
+    hold_out_dataset: Optional[str] = None
     training_input: list[TrainingInput] = field(default_factory=default_training_input)
     input_field_prefixes: dict[TrainingInput, str] = field(
         default_factory=default_input_field_prefixes

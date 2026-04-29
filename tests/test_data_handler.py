@@ -1313,6 +1313,68 @@ class TestDataHandler:
         assert len(splits.val) == 1
         assert len(splits.test) == 1
 
+    def test_get_splits_holds_out_configured_source_before_sampling(
+        self, tmp_path: Path
+    ) -> None:
+        """hold_out_dataset should remove one source from train/val/test splits."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.concat(
+            [
+                _processed_df(num_rows=20),
+                _processed_df(num_rows=5).assign(
+                    source_id="external",
+                    record_id=lambda df: [f"EXT-{idx:03d}" for idx in range(len(df))],
+                ),
+            ],
+            ignore_index=True,
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            dataset_size=0.5,
+            hold_out_dataset="external",
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        assert len(splits.train) == 8
+        assert len(splits.val) == 1
+        assert len(splits.test) == 1
+        assert splits.holdout is not None
+        assert len(splits.holdout) == 5
+        assert set(splits.train["source_id"]) == {"test_source"}
+        assert set(splits.val["source_id"]) == {"test_source"}
+        assert set(splits.test["source_id"]) == {"test_source"}
+        assert set(splits.holdout["source_id"]) == {"external"}
+
+    def test_get_splits_rejects_unknown_hold_out_dataset(self, tmp_path: Path) -> None:
+        """Unknown hold-out source ids should fail before training starts."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        _processed_df(num_rows=10).to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            hold_out_dataset="missing_source",
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+
+        with pytest.raises(ValueError, match="missing_source"):
+            handler.get_splits()
+
     def test_get_splits_applies_base_perturbation_to_all_labels(
         self, tmp_path: Path
     ) -> None:

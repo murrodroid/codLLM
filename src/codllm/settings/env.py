@@ -363,6 +363,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if dataset_size is not None:
         cfg.dataset_size = dataset_size
 
+    hold_out_dataset = os.getenv("CODLLM_HOLD_OUT_DATASET")
+    if hold_out_dataset is not None:
+        normalized_hold_out_dataset = hold_out_dataset.strip()
+        cfg.hold_out_dataset = normalized_hold_out_dataset or None
+
     lr = _parse_env_float("CODLLM_LR")
     if lr is not None:
         if lr <= 0:

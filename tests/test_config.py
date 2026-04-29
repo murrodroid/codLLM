@@ -62,6 +62,7 @@ ENV_KEYS = [
     "CODLLM_TORCH_DTYPE",
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
+    "CODLLM_HOLD_OUT_DATASET",
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
     "CODLLM_TEST_SIZE",
@@ -181,6 +182,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "float32")
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_DATASET", "amsterdam")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
     monkeypatch.setenv("CODLLM_TEST_SIZE", "0.1")
@@ -281,6 +283,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.torch_dtype == "float32"
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
+    assert cfg.hold_out_dataset == "amsterdam"
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2
     assert cfg.test_size == 0.1

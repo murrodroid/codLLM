@@ -207,11 +207,14 @@ class DataHandler:
     def get_splits(self, force_reprocess: bool = False) -> DataSplits:
         """Return train/validation/test splits from processed data."""
         processed_df = self.ensure_processed(force_reprocess=force_reprocess)
-        sampled_df = self._apply_dataset_size(processed_df)
+        training_pool_df, holdout_df = self._partition_hold_out_dataset(processed_df)
+        sampled_df = self._apply_dataset_size(training_pool_df)
         splits = self.split_dataframe(sampled_df)
         splits.train = prepare_multicod_training_split(splits.train, self.cfg)
         splits.val = shuffle_multicod_label_order(splits.val, self.cfg)
         splits.test = shuffle_multicod_label_order(splits.test, self.cfg)
+        if holdout_df is not None:
+            splits.holdout = shuffle_multicod_label_order(holdout_df, self.cfg)
         if not splits.train.empty:
             splits.train = self._apply_balance_policy(splits.train)
         if self.cfg.masterlist_inject_enabled and not splits.train.empty:
@@ -623,6 +626,38 @@ class DataHandler:
             size=self.cfg.dataset_size,
             setting_name="dataset_size",
         )
+
+    def _partition_hold_out_dataset(
+        self, df: pd.DataFrame
+    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+        """Remove the configured source dataset from train/val/test preparation."""
+        hold_out_dataset = self.cfg.hold_out_dataset
+        if hold_out_dataset is None:
+            return df, None
+        if "source_id" not in df.columns:
+            raise KeyError(
+                "Processed data is missing required column 'source_id' for "
+                "hold-out dataset selection."
+            )
+
+        source_ids = df["source_id"].fillna("").astype(str)
+        holdout_mask = source_ids == hold_out_dataset
+        if not holdout_mask.any():
+            available_sources = ", ".join(sorted(source_ids[source_ids != ""].unique()))
+            raise ValueError(
+                f"hold_out_dataset '{hold_out_dataset}' did not match any processed rows. "
+                f"Available source_id values: {available_sources or '<none>'}."
+            )
+
+        training_pool_df = df.loc[~holdout_mask].reset_index(drop=True)
+        if training_pool_df.empty:
+            raise ValueError(
+                f"hold_out_dataset '{hold_out_dataset}' would leave no rows for train/val/test splits."
+            )
+        holdout_df = df.loc[holdout_mask].reset_index(drop=True)
+        self._validate_label_quality(training_pool_df)
+        self._validate_label_quality(holdout_df)
+        return training_pool_df, holdout_df
 
     def _validate_required_columns(self, df: pd.DataFrame) -> None:
         """Ensure configured text/label columns exist in the dataframe."""

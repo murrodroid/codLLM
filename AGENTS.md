@@ -73,6 +73,10 @@ unexpected dependency downloads.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default.
+  * Dataset leave-one-source-out evaluation is controlled by `Config.hold_out_dataset` and
+    `CODLLM_HOLD_OUT_DATASET`. Hold-out matching uses processed `source_id` values, removes the entire matching source
+    from train/val/test splitting, keeps normal val/test splits on the remaining sources, and evaluates the held-out
+    rows after training with `holdout_*` metrics.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
     `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners

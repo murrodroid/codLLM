@@ -16,9 +16,11 @@ def _normalize_stage_name(stage_name: str) -> str:
 
 
 def rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
-    """Map trainer metric keys to train/val/test/pretraining categories."""
+    """Map trainer metric keys to stage-scoped logging categories."""
     if key == "epoch":
         return key
+    if key.startswith("holdout_"):
+        return f"holdout/{key.removeprefix('holdout_')}"
 
     normalized_stage_name = _normalize_stage_name(stage_name)
     if normalized_stage_name in {"pretrain", "pretraining"}:
