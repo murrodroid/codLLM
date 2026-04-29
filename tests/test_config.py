@@ -71,6 +71,7 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_TRANSFER_SHEET_NAME",
     "CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS",
     "CODLLM_PRETRAIN_LEARNING_RATE",
+    "CODLLM_PRETRAIN_WARMUP_RATIO",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
     "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
     "CODLLM_PRETRAIN_UPSAMPLE_ENABLED",
@@ -191,6 +192,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "2020to2024transfer")
     monkeypatch.setenv("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS", "2")
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
+    monkeypatch.setenv("CODLLM_PRETRAIN_WARMUP_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
     monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_ENABLED", "true")
@@ -288,6 +290,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_transfer_sheet_name == "2020to2024transfer"
     assert cfg.pretrain_num_train_epochs == 2
     assert cfg.pretrain_learning_rate == 8e-6
+    assert cfg.pretrain_warmup_ratio == 0.2
     assert cfg.pretrain_eval_every_n_epochs == 10
     assert cfg.pretrain_lr_scheduler_type == "linear"
     assert cfg.pretrain_upsample_enabled is True
@@ -574,6 +577,16 @@ def test_config_from_env_rejects_non_positive_pretrain_learning_rate(
     """Pretraining learning rate must be positive when provided."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_warmup_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining warmup ratio should stay inside [0, 1]."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_WARMUP_RATIO", "1.2")
     with pytest.raises(ValueError):
         config_from_env()
 

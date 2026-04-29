@@ -66,6 +66,8 @@ unexpected dependency downloads.
     `Config`; wire code to `Config` so behavior updates dynamically when config changes.
   * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
     all relevant call sites and tests use the config-driven value.
+  * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
+    `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for

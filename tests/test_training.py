@@ -1039,6 +1039,7 @@ def test_train_uses_pretraining_dataset_when_available(
         pretrain_masterlist_sheet_name="Masterlist",
         pretrain_num_train_epochs=2,
         pretrain_learning_rate=7e-6,
+        pretrain_warmup_ratio=0.2,
         pretrain_eval_every_n_epochs=10,
         pretrain_lr_scheduler_type="constant",
     )
@@ -1117,7 +1118,7 @@ def test_train_uses_pretraining_dataset_when_available(
     assert captured["run_data_metadata"]["pretraining"][
         "learning_rate"
     ] == pytest.approx(7e-6)
-    assert captured["run_data_metadata"]["pretraining"]["warmup_ratio"] == 0.0
+    assert captured["run_data_metadata"]["pretraining"]["warmup_ratio"] == 0.2
     assert captured["run_data_metadata"]["pretraining"]["eval_every_n_epochs"] == 10
     assert (
         captured["run_data_metadata"]["pretraining"]["lr_scheduler_type"] == "constant"
@@ -1142,6 +1143,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         warmup_ratio=0.3,
         pretrain_num_train_epochs=5,
         pretrain_learning_rate=9e-6,
+        pretrain_warmup_ratio=0.2,
         pretrain_eval_every_n_epochs=10,
         pretrain_lr_scheduler_type="constant",
     )
@@ -1214,7 +1216,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
     finetune_stage = captured_stages[1]
     assert pretrain_stage["name"] == "pretrain"
     assert pretrain_stage["learning_rate"] == pytest.approx(9e-6)
-    assert pretrain_stage["warmup_ratio"] == 0.0
+    assert pretrain_stage["warmup_ratio"] == 0.2
     assert pretrain_stage["eval_every_n_epochs"] == 10
     assert pretrain_stage["lr_scheduler_type"] == "constant"
     assert Path(pretrain_stage["output_dir"]).name == "pretrain"

@@ -65,7 +65,7 @@ def build_pretraining_stage(cfg: Config) -> TrainingStage:
         output_dir=str(Path(cfg.output_dir) / "pretrain"),
         num_train_epochs=cfg.pretrain_num_train_epochs,
         learning_rate=pretrain_learning_rate,
-        warmup_ratio=0.0,
+        warmup_ratio=cfg.pretrain_warmup_ratio,
         lr_scheduler_type=cfg.pretrain_lr_scheduler_type,
         eval_every_n_epochs=cfg.pretrain_eval_every_n_epochs,
     )

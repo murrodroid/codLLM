@@ -163,6 +163,7 @@ export CODLLM_PRETRAIN_ENABLED=1
 export CODLLM_PRETRAIN_MASTERLIST_PATH=data/raw/ICD10h_Masterlist_2024.xlsx
 export CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME=Masterlist
 export CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS=1
+export CODLLM_PRETRAIN_WARMUP_RATIO=0.0
 export CODLLM_PRETRAIN_UPSAMPLE_ENABLED=1
 export CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL=10
 export CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS=swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell
@@ -252,13 +253,14 @@ Pretraining-specific knobs:
 
 - `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` controls pretraining epochs.
 - `CODLLM_PRETRAIN_LEARNING_RATE` optionally overrides pretraining LR (falls back to `CODLLM_LR`).
+- `CODLLM_PRETRAIN_WARMUP_RATIO` controls pretraining warmup ratio (default: `0.0`).
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` controls the pretraining scheduler (default: `linear`).
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` runs pretraining validation every N epochs (final epoch is always evaluated).
 - `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` enables label-wise pretraining upsampling (default: enabled).
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
-- Pretraining warmup is fixed to `0.0` ratio.
+- Fine-tuning warmup remains controlled separately by `CODLLM_WARMUP_RATIO`.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
 - For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
 - Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
@@ -505,6 +507,7 @@ tail -f logs/<job_id>.out
 - `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
 - `CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS` (default: `1`)
 - `CODLLM_PRETRAIN_LEARNING_RATE` (optional; defaults to `CODLLM_LR` when unset)
+- `CODLLM_PRETRAIN_WARMUP_RATIO` (default: `0.0`)
 - `CODLLM_PRETRAIN_LR_SCHEDULER_TYPE` (default: `linear`)
 - `CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS` (default: `1`)
 - `CODLLM_PRETRAIN_UPSAMPLE_ENABLED` (`1`/`0`; default: `1`)

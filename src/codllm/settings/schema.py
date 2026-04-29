@@ -134,6 +134,7 @@ class Config:
     pretrain_transfer_sheet_name: str = "2020to2024transfer"
     pretrain_num_train_epochs: int = 1
     pretrain_learning_rate: float | None = None
+    pretrain_warmup_ratio: float = 0.0
     pretrain_eval_every_n_epochs: int = 1
     pretrain_lr_scheduler_type: LRSchedulerType = "linear"
     pretrain_upsample_enabled: bool = True

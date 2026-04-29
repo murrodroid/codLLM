@@ -427,6 +427,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_PRETRAIN_LEARNING_RATE must be positive.")
         cfg.pretrain_learning_rate = pretrain_learning_rate
 
+    pretrain_warmup_ratio = _parse_env_float("CODLLM_PRETRAIN_WARMUP_RATIO")
+    if pretrain_warmup_ratio is not None:
+        if pretrain_warmup_ratio < 0 or pretrain_warmup_ratio > 1:
+            raise ValueError("CODLLM_PRETRAIN_WARMUP_RATIO must be between 0 and 1.")
+        cfg.pretrain_warmup_ratio = pretrain_warmup_ratio
+
     pretrain_eval_every_n_epochs = _parse_env_int("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS")
     if pretrain_eval_every_n_epochs is not None:
         if pretrain_eval_every_n_epochs < 1:
