@@ -63,6 +63,8 @@ ENV_KEYS = [
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
     "CODLLM_HOLD_OUT_DATASET",
+    "CODLLM_HOLD_OUT_EVALUATE_PER",
+    "CODLLM_HOLD_OUT_EVALUATE_RATIO",
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
     "CODLLM_TEST_SIZE",
@@ -183,6 +185,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
     monkeypatch.setenv("CODLLM_HOLD_OUT_DATASET", "amsterdam")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_PER", "epoche")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
     monkeypatch.setenv("CODLLM_TEST_SIZE", "0.1")
@@ -284,6 +288,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
     assert cfg.hold_out_dataset == "amsterdam"
+    assert cfg.hold_out_evaluate_per == "epoch"
+    assert cfg.hold_out_evaluate_ratio == 0.2
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2
     assert cfg.test_size == 0.1
@@ -501,6 +507,26 @@ def test_config_from_env_rejects_invalid_training_input(
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_TRAINING_INPUT", "cod,city")
     with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_holdout_evaluate_per(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hold-out interim evaluation cadence should be constrained."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_PER", "daily")
+    with pytest.raises(ValueError, match="CODLLM_HOLD_OUT_EVALUATE_PER"):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_holdout_evaluate_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hold-out interim evaluation ratio should stay in the sampling interval."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0")
+    with pytest.raises(ValueError, match="CODLLM_HOLD_OUT_EVALUATE_RATIO"):
         config_from_env()
 
 

@@ -215,6 +215,7 @@ class DataHandler:
         splits.test = shuffle_multicod_label_order(splits.test, self.cfg)
         if holdout_df is not None:
             splits.holdout = shuffle_multicod_label_order(holdout_df, self.cfg)
+            splits.holdout_eval = self._build_holdout_eval_dataframe(splits.holdout)
         if not splits.train.empty:
             splits.train = self._apply_balance_policy(splits.train)
         if self.cfg.masterlist_inject_enabled and not splits.train.empty:
@@ -625,6 +626,18 @@ class DataHandler:
             df=df,
             size=self.cfg.dataset_size,
             setting_name="dataset_size",
+        )
+
+    def _build_holdout_eval_dataframe(
+        self, holdout_df: pd.DataFrame
+    ) -> pd.DataFrame | None:
+        """Return optional sampled hold-out rows for during-training evaluation."""
+        if self.cfg.hold_out_evaluate_per is None:
+            return None
+        return self._sample_dataframe_by_fraction(
+            df=holdout_df,
+            size=self.cfg.hold_out_evaluate_ratio,
+            setting_name="hold_out_evaluate_ratio",
         )
 
     def _partition_hold_out_dataset(

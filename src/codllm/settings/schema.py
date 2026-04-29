@@ -16,6 +16,7 @@ from codllm.settings.factories import (
 from codllm.settings.types import (
     BalanceStrategy,
     EvalStrategy,
+    HoldOutEvaluatePer,
     LRSchedulerType,
     ModelTask,
     MultiCodSyntheticSourceScope,
@@ -114,6 +115,8 @@ class Config:
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
     hold_out_dataset: Optional[str] = None
+    hold_out_evaluate_per: Optional[HoldOutEvaluatePer] = None
+    hold_out_evaluate_ratio: float = 0.05
     training_input: list[TrainingInput] = field(default_factory=default_training_input)
     input_field_prefixes: dict[TrainingInput, str] = field(
         default_factory=default_input_field_prefixes

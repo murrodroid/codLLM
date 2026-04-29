@@ -11,6 +11,7 @@ class DataSplits:
     val: pd.DataFrame
     test: pd.DataFrame
     holdout: pd.DataFrame | None = None
+    holdout_eval: pd.DataFrame | None = None
 
 
 def resolve_training_frames(

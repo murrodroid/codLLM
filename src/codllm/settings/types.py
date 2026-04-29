@@ -7,6 +7,7 @@ WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 EvalStrategy = Literal["no", "steps", "epoch"]
+HoldOutEvaluatePer = Literal["steps", "epoch"]
 SaveStrategy = Literal["no", "steps", "epoch", "best"]
 ModelTask = Literal["seq2seq", "sequence_classification"]
 LRSchedulerType = Literal[

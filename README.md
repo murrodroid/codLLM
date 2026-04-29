@@ -148,6 +148,8 @@ export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
 export CODLLM_HOLD_OUT_DATASET=
+export CODLLM_HOLD_OUT_EVALUATE_PER=
+export CODLLM_HOLD_OUT_EVALUATE_RATIO=0.05
 export CODLLM_TRAINING_INPUT="cod,age,sex"
 export CODLLM_INPUT_PREFIX_COD="cod: "
 export CODLLM_INPUT_PREFIX_AGE="age: "
@@ -495,6 +497,8 @@ tail -f logs/<job_id>.out
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
 - `CODLLM_HOLD_OUT_DATASET` (optional processed `source_id`; removes that entire source from train/val/test splits and evaluates it after training with `holdout_*` metrics)
+- `CODLLM_HOLD_OUT_EVALUATE_PER` (`epoch`, `steps`, or empty/`none`; default: empty; enables sampled hold-out evaluation during training)
+- `CODLLM_HOLD_OUT_EVALUATE_RATIO` (default: `0.05`; fraction of the held-out source used for during-training hold-out evaluation)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
 - `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
 - `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
@@ -527,11 +531,18 @@ source is removed before `dataset_size` sampling and before train/validation/tes
 and evaluates normally on the remaining sources. After training, the full held-out source is evaluated separately and
 logged with `holdout_*` metrics in the top-level W&B `holdout` section.
 
+During training, sampled hold-out evaluation is optional. Set `CODLLM_HOLD_OUT_EVALUATE_PER=epoch` or
+`CODLLM_HOLD_OUT_EVALUATE_PER=steps` to evaluate a deterministic sample of the held-out source during training.
+`CODLLM_HOLD_OUT_EVALUATE_RATIO` controls that sample fraction; for example `0.05` evaluates 5% of the held-out source
+during training. The final post-training hold-out evaluation always uses the full held-out source.
+
 Leave `CODLLM_HOLD_OUT_DATASET` unset or empty to disable hold-out evaluation. Do not use the literal string `None`;
 that would be interpreted as a source id.
 
 ```bash
 export CODLLM_HOLD_OUT_DATASET=amsterdam_1854_1926
+export CODLLM_HOLD_OUT_EVALUATE_PER=epoch
+export CODLLM_HOLD_OUT_EVALUATE_RATIO=0.05
 uv run python -m codllm.training
 ```
 

@@ -20,6 +20,7 @@ from codllm.settings.types import (
     LRSchedulerType,
     ModelTask,
     MultiCodSyntheticSourceScope,
+    HoldOutEvaluatePer,
     SaveStrategy,
     SaveStrategyBestMetric,
     TorchDType,
@@ -367,6 +368,37 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if hold_out_dataset is not None:
         normalized_hold_out_dataset = hold_out_dataset.strip()
         cfg.hold_out_dataset = normalized_hold_out_dataset or None
+
+    hold_out_evaluate_per = os.getenv("CODLLM_HOLD_OUT_EVALUATE_PER")
+    if hold_out_evaluate_per is not None:
+        normalized_hold_out_evaluate_per = hold_out_evaluate_per.strip().lower()
+        if normalized_hold_out_evaluate_per in {"", "none", "null", "no", "off"}:
+            cfg.hold_out_evaluate_per = None
+        else:
+            aliases = {
+                "step": "steps",
+                "steps": "steps",
+                "epoch": "epoch",
+                "epochs": "epoch",
+                "epoche": "epoch",
+            }
+            if normalized_hold_out_evaluate_per not in aliases:
+                allowed = "epoch, steps, none"
+                raise ValueError(
+                    f"CODLLM_HOLD_OUT_EVALUATE_PER must be one of: {allowed}."
+                )
+            cfg.hold_out_evaluate_per = cast(
+                HoldOutEvaluatePer,
+                aliases[normalized_hold_out_evaluate_per],
+            )
+
+    hold_out_evaluate_ratio = _parse_env_float("CODLLM_HOLD_OUT_EVALUATE_RATIO")
+    if hold_out_evaluate_ratio is not None:
+        if hold_out_evaluate_ratio <= 0 or hold_out_evaluate_ratio > 1:
+            raise ValueError(
+                "CODLLM_HOLD_OUT_EVALUATE_RATIO must be in the interval (0, 1]."
+            )
+        cfg.hold_out_evaluate_ratio = hold_out_evaluate_ratio
 
     lr = _parse_env_float("CODLLM_LR")
     if lr is not None:
