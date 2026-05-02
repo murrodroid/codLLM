@@ -15,6 +15,8 @@ NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
         "balance_target_quantile",
         "balance_perturbations",
         "balance_perturbations_per_sample",
+        "balance_perturbation_mean",
+        "balance_perturbation_variance",
         "balance_upsample_labels",
         "balance_upsample_perturbation_rate",
         "balance_upsample_inverse_power",

@@ -437,9 +437,11 @@ class DataHandler:
                 label_column=self.cfg.dataset_label_column,
                 target_counts=target_counts,
                 seed=self.cfg.resolved_data_seed(),
+                cfg=self.cfg,
                 text_column=self.cfg.dataset_text_column,
                 perturbation_fns=perturbation_fns,
-                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
+                perturbation_mean=self.cfg.balance_perturbation_mean,
+                perturbation_variance=self.cfg.balance_perturbation_variance,
                 text_field_separator=self.cfg.text_field_separator,
             )
 
@@ -451,7 +453,8 @@ class DataHandler:
                 text_column=self.cfg.dataset_text_column,
                 target_labels=None,
                 perturbation_names=self.cfg.balance_perturbations,
-                perturbations_per_sample=self.cfg.balance_perturbations_per_sample,
+                perturbation_mean=self.cfg.balance_perturbation_mean,
+                perturbation_variance=self.cfg.balance_perturbation_variance,
                 sample_fraction=self.cfg.balance_base_perturbation_rate,
                 seed=self.cfg.resolved_data_seed() + 1,
             )

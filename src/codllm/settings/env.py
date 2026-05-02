@@ -651,15 +651,25 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             p.strip() for p in balance_perturbations.split(",") if p.strip()
         ]
 
-    balance_perturbations_per_sample = _parse_env_int(
-        "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE"
+    balance_perturbation_mean = _parse_env_float(
+        "CODLLM_BALANCE_PERTURBATION_MEAN"
     )
-    if balance_perturbations_per_sample is not None:
-        if balance_perturbations_per_sample < 1:
+    if balance_perturbation_mean is not None:
+        if balance_perturbation_mean < 0:
             raise ValueError(
-                "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE must be at least 1."
+                "CODLLM_BALANCE_PERTURBATION_MEAN must be non-negative."
             )
-        cfg.balance_perturbations_per_sample = balance_perturbations_per_sample
+        cfg.balance_perturbation_mean = balance_perturbation_mean
+
+    balance_perturbation_variance = _parse_env_float(
+        "CODLLM_BALANCE_PERTURBATION_VARIANCE"
+    )
+    if balance_perturbation_variance is not None:
+        if balance_perturbation_variance < 0:
+            raise ValueError(
+                "CODLLM_BALANCE_PERTURBATION_VARIANCE must be non-negative."
+            )
+        cfg.balance_perturbation_variance = balance_perturbation_variance
 
     balance_upsample_labels = os.getenv("CODLLM_BALANCE_UPSAMPLE_LABELS")
     if balance_upsample_labels is not None and balance_upsample_labels.strip() != "":

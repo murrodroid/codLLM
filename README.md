@@ -238,7 +238,8 @@ Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 - `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
 - `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale upsampling dynamically.
 - `balance_perturbations`: augmentation functions applied to the `cod:` text segment.
-- `balance_perturbations_per_sample`: number of perturbations chained per affected sample.
+- `balance_perturbation_mean`: expected perturbation applications per character in the `cod:` text segment.
+- `balance_perturbation_variance`: perturbation-count variance per character in the `cod:` text segment.
 - `balance_base_perturbation_rate`: chance/rate (`0..1`) to perturb all training rows after upsampling.
 
 Typical setups:
@@ -246,7 +247,7 @@ Typical setups:
 - Minority upsampling + global perturbation: set `balance_strategy="upsample"` and tune `balance_target_quantile`, `balance_upsample_inverse_power`, `balance_upsample_budget_ratio`, and `balance_base_perturbation_rate`.
 - Global perturbation without upsampling: set `balance_strategy="none"` and `balance_base_perturbation_rate > 0`.
 
-Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows.
+Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows. For each affected row, the perturbation count is sampled from the configured length-scaled mean and variance, so longer `cod:` text receives more edits on average.
 
 ### Masterlist Pretraining
 

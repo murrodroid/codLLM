@@ -891,7 +891,8 @@ class TestDataHandler:
             label_column="label",
             target_labels=["A00"],
             perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
+            perturbation_mean=0.1,
+            perturbation_variance=0.0,
             sample_fraction=1.0,
             seed=9,
         )
@@ -933,7 +934,8 @@ class TestDataHandler:
             label_column="label",
             target_labels=["A00"],
             perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
+            perturbation_mean=0.2,
+            perturbation_variance=0.0,
             sample_fraction=1.0,
             seed=9,
         )
@@ -941,6 +943,39 @@ class TestDataHandler:
         assert manipulated.iloc[0]["text"] != source.iloc[0]["text"]
         assert manipulated.iloc[0]["text"].startswith("cause=")
         assert "years=1 | gender=male" in manipulated.iloc[0]["text"]
+
+    def test_manipulate_classes_scales_perturbation_count_by_cod_length(
+        self,
+    ) -> None:
+        """Length-scaled perturbation settings should affect longer COD text more."""
+        cfg = Config(text_field_separator=" | ")
+        source = pd.DataFrame(
+            {
+                "text": [
+                    "cod: ab | age: 1 | sex: male",
+                    "cod: abcdefghij | age: 1 | sex: male",
+                ],
+                "label": ["A00", "A00"],
+            }
+        )
+
+        manipulated = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=["A00"],
+            perturbation_names=["delete_random_char"],
+            perturbation_mean=0.5,
+            perturbation_variance=0.0,
+            sample_fraction=1.0,
+            seed=9,
+        )
+
+        short_delta = len(source.iloc[0]["text"]) - len(manipulated.iloc[0]["text"])
+        long_delta = len(source.iloc[1]["text"]) - len(manipulated.iloc[1]["text"])
+        assert short_delta == 1
+        assert long_delta == 5
 
     def test_split_dataframe_uses_configured_sizes(self) -> None:
         """Split sizes should be respected for train/validation/test output."""

@@ -160,7 +160,8 @@ class Config:
     balance_perturbations: list[str] = field(
         default_factory=default_balance_perturbations
     )
-    balance_perturbations_per_sample: int = 1
+    balance_perturbation_mean: float = 0.05
+    balance_perturbation_variance: float = 0.0
     balance_upsample_labels: list[str] = field(default_factory=list)
     balance_upsample_inverse_power: float = 0.5
     balance_upsample_budget_ratio: float = 0.4

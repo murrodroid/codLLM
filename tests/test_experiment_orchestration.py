@@ -130,6 +130,45 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert '"run_count": 2' in manifest
 
 
+def test_prepare_lsf_submission_normalizes_single_job_index_zero(
+    tmp_path: Path,
+) -> None:
+    """Single non-array LSF jobs should load the one generated env file."""
+    spec_path = tmp_path / "single.toml"
+    spec_path.write_text(
+        """
+name = "single"
+
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        sync_env=False,
+    )
+
+    submission = prepare_lsf_submission(
+        spec,
+        profile,
+        project_dir=tmp_path,
+        output_root="jobs/generated",
+    )
+
+    script = submission.script_path.read_text(encoding="utf-8")
+
+    assert (submission.env_dir / "run-1.env").exists()
+    assert (submission.env_dir / "run-0.env").exists() is False
+    assert 'if [ "1" = "1" ] && [ "$RUN_INDEX" = "0" ]; then' in script
+    assert 'RUN_INDEX="1"' in script
+
+
 def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
     """Input-feature sweep should leave config-default training choices implicit."""
     spec = load_experiment_spec("runs/sweeps/training_inputs.toml")

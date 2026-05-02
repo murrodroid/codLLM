@@ -70,6 +70,10 @@ unexpected dependency downloads.
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
+  * Balance perturbation count is controlled by `Config.balance_perturbation_mean`,
+    `Config.balance_perturbation_variance`, `CODLLM_BALANCE_PERTURBATION_MEAN`, and
+    `CODLLM_BALANCE_PERTURBATION_VARIANCE`. These values scale by the length of the processed `cod` text segment;
+    do not reintroduce a fixed balance perturbations-per-sample control for training rows.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default.
