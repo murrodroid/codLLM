@@ -1,0 +1,9 @@
+base = "../base/h100-small.toml"
+name = "scheduler"
+description = "simple run to check baseline model performance"
+force_reprocess = false
+
+[env]
+CODLLM_LR = 2.5e-5
+CODLLM_NUM_TRAIN_EPOCHS = 128
+CODLLM_SAVE_STRATEGY = "best"
