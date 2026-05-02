@@ -1,8 +1,10 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from transformers import Trainer
 
+import codllm.wandb_utils as wandb_utils
 from codllm.config import Config
 from codllm.data import (
     DataHandler,
@@ -27,6 +29,28 @@ from codllm.training.stages import (
 from codllm.training.trainer_factory import run_training_stage
 
 
+def _log_progress(message: str) -> None:
+    """Print a timestamped training progress message."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}", flush=True)
+
+
+def _initialize_wandb_for_data_prep(cfg: Config) -> None:
+    """Initialize W&B before expensive local data preparation starts."""
+    report_to, run_name = wandb_utils.resolve_wandb_reporting(cfg)
+    wandb_utils.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=report_to,
+        run_name=run_name,
+        metadata={
+            "run": {
+                "phase": "data_preparation",
+                "status": "started",
+            }
+        },
+    )
+
+
 def _train_from_datasets(
     cfg: Config,
     stage: TrainingStage,
@@ -38,6 +62,7 @@ def _train_from_datasets(
     id2label: dict[int, str] | None = None,
 ) -> tuple[Trainer, Any]:
     """Run one fine-tuning job from prepared datasets."""
+    _log_progress(f"Initializing model and tokenizer for stage '{stage.name}'.")
     model, tokenizer, disable_fp16 = initialize_training_components(
         cfg=cfg,
         label2id=label2id,
@@ -72,6 +97,7 @@ def _train_with_pretraining(
     id2label: dict[int, str] | None = None,
 ) -> tuple[Trainer, Any]:
     """Run optional pretraining first, then continue with regular fine-tuning."""
+    _log_progress("Initializing model and tokenizer for pretraining flow.")
     model, tokenizer, disable_fp16 = initialize_training_components(
         cfg=cfg,
         label2id=label2id,
@@ -154,8 +180,16 @@ def train(
 ) -> tuple[Trainer, Any, DataSplits]:
     """Build or load data splits and launch training."""
     prepare_run_output_dir(cfg)
+    _initialize_wandb_for_data_prep(cfg)
     handler = data_handler or DataHandler(cfg)
+    _log_progress("Preparing data splits.")
     splits = handler.get_splits(force_reprocess=force_reprocess)
+    _log_progress(
+        "Prepared data splits: "
+        f"train={dataset_row_count(splits.train)}, "
+        f"val={dataset_row_count(splits.val)}, "
+        f"test={dataset_row_count(splits.test)}."
+    )
     train_ds, eval_ds = resolve_training_frames(splits)
     run_data_metadata = build_data_metadata(
         cfg=cfg,
@@ -196,7 +230,11 @@ def train(
         run_data_metadata["masterlist_injection"] = masterlist_inject_metrics
 
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
+    if callable(pretrain_loader):
+        _log_progress("Preparing optional pretraining dataset.")
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    if pretrain_ds is not None:
+        _log_progress(f"Prepared pretraining dataset: train={int(len(pretrain_ds))}.")
     pretrain_upsampling_metrics_loader = getattr(
         handler,
         "get_pretraining_upsampling_metrics",

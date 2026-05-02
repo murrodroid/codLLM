@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from transformers import (
@@ -32,6 +33,12 @@ from codllm.training.metadata import (
 from codllm.training.stages import TrainingStage, should_apply_eval_interval_callback
 
 
+def _log_progress(message: str) -> None:
+    """Print a timestamped training progress message."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}", flush=True)
+
+
 def run_training_stage(
     cfg: Config,
     stage: TrainingStage,
@@ -47,6 +54,7 @@ def run_training_stage(
 ) -> Trainer:
     """Preprocess datasets and run one training stage."""
     target_max_length = cfg.resolved_max_target_length()
+    _log_progress(f"Tokenizing datasets for stage '{stage.name}'.")
     if cfg.model_task == "sequence_classification":
         if label2id is None or id2label is None:
             raise ValueError(
@@ -104,6 +112,7 @@ def run_training_stage(
             label_column=cfg.dataset_label_column,
             label_separator=cfg.label_separator,
         )
+    _log_progress(f"Finished tokenizing datasets for stage '{stage.name}'.")
 
     stage_run_data_metadata = build_stage_run_metadata(
         run_data_metadata=run_data_metadata,
