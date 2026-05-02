@@ -1,5 +1,5 @@
 base = "../base/h100-small.toml"
-name = "scheduler"
+name = "base_small"
 description = "simple run to check baseline model performance"
 force_reprocess = false
 
