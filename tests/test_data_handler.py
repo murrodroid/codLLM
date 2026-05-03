@@ -1027,6 +1027,38 @@ class TestDataHandler:
         assert short_delta == 1
         assert long_delta == 5
 
+    def test_manipulate_classes_is_deterministic_for_seed(self) -> None:
+        """Manipulation should remain reproducible with the configured data seed."""
+        cfg = Config(text_field_separator=" | ")
+        source = _balance_df()
+
+        first = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=None,
+            perturbation_names=["delete_random_char", "qwerty_misspell"],
+            perturbation_mean=0.2,
+            perturbation_variance=0.01,
+            sample_fraction=1.0,
+            seed=9,
+        )
+        second = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=None,
+            perturbation_names=["delete_random_char", "qwerty_misspell"],
+            perturbation_mean=0.2,
+            perturbation_variance=0.01,
+            sample_fraction=1.0,
+            seed=9,
+        )
+
+        assert first["text"].tolist() == second["text"].tolist()
+
     def test_split_dataframe_uses_configured_sizes(self) -> None:
         """Split sizes should be respected for train/validation/test output."""
         cfg = Config(train_size=0.6, val_size=0.2, test_size=0.2)

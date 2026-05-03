@@ -8,6 +8,15 @@ from codllm.config import Config
 from codllm.input import PERTURBATION_REGISTRY
 
 PerturbationFn = Callable[[str], str]
+RNG_AWARE_PERTURBATION_NAMES = frozenset(
+    {
+        "swap_adjacent_chars",
+        "delete_random_char",
+        "insert_random_whitespace",
+        "accent_random_vowel",
+        "qwerty_misspell",
+    }
+)
 
 
 def _resolve_perturbation_functions(
@@ -40,6 +49,24 @@ def _apply_perturbation_with_seed(
         return perturbation_fn(text)
     finally:
         random.setstate(previous_state)
+
+
+def _apply_perturbation_with_rng(
+    perturbation_fn: PerturbationFn,
+    text: str,
+    rng: random.Random,
+) -> str:
+    """Apply one perturbation using the local RNG when the function supports it."""
+    if (
+        getattr(perturbation_fn, "__module__", "") == "codllm.data.augmentation"
+        and getattr(perturbation_fn, "__name__", "") in RNG_AWARE_PERTURBATION_NAMES
+    ):
+        return perturbation_fn(text, rng=rng)
+    return _apply_perturbation_with_seed(
+        perturbation_fn,
+        text,
+        seed=rng.randint(0, 2_147_483_647),
+    )
 
 
 def _perturb_cod_segment(
@@ -79,10 +106,10 @@ def _perturb_cod_segment(
 
     for _ in range(perturbation_count):
         perturbation_fn = rng.choice(perturbation_fns)
-        cod_value = _apply_perturbation_with_seed(
+        cod_value = _apply_perturbation_with_rng(
             perturbation_fn,
             cod_value,
-            seed=rng.randint(0, 2_147_483_647),
+            rng=rng,
         )
 
     parts[cod_idx] = f"{cod_prefix}{cod_value}"
@@ -300,10 +327,10 @@ def upsample(
                         )
                         for _ in range(perturbation_count):
                             fn = rng.choice(perturbation_fns)
-                            text = _apply_perturbation_with_seed(
+                            text = _apply_perturbation_with_rng(
                                 fn,
                                 text,
-                                seed=rng.randint(0, 2_147_483_647),
+                                rng=rng,
                             )
                     row[text_column] = text
 
@@ -359,6 +386,8 @@ def manipulate_classes(
         return df
 
     perturbation_fns = _resolve_perturbation_functions(perturbation_names)
+    if not perturbation_fns:
+        return df
     if target_labels is None:
         selected_indices = df.index.tolist()
     else:
@@ -373,14 +402,16 @@ def manipulate_classes(
     indices_to_perturb = rng.sample(selected_indices, sample_size)
 
     manipulated_df = df.copy()
-    for index in indices_to_perturb:
-        text = str(manipulated_df.at[index, text_column])
-        manipulated_df.at[index, text_column] = _perturb_cod_segment(
+    perturbed_texts = [
+        _perturb_cod_segment(
             cfg=cfg,
-            text=text,
+            text=str(text),
             perturbation_fns=perturbation_fns,
             perturbation_mean=perturbation_mean,
             perturbation_variance=perturbation_variance,
             rng=rng,
         )
+        for text in manipulated_df.loc[indices_to_perturb, text_column].tolist()
+    ]
+    manipulated_df.loc[indices_to_perturb, text_column] = perturbed_texts
     return manipulated_df

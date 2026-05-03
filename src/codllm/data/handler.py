@@ -1,8 +1,9 @@
+import hashlib
 import json
 import os
 import random
-import hashlib
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
@@ -51,6 +52,12 @@ from codllm.input import (
 from codllm.runtime.paths import resolve_source_path
 
 PREPARED_SPLITS_METADATA_VERSION = 1
+
+
+def _log_data_progress(message: str) -> None:
+    """Print a timestamped data-preparation progress message."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}", flush=True)
 
 
 class DataHandler:
@@ -381,14 +388,25 @@ class DataHandler:
                     should_reprocess = not self._processed_cache_is_valid()
 
                 if should_reprocess:
+                    _log_data_progress("Building processed dataset from raw sources.")
                     processed_df = build_processed_dataset(
                         cfg=self.cfg,
                         mapping_registry=self.mapping_registry,
                     )
                     save_processed_dataset(processed_df, str(self.processed_path))
                     self._write_processing_metadata(self._build_processing_metadata())
+                    _log_data_progress(
+                        f"Built processed dataset: rows={len(processed_df)}."
+                    )
                     return processed_df
-                return self._load_processed_dataset()
+                _log_data_progress(
+                    f"Loading processed dataset cache: {self.processed_path}"
+                )
+                processed_df = self._load_processed_dataset()
+                _log_data_progress(
+                    f"Loaded processed dataset cache: rows={len(processed_df)}."
+                )
+                return processed_df
         except Timeout as exc:
             raise TimeoutError(
                 f"Timed out waiting for processed-data lock '{lock_path}'. "
@@ -397,19 +415,51 @@ class DataHandler:
 
     def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
         """Build prepared split dataframes from processed rows."""
+        _log_data_progress(f"Preparing split source rows: rows={len(processed_df)}.")
         training_pool_df, holdout_df = self._partition_hold_out_dataset(processed_df)
+        if holdout_df is not None:
+            _log_data_progress(
+                "Partitioned hold-out dataset: "
+                f"training_pool={len(training_pool_df)}, holdout={len(holdout_df)}."
+            )
         sampled_df = self._apply_dataset_size(training_pool_df)
+        if len(sampled_df) != len(training_pool_df):
+            _log_data_progress(
+                f"Applied dataset_size={self.cfg.dataset_size}: rows={len(sampled_df)}."
+            )
+        _log_data_progress("Splitting train/validation/test dataframes.")
         splits = self.split_dataframe(sampled_df)
+        _log_data_progress(
+            "Initial split sizes: "
+            f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
+        )
+        if (
+            self.cfg.max_label_count >= 2
+            and (self.cfg.multicod_synthetic_ratio > 0 or self.cfg.multicod_shuffle_labels)
+        ):
+            _log_data_progress("Applying multi-COD split preparation.")
         splits.train = prepare_multicod_training_split(splits.train, self.cfg)
         splits.val = shuffle_multicod_label_order(splits.val, self.cfg)
         splits.test = shuffle_multicod_label_order(splits.test, self.cfg)
+        _log_data_progress(
+            "After multi-COD preparation: "
+            f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
+        )
         if holdout_df is not None:
             splits.holdout = shuffle_multicod_label_order(holdout_df, self.cfg)
             splits.holdout_eval = self._build_holdout_eval_dataframe(splits.holdout)
         if not splits.train.empty:
+            if (
+                self.cfg.balance_strategy != "none"
+                or self.cfg.balance_base_perturbation_rate > 0
+            ):
+                _log_data_progress("Applying training balance/perturbation policy.")
             splits.train = self._apply_balance_policy(splits.train)
+            _log_data_progress(f"After balance policy: train={len(splits.train)}.")
         if self.cfg.masterlist_inject_enabled and not splits.train.empty:
+            _log_data_progress("Injecting masterlist rows into training split.")
             splits.train = self._inject_masterlist(splits.train)
+            _log_data_progress(f"After masterlist injection: train={len(splits.train)}.")
         return splits
 
     def get_splits(self, force_reprocess: bool = False) -> DataSplits:
@@ -420,6 +470,7 @@ class DataHandler:
         self.prepared_splits_root.mkdir(parents=True, exist_ok=True)
         lock_timeout_seconds = self._processed_lock_timeout_seconds()
         lock = FileLock(str(lock_path), timeout=lock_timeout_seconds)
+        _log_data_progress(f"Waiting for prepared data splits cache lock: {lock_path}")
         try:
             with lock:
                 if not force_reprocess:
@@ -427,17 +478,16 @@ class DataHandler:
                         metadata, cache_dir
                     )
                     if cached_splits is not None:
-                        print(
+                        _log_data_progress(
                             f"Loaded prepared data splits cache: {cache_dir}",
-                            flush=True,
                         )
                         return cached_splits
 
                 processed_df = self.ensure_processed(force_reprocess=force_reprocess)
-                print(f"Building prepared data splits cache: {cache_dir}", flush=True)
+                _log_data_progress(f"Building prepared data splits cache: {cache_dir}")
                 splits = self._prepare_splits_from_processed(processed_df)
                 self._write_prepared_splits_cache(splits, metadata, cache_dir)
-                print(f"Wrote prepared data splits cache: {cache_dir}", flush=True)
+                _log_data_progress(f"Wrote prepared data splits cache: {cache_dir}")
                 return splits
         except Timeout as exc:
             raise TimeoutError(

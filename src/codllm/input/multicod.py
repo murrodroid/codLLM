@@ -1,4 +1,5 @@
 import random
+import re
 from collections import defaultdict
 from typing import Any
 
@@ -45,6 +46,21 @@ def _merge_cod_texts(
         )
         if value
     ]
+    return _merge_cod_values(
+        anchor_text=anchor_text,
+        cod_values=cod_values,
+        cfg=cfg,
+        text_separator=text_separator,
+    )
+
+
+def _merge_cod_values(
+    anchor_text: Any,
+    cod_values: list[Any],
+    cfg: Config,
+    text_separator: str,
+) -> str | None:
+    """Merge pre-extracted COD values into the anchor row's text shape."""
     if len(cod_values) < 2:
         return None
 
@@ -57,66 +73,89 @@ def _merge_cod_texts(
     return None
 
 
-def _single_label_candidate_rows(
-    dataframe: pd.DataFrame, cfg: Config
-) -> list[dict[str, Any]]:
-    """Return rows that can be used as single-COD synthetic merge inputs."""
-    candidates: list[dict[str, Any]] = []
-    cod_prefix = cfg.input_field_prefix("cod")
-    for _, row in dataframe.iterrows():
-        codes = _coerce_row_codes(row.get("y_codes"), cfg.label_separator)
-        cod_text = _cod_segment_value(
-            row.get(cfg.dataset_text_column), cfg.text_field_separator, cod_prefix
-        )
-        if len(codes) != 1 or cod_text is None:
-            continue
-        candidates.append(
-            {
-                "row": dict(row),
-                "label": codes[0],
-                "source_id": str(row.get("source_id", "unknown")),
-            }
-        )
-    return candidates
+def _cod_segment_values(
+    texts: pd.Series,
+    field_separator: str,
+    cod_prefix: str,
+) -> pd.Series:
+    """Extract processed COD segment values from a text series."""
+    rendered = texts.fillna("").astype("string")
+    if field_separator == "":
+        stripped = rendered.str.strip()
+        has_prefix = stripped.str.startswith(cod_prefix, na=False)
+        values = stripped.str[len(cod_prefix) :].str.strip()
+        return values.where(has_prefix & values.ne(""), None).astype(object)
+
+    pattern = (
+        rf"(?:^|{re.escape(field_separator)})\s*"
+        rf"{re.escape(cod_prefix)}(.*?)(?={re.escape(field_separator)}|$)"
+    )
+    values = rendered.str.extract(pattern, expand=False).str.strip()
+    return values.where(values.notna() & values.ne(""), None).astype(object)
 
 
-def _group_candidate_rows(
-    candidates: list[dict[str, Any]],
+def _single_label_values(dataframe: pd.DataFrame, cfg: Config) -> pd.Series:
+    """Return label values for single-label rows and nulls for multi-label rows."""
+    labels = dataframe[cfg.dataset_label_column].fillna("").astype("string").str.strip()
+    if cfg.label_separator:
+        has_separator = labels.str.contains(
+            re.escape(cfg.label_separator),
+            regex=True,
+            na=False,
+        )
+        return labels.where(labels.ne("") & ~has_separator, None).astype(object)
+
+    label_lengths = dataframe["y_codes"].map(
+        lambda raw_codes: len(_coerce_row_codes(raw_codes, cfg.label_separator))
+    )
+    return labels.where(labels.ne("") & label_lengths.eq(1), None).astype(object)
+
+
+def _candidate_source_values(
+    dataframe: pd.DataFrame,
+    column: str,
+    fallback: str,
+) -> pd.Series:
+    """Return source metadata strings aligned to the candidate dataframe."""
+    if column not in dataframe.columns:
+        return pd.Series([fallback] * len(dataframe), index=dataframe.index)
+    return dataframe[column].fillna(fallback).astype(str)
+
+
+def _group_candidate_positions(
+    candidates: pd.DataFrame,
     source_scope: MultiCodSyntheticSourceScope,
-) -> dict[str, list[dict[str, Any]]]:
-    """Group synthetic merge candidates according to the configured source scope."""
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for candidate in candidates:
-        if source_scope == "any_source":
-            group_key = ANY_SOURCE_GROUP
-        else:
-            group_key = candidate["source_id"]
-        groups[group_key].append(candidate)
+) -> dict[str, dict[str, list[int]]]:
+    """Group candidate row positions by source scope and label."""
+    groups: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    for position, label, source_id in candidates[
+        ["position", "label", "source_id"]
+    ].itertuples(index=False, name=None):
+        group_key = ANY_SOURCE_GROUP if source_scope == "any_source" else source_id
+        groups[str(group_key)][str(label)].append(int(position))
     return {
-        group_key: rows
-        for group_key, rows in groups.items()
-        if len({row["label"] for row in rows}) >= 2
+        group_key: dict(positions_by_label)
+        for group_key, positions_by_label in groups.items()
+        if len(positions_by_label) >= 2
     }
 
 
-def _sample_distinct_label_rows(
-    rows: list[dict[str, Any]],
+def _sample_distinct_label_positions(
+    positions_by_label: dict[str, list[int]],
+    available_labels: list[str],
     max_label_count: int,
     rng: random.Random,
-) -> list[dict[str, Any]]:
-    """Sample candidate rows with distinct labels for one synthetic multi-COD row."""
-    rows_by_label: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        rows_by_label[row["label"]].append(row)
-
-    available_labels = list(rows_by_label)
+) -> tuple[list[str], list[int]]:
+    """Sample candidate row positions with distinct labels."""
     upper_label_count = min(max_label_count, len(available_labels))
     if upper_label_count < 2:
-        return []
+        return [], []
 
     label_count = rng.randint(2, upper_label_count)
     sampled_labels = rng.sample(available_labels, label_count)
-    return [rng.choice(rows_by_label[label]) for label in sampled_labels]
+    return sampled_labels, [
+        rng.choice(positions_by_label[label]) for label in sampled_labels
+    ]
 
 
 def build_synthetic_multicod_rows(
@@ -151,8 +190,27 @@ def build_synthetic_multicod_rows(
     if resolved_text_separator == "":
         raise ValueError("multicod_synthetic_text_separator must not be empty.")
 
-    candidates = _single_label_candidate_rows(dataframe, cfg)
-    groups = _group_candidate_rows(candidates, resolved_source_scope)
+    label_values = _single_label_values(dataframe, cfg)
+    cod_values = _cod_segment_values(
+        dataframe[cfg.dataset_text_column],
+        cfg.text_field_separator,
+        cfg.input_field_prefix("cod"),
+    )
+    source_ids = _candidate_source_values(dataframe, "source_id", "unknown")
+    source_paths = _candidate_source_values(dataframe, "source_path", "")
+    positions = pd.Series(range(len(dataframe)), index=dataframe.index)
+    candidate_mask = label_values.notna() & cod_values.notna()
+    candidates = pd.DataFrame(
+        {
+            "position": positions,
+            "label": label_values,
+            "source_id": source_ids,
+        }
+    ).loc[candidate_mask]
+    if candidates.empty:
+        return dataframe.iloc[0:0].copy()
+
+    groups = _group_candidate_positions(candidates, resolved_source_scope)
     if not groups:
         return dataframe.iloc[0:0].copy()
 
@@ -162,55 +220,80 @@ def build_synthetic_multicod_rows(
 
     rng = random.Random(cfg.resolved_data_seed() + seed_offset)
     group_keys = list(groups)
-    group_weights = [len(groups[group_key]) for group_key in group_keys]
-    synthetic_rows: list[dict[str, Any]] = []
+    group_weights = [
+        sum(len(positions_for_label) for positions_for_label in groups[group_key].values())
+        for group_key in group_keys
+    ]
+    group_labels = {group_key: list(groups[group_key]) for group_key in group_keys}
+    sampled_group_keys = rng.choices(group_keys, weights=group_weights, k=synthetic_count)
 
-    for idx in range(synthetic_count):
-        group_key = rng.choices(group_keys, weights=group_weights, k=1)[0]
-        sampled_rows = _sample_distinct_label_rows(
-            rows=groups[group_key],
+    text_values = dataframe[cfg.dataset_text_column].tolist()
+    cod_value_list = cod_values.tolist()
+    source_id_list = source_ids.tolist()
+    source_path_list = source_paths.tolist()
+
+    anchor_positions: list[int] = []
+    merged_texts: list[str] = []
+    sampled_label_sets: list[list[str]] = []
+    synthetic_source_ids: list[str] = []
+    synthetic_record_ids: list[str] = []
+    synthetic_source_paths: list[str] = []
+    synthetic_source_id_sets: list[str] = []
+
+    for idx, group_key in enumerate(sampled_group_keys):
+        labels, sampled_positions = _sample_distinct_label_positions(
+            positions_by_label=groups[group_key],
+            available_labels=group_labels[group_key],
             max_label_count=cfg.max_label_count,
             rng=rng,
         )
-        if len(sampled_rows) < 2:
+        if len(sampled_positions) < 2:
             continue
 
-        source_rows = [sample["row"] for sample in sampled_rows]
-        anchor_row = dict(source_rows[0])
-        merged_text = _merge_cod_texts(
-            anchor_text=anchor_row.get(cfg.dataset_text_column),
-            source_texts=[row.get(cfg.dataset_text_column) for row in source_rows],
+        merged_text = _merge_cod_values(
+            anchor_text=text_values[sampled_positions[0]],
+            cod_values=[cod_value_list[position] for position in sampled_positions],
             cfg=cfg,
             text_separator=resolved_text_separator,
         )
         if merged_text is None:
             continue
 
-        labels = [sample["label"] for sample in sampled_rows]
         source_ids = sorted(
-            {str(row.get("source_id", "unknown")) for row in source_rows}
+            {source_id_list[position] for position in sampled_positions}
         )
-        source_paths = sorted({str(row.get("source_path", "")) for row in source_rows})
+        source_paths = sorted(
+            {source_path_list[position] for position in sampled_positions}
+        )
         synthetic_source_id = (
             f"{synthetic_source_prefix}:{group_key}"
             if resolved_source_scope == "within_source"
             else f"{synthetic_source_prefix}:any_source"
         )
 
-        anchor_row["source_id"] = synthetic_source_id
-        anchor_row["record_id"] = f"{synthetic_source_id}:{idx:06d}"
-        anchor_row["source_path"] = resolved_text_separator.join(source_paths)
-        anchor_row[cfg.dataset_text_column] = merged_text
-        anchor_row["y_codes"] = labels
-        anchor_row[cfg.dataset_label_column] = _build_label(
-            labels, separator=cfg.label_separator
-        )
-        anchor_row["synthetic_source_ids"] = resolved_text_separator.join(source_ids)
-        synthetic_rows.append(anchor_row)
+        anchor_positions.append(sampled_positions[0])
+        merged_texts.append(merged_text)
+        sampled_label_sets.append(labels)
+        synthetic_source_ids.append(synthetic_source_id)
+        synthetic_record_ids.append(f"{synthetic_source_id}:{idx:06d}")
+        synthetic_source_paths.append(resolved_text_separator.join(source_paths))
+        synthetic_source_id_sets.append(resolved_text_separator.join(source_ids))
 
-    if not synthetic_rows:
+    if not anchor_positions:
         return dataframe.iloc[0:0].copy()
-    return pd.DataFrame(synthetic_rows)
+
+    synthetic_df = dataframe.iloc[anchor_positions].copy().reset_index(drop=True)
+    synthetic_df["source_id"] = synthetic_source_ids
+    synthetic_df["record_id"] = synthetic_record_ids
+    synthetic_df["source_path"] = synthetic_source_paths
+    synthetic_df[cfg.dataset_text_column] = merged_texts
+    synthetic_df["y_codes"] = sampled_label_sets
+    synthetic_df[cfg.dataset_label_column] = [
+        _build_label(labels, separator=cfg.label_separator)
+        for labels in sampled_label_sets
+    ]
+    synthetic_df["synthetic_source_ids"] = synthetic_source_id_sets
+    return synthetic_df
 
 
 def shuffle_multicod_label_order(dataframe: pd.DataFrame, cfg: Config) -> pd.DataFrame:
@@ -218,20 +301,34 @@ def shuffle_multicod_label_order(dataframe: pd.DataFrame, cfg: Config) -> pd.Dat
     if dataframe.empty or cfg.max_label_count < 2 or not cfg.multicod_shuffle_labels:
         return dataframe.reset_index(drop=True)
 
-    result = dataframe.copy()
+    result = dataframe.reset_index(drop=True).copy()
+    if cfg.label_separator:
+        label_values = (
+            result[cfg.dataset_label_column].fillna("").astype("string").str.strip()
+        )
+        multi_label_mask = label_values.str.contains(
+            re.escape(cfg.label_separator),
+            regex=True,
+            na=False,
+        )
+        if not bool(multi_label_mask.any()):
+            return result
+        row_indices = result.index[multi_label_mask].tolist()
+    else:
+        row_indices = result.index.tolist()
+
     rng = random.Random(cfg.resolved_data_seed())
-    shuffled_codes: list[list[str]] = []
-    labels: list[str] = []
-    for raw_codes in result["y_codes"].tolist():
+    for row_index in row_indices:
+        raw_codes = result.at[row_index, "y_codes"]
         codes = _coerce_row_codes(raw_codes, cfg.label_separator)
         if len(codes) > 1:
             rng.shuffle(codes)
-        shuffled_codes.append(codes)
-        labels.append(_build_label(codes, separator=cfg.label_separator))
-
-    result["y_codes"] = shuffled_codes
-    result[cfg.dataset_label_column] = labels
-    return result.reset_index(drop=True)
+            result.at[row_index, "y_codes"] = codes
+            result.at[row_index, cfg.dataset_label_column] = _build_label(
+                codes,
+                separator=cfg.label_separator,
+            )
+    return result
 
 
 def prepare_multicod_training_split(
