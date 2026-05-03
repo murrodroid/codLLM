@@ -343,8 +343,15 @@ def _metrics_summary_rows(
     for key in keys:
         value = metrics.get(key)
         if isinstance(value, bool | int | float | str):
-            rows.append([prefix, key, value])
+            rows.append([prefix, key, _stringify_metric_value(value)])
     return rows
+
+
+def _stringify_metric_value(value: bool | int | float | str) -> str:
+    """Render heterogeneous scalar metrics as one W&B table column type."""
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
 
 
 def _balance_distribution_rows(metrics: Mapping[str, Any] | None) -> list[list[Any]]:

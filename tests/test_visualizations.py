@@ -155,3 +155,7 @@ def test_log_data_visualizations_logs_core_distribution_tables(monkeypatch) -> N
     assert ["A01", 0, 1, 1] in merged_payload[
         "data/balance_chapter_block_before_after"
     ].data
+    scalar_table = merged_payload["data/preparation_scalar_metrics"]
+    assert ["balance", "enabled", "true"] in scalar_table.data
+    assert ["balance", "strategy", "sqrt"] in scalar_table.data
+    assert all(isinstance(row[2], str) for row in scalar_table.data)
