@@ -17,6 +17,7 @@ from codllm.data import (
 from codllm.metrics import (
     build_exact_match_accuracy_metric,
     build_sequence_classification_metric,
+    collect_input_strings,
     collect_label_classes,
 )
 from codllm.trainer_logging import (
@@ -83,6 +84,8 @@ def run_training_stage(
                 label2id=label2id,
             )
         collator: Any = DataCollatorWithPadding(tokenizer=tokenizer)
+        train_input_strings = collect_input_strings(processed_train_ds, tokenizer)
+        train_classes = None
     else:
         processed_train_ds = prepare_training_dataset(
             cfg,
@@ -112,6 +115,7 @@ def run_training_stage(
             label_column=cfg.dataset_label_column,
             label_separator=cfg.label_separator,
         )
+        train_input_strings = collect_input_strings(processed_train_ds, tokenizer)
     _log_progress(f"Finished tokenizing datasets for stage '{stage.name}'.")
 
     stage_run_data_metadata = build_stage_run_metadata(
@@ -126,6 +130,9 @@ def run_training_stage(
         stage=stage,
         generation_max_length=target_max_length,
         disable_fp16=disable_fp16,
+        include_inputs_for_metrics=(
+            processed_eval_ds is not None or processed_holdout_eval_ds is not None
+        ),
     )
     wandb_utils.patch_transformers_wandb_log_rewrite(report_to=args.report_to)
     training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
@@ -158,6 +165,7 @@ def run_training_stage(
     if processed_holdout_eval_ds is not None and cfg.hold_out_evaluate_per is not None:
         holdout_callback = HoldoutEvaluationCallback(
             evaluate_per=cfg.hold_out_evaluate_per,
+            baseline_eval_dataset=processed_eval_ds,
             eval_dataset=processed_holdout_eval_ds,
             eval_steps=cfg.eval_steps,
         )
@@ -174,7 +182,11 @@ def run_training_stage(
             stage_name=stage.name,
             callbacks=callbacks or None,
             compute_metrics=(
-                build_sequence_classification_metric(id2label=id2label)
+                build_sequence_classification_metric(
+                    id2label=id2label,
+                    tokenizer=tokenizer,
+                    train_input_strings=train_input_strings or None,
+                )
                 if (
                     (
                         processed_eval_ds is not None
@@ -201,6 +213,7 @@ def run_training_stage(
                     label_separator=cfg.label_separator,
                     max_label_count=cfg.max_label_count,
                     train_classes=train_classes or None,
+                    train_input_strings=train_input_strings or None,
                 )
                 if processed_eval_ds is not None
                 or processed_holdout_eval_ds is not None

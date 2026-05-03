@@ -19,6 +19,10 @@ def rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
     """Map trainer metric keys to stage-scoped logging categories."""
     if key == "epoch":
         return key
+    if key.startswith("holdout_val_"):
+        return f"holdout/val/{key.removeprefix('holdout_val_')}"
+    if key.startswith("holdout_test_"):
+        return f"holdout/test/{key.removeprefix('holdout_test_')}"
     if key.startswith("holdout_"):
         return f"holdout/{key.removeprefix('holdout_')}"
 
@@ -93,7 +97,14 @@ class EvaluateEveryNEpochsCallback(TrainerCallback):
 class HoldoutEvaluationCallback(TrainerCallback):
     """Run sampled hold-out evaluation during training."""
 
-    def __init__(self, evaluate_per: str, eval_dataset: Any, eval_steps: int) -> None:
+    def __init__(
+        self,
+        evaluate_per: str,
+        eval_dataset: Any,
+        eval_steps: int,
+        baseline_eval_dataset: Any | None = None,
+        metric_key_prefix: str = "holdout_val",
+    ) -> None:
         normalized = evaluate_per.strip().lower()
         if normalized not in {"epoch", "steps"}:
             raise ValueError("evaluate_per must be 'epoch' or 'steps'.")
@@ -101,7 +112,9 @@ class HoldoutEvaluationCallback(TrainerCallback):
             raise ValueError("eval_steps must be at least 1.")
         self.evaluate_per = normalized
         self.eval_dataset = eval_dataset
+        self.baseline_eval_dataset = baseline_eval_dataset
         self.eval_steps = eval_steps
+        self.metric_key_prefix = metric_key_prefix
         self.trainer: Any | None = None
         self._last_step: int | None = None
 
@@ -109,13 +122,18 @@ class HoldoutEvaluationCallback(TrainerCallback):
         """Attach the trainer instance used to run evaluation."""
         self.trainer = trainer
 
-    def _evaluate(self) -> None:
+    def _evaluate(self, *, include_baseline: bool) -> None:
         """Run one hold-out evaluation pass when a trainer is attached."""
         if self.trainer is None:
             return
+        if include_baseline and self.baseline_eval_dataset is not None:
+            self.trainer.evaluate(
+                eval_dataset=self.baseline_eval_dataset,
+                metric_key_prefix="eval",
+            )
         self.trainer.evaluate(
             eval_dataset=self.eval_dataset,
-            metric_key_prefix="holdout",
+            metric_key_prefix=self.metric_key_prefix,
         )
 
     def on_epoch_end(
@@ -128,7 +146,7 @@ class HoldoutEvaluationCallback(TrainerCallback):
         """Evaluate at epoch boundaries when configured."""
         del args, state, kwargs
         if self.evaluate_per == "epoch":
-            self._evaluate()
+            self._evaluate(include_baseline=not control.should_evaluate)
         return control
 
     def on_step_end(
@@ -147,7 +165,7 @@ class HoldoutEvaluationCallback(TrainerCallback):
             return control
         if global_step % self.eval_steps == 0:
             self._last_step = global_step
-            self._evaluate()
+            self._evaluate(include_baseline=not control.should_evaluate)
         return control
 
 

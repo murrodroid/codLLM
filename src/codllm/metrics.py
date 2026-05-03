@@ -45,6 +45,118 @@ def collect_label_classes(
     return classes
 
 
+def _tokenizer_max_token_id(tokenizer: Any) -> int | None:
+    """Return the highest valid tokenizer id when the tokenizer exposes a vocab size."""
+    raw_vocab_size = getattr(tokenizer, "vocab_size", None)
+    if isinstance(raw_vocab_size, int) and raw_vocab_size > 0:
+        return int(raw_vocab_size) - 1
+    return None
+
+
+def _tokenizer_pad_token_id(tokenizer: Any) -> int:
+    """Return a safe pad token id for tokenizer decoding."""
+    return tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+
+
+def _coerce_token_id_batches(token_ids: Any) -> list[list[int]]:
+    """Coerce a token-id column or tensor into a list of token-id batches."""
+    if token_ids is None:
+        return []
+    if isinstance(token_ids, tuple):
+        if not token_ids:
+            return []
+        token_ids = token_ids[0]
+    if hasattr(token_ids, "detach"):
+        token_ids = token_ids.detach().cpu().numpy()
+    if isinstance(token_ids, list | tuple):
+        if not token_ids:
+            return []
+        first = token_ids[0]
+        if isinstance(first, list | tuple | np.ndarray) or hasattr(first, "detach"):
+            batches: list[list[int]] = []
+            for sequence in token_ids:
+                if hasattr(sequence, "detach"):
+                    sequence = sequence.detach().cpu().numpy()
+                batches.append(np.asarray(sequence).tolist())
+            return batches
+        return [np.asarray(token_ids).tolist()]
+
+    array = np.asarray(token_ids)
+    if array.ndim == 0:
+        return []
+    if array.ndim == 1:
+        return [array.tolist()]
+    return array.tolist()
+
+
+def _decode_token_id_strings(
+    tokenizer: Any,
+    token_ids: Any,
+    *,
+    pad_token_id: int | None = None,
+    max_token_id: int | None = None,
+) -> list[str]:
+    """Decode token ids into normalized source strings."""
+    resolved_pad_token_id = (
+        _tokenizer_pad_token_id(tokenizer) if pad_token_id is None else pad_token_id
+    )
+    resolved_max_token_id = (
+        _tokenizer_max_token_id(tokenizer) if max_token_id is None else max_token_id
+    )
+    token_id_batches = _coerce_token_id_batches(token_ids)
+    if not token_id_batches:
+        return []
+
+    sanitized_batches = [
+        _sanitize_token_ids_for_decoding(
+            np.asarray(sequence),
+            pad_token_id=resolved_pad_token_id,
+            max_token_id=resolved_max_token_id,
+        ).tolist()
+        for sequence in token_id_batches
+    ]
+    decoded = tokenizer.batch_decode(sanitized_batches, skip_special_tokens=True)
+    return [_normalize_decoded_text(text) for text in decoded]
+
+
+def _dataset_column_values(dataset: Any, column: str) -> Any | None:
+    """Return one column from common dataset containers when available."""
+    raw_features = getattr(dataset, "features", None)
+    if isinstance(raw_features, dict) and column in raw_features:
+        values = raw_features[column]
+        if isinstance(values, list | tuple):
+            return values
+    if isinstance(dataset, MappingABC) and column in dataset:
+        return dataset[column]
+    if hasattr(dataset, "columns") and column in dataset.columns:
+        return dataset[column].tolist()
+    if hasattr(dataset, "column_names") and column in dataset.column_names:
+        return dataset[column]
+    if hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
+        values = []
+        for idx in range(len(dataset)):
+            item = dataset[idx]
+            if not isinstance(item, MappingABC) or column not in item:
+                return None
+            values.append(item[column])
+        return values
+    return None
+
+
+def collect_input_strings(
+    dataset: Any,
+    tokenizer: Any,
+    input_ids_column: str = "input_ids",
+) -> set[str]:
+    """Collect normalized decoded input strings from a tokenized dataset."""
+    input_ids = _dataset_column_values(dataset, input_ids_column)
+    if input_ids is None:
+        return set()
+    return {
+        text for text in _decode_token_id_strings(tokenizer, input_ids) if text.strip()
+    }
+
+
 def _micro_precision_recall_f1(
     predictions: list[set[str]], labels: list[set[str]]
 ) -> dict[str, float]:
@@ -270,43 +382,104 @@ def _macro_precision_recall_f1(
     return {f"macro_{k}": v for k, v in raw.items()}
 
 
-def _seen_unseen_macro(
+def _prediction_metric_set(
     predictions: list[set[str]],
     labels: list[set[str]],
-    train_classes: set[str],
+    matches: list[bool],
+    *,
+    multi_label: bool,
+    label_universe: set[str] | None = None,
 ) -> dict[str, float]:
-    """Compute macro P/R/F1 split by seen (in training) and unseen classes.
+    """Compute the standard metric set for one prediction slice."""
+    accuracy = float(np.mean(matches)) if matches else 0.0
+    result: dict[str, float] = {"accuracy": accuracy, "exact_match": accuracy}
+    if multi_label:
+        result.update(_micro_precision_recall_f1(predictions, labels))
+        result.update(_sample_precision_recall_f1(predictions, labels))
+        result.update(
+            _multilabel_diagnostic_metrics(
+                predictions,
+                labels,
+                label_universe=label_universe,
+            )
+        )
+    result.update(_macro_precision_recall_f1(predictions, labels))
+    return result
 
-    - seen_macro_*: metrics over eval classes that appeared in training
-    - unseen_macro_*: metrics over eval classes never seen during training
-    - seen_class_count / unseen_class_count: how many classes in each bucket
-    """
-    class_tp, class_label_total, class_pred_total = _per_class_stats(
-        predictions, labels
-    )
-    eval_classes = set(class_label_total) | set(class_pred_total)
 
-    seen = eval_classes & train_classes
-    unseen = eval_classes - train_classes
+def _prefixed_metrics(metrics: Mapping[str, float], prefix: str) -> dict[str, float]:
+    """Prefix metric keys with a bucket name."""
+    return {f"{prefix}_{key}": value for key, value in metrics.items()}
 
+
+def _subset_by_indices(values: list[Any], indices: list[int]) -> list[Any]:
+    """Return a list subset for the requested integer indices."""
+    return [values[index] for index in indices]
+
+
+def _seen_unseen_string_metrics(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    matches: list[bool],
+    input_strings: list[str] | None,
+    train_input_strings: set[str],
+    *,
+    multi_label: bool,
+    label_universe: set[str] | None = None,
+) -> dict[str, float]:
+    """Compute standard metrics split by whether each input string appeared in train."""
+    if input_strings is None or len(input_strings) != len(predictions):
+        return {}
+
+    seen_indices = [
+        index
+        for index, input_text in enumerate(input_strings)
+        if input_text in train_input_strings
+    ]
+    unseen_indices = [
+        index
+        for index, input_text in enumerate(input_strings)
+        if input_text not in train_input_strings
+    ]
+    total_count = len(input_strings)
     result: dict[str, float] = {
-        "seen_class_count": float(len(seen)),
-        "unseen_class_count": float(len(unseen)),
+        "seen_string_count": float(len(seen_indices)),
+        "unseen_string_count": float(len(unseen_indices)),
+        "seen_string_rate": float(len(seen_indices) / total_count)
+        if total_count > 0
+        else 0.0,
+        "unseen_string_rate": float(len(unseen_indices) / total_count)
+        if total_count > 0
+        else 0.0,
     }
 
-    seen_stats = _macro_from_class_stats(
-        class_tp, class_label_total, class_pred_total, seen
-    )
-    for k, v in seen_stats.items():
-        result[f"seen_macro_{k}"] = v
-
-    unseen_stats = _macro_from_class_stats(
-        class_tp, class_label_total, class_pred_total, unseen
-    )
-    for k, v in unseen_stats.items():
-        result[f"unseen_macro_{k}"] = v
+    for prefix, indices in (("seen", seen_indices), ("unseen", unseen_indices)):
+        bucket_metrics = _prediction_metric_set(
+            _subset_by_indices(predictions, indices),
+            _subset_by_indices(labels, indices),
+            _subset_by_indices(matches, indices),
+            multi_label=multi_label,
+            label_universe=label_universe,
+        )
+        result.update(_prefixed_metrics(bucket_metrics, prefix))
 
     return result
+
+
+def _extract_eval_prediction(eval_pred: Any) -> tuple[Any, Any, Any | None]:
+    """Extract predictions, labels, and optional metric inputs from Trainer output."""
+    if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
+        return (
+            eval_pred.predictions,
+            eval_pred.label_ids,
+            getattr(eval_pred, "inputs", None),
+        )
+
+    values = tuple(eval_pred)
+    if len(values) < 2:
+        raise ValueError("Metric callbacks require predictions and label ids.")
+    metric_inputs = values[2] if len(values) > 2 else None
+    return values[0], values[1], metric_inputs
 
 
 def build_exact_match_accuracy_metric(
@@ -314,32 +487,23 @@ def build_exact_match_accuracy_metric(
     label_separator: str = ",",
     max_label_count: int = 1,
     train_classes: set[str] | None = None,
+    train_input_strings: set[str] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build a compute_metrics callback with exact-match and overlap metrics.
 
     When max_label_count is 1 (single-label), micro metrics are skipped because
     they are mathematically identical to accuracy in that regime.
 
-    When train_classes is provided, additional seen/unseen macro metrics are
-    emitted to distinguish performance on classes the model trained on vs.
-    classes it has never seen.
+    When train_input_strings is provided and metric inputs are available, seen/unseen
+    metrics are split by whether the decoded source string appeared in training.
     """
-    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
-    raw_vocab_size = getattr(tokenizer, "vocab_size", None)
-    max_token_id = (
-        int(raw_vocab_size) - 1
-        if isinstance(raw_vocab_size, int) and raw_vocab_size > 0
-        else None
-    )
+    pad_token_id = _tokenizer_pad_token_id(tokenizer)
+    max_token_id = _tokenizer_max_token_id(tokenizer)
     multi_label = max_label_count > 1
 
     def compute_metrics(eval_pred: Any) -> dict[str, float]:
         """Compute exact-match accuracy and class-level metrics."""
-        if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
-            predictions = eval_pred.predictions
-            labels = eval_pred.label_ids
-        else:
-            predictions, labels = eval_pred
+        predictions, labels, metric_inputs = _extract_eval_prediction(eval_pred)
 
         if isinstance(predictions, tuple):
             predictions = predictions[0]
@@ -389,27 +553,35 @@ def build_exact_match_accuracy_metric(
                 prediction == label
                 for prediction, label in zip(normalized_predictions, normalized_labels)
             ]
-        accuracy = float(np.mean(matches)) if matches else 0.0
 
-        result: dict[str, float] = {"accuracy": accuracy, "exact_match": accuracy}
-        if multi_label:
-            result.update(
-                _micro_precision_recall_f1(predicted_code_sets, label_code_sets)
+        result = _prediction_metric_set(
+            predicted_code_sets,
+            label_code_sets,
+            matches,
+            multi_label=multi_label,
+            label_universe=train_classes,
+        )
+        if train_input_strings is not None:
+            input_strings = (
+                _decode_token_id_strings(
+                    tokenizer,
+                    metric_inputs,
+                    pad_token_id=pad_token_id,
+                    max_token_id=max_token_id,
+                )
+                if metric_inputs is not None
+                else None
             )
             result.update(
-                _sample_precision_recall_f1(predicted_code_sets, label_code_sets)
-            )
-            result.update(
-                _multilabel_diagnostic_metrics(
+                _seen_unseen_string_metrics(
                     predicted_code_sets,
                     label_code_sets,
+                    matches,
+                    input_strings,
+                    train_input_strings,
+                    multi_label=multi_label,
                     label_universe=train_classes,
                 )
-            )
-        result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
-        if train_classes is not None:
-            result.update(
-                _seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes)
             )
         return result
 
@@ -418,18 +590,17 @@ def build_exact_match_accuracy_metric(
 
 def build_sequence_classification_metric(
     id2label: Mapping[int, str],
-    train_classes: set[str] | None = None,
+    tokenizer: Any | None = None,
+    train_input_strings: set[str] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build compute_metrics callback for single-label sequence classification."""
     normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
+    pad_token_id = _tokenizer_pad_token_id(tokenizer) if tokenizer is not None else 0
+    max_token_id = _tokenizer_max_token_id(tokenizer) if tokenizer is not None else None
 
     def compute_metrics(eval_pred: Any) -> dict[str, float]:
         """Compute accuracy and macro precision/recall/F1 from classifier logits."""
-        if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
-            predictions = eval_pred.predictions
-            labels = eval_pred.label_ids
-        else:
-            predictions, labels = eval_pred
+        predictions, labels, metric_inputs = _extract_eval_prediction(eval_pred)
 
         if isinstance(predictions, tuple):
             predictions = predictions[0]
@@ -457,15 +628,35 @@ def build_sequence_classification_metric(
             prediction == label
             for prediction, label in zip(normalized_predictions, normalized_labels)
         ]
-        accuracy = float(np.mean(matches)) if matches else 0.0
 
         predicted_code_sets = [{label} for label in normalized_predictions]
         label_code_sets = [{label} for label in normalized_labels]
-        result: dict[str, float] = {"accuracy": accuracy, "exact_match": accuracy}
-        result.update(_macro_precision_recall_f1(predicted_code_sets, label_code_sets))
-        if train_classes is not None:
+        result = _prediction_metric_set(
+            predicted_code_sets,
+            label_code_sets,
+            matches,
+            multi_label=False,
+        )
+        if train_input_strings is not None and tokenizer is not None:
+            input_strings = (
+                _decode_token_id_strings(
+                    tokenizer,
+                    metric_inputs,
+                    pad_token_id=pad_token_id,
+                    max_token_id=max_token_id,
+                )
+                if metric_inputs is not None
+                else None
+            )
             result.update(
-                _seen_unseen_macro(predicted_code_sets, label_code_sets, train_classes)
+                _seen_unseen_string_metrics(
+                    predicted_code_sets,
+                    label_code_sets,
+                    matches,
+                    input_strings,
+                    train_input_strings,
+                    multi_label=False,
+                )
             )
         return result
 

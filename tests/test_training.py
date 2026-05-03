@@ -108,8 +108,10 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
     without_eval = build_training_args(cfg, has_eval=False)
     assert with_eval.eval_strategy.value == "steps"
     assert with_eval.eval_steps == cfg.eval_steps
+    assert with_eval.include_for_metrics == ["inputs"]
     assert without_eval.eval_strategy.value == "no"
     assert without_eval.eval_steps is None
+    assert without_eval.include_for_metrics == []
     assert with_eval.seed == 123
     assert with_eval.data_seed == 321
     assert with_eval.dataloader_num_workers == 2
@@ -227,12 +229,12 @@ def test_build_training_args_disables_fp16_when_requested(
 
 def test_scope_metric_logs_for_pretrain_stage() -> None:
     """Pretraining metrics should be logged under the pretraining category."""
-    logs = {"loss": 1.2, "eval_loss": 0.9, "holdout_accuracy": 0.6, "epoch": 1.0}
+    logs = {"loss": 1.2, "eval_loss": 0.9, "holdout_val_accuracy": 0.6, "epoch": 1.0}
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretrain")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
-    assert scoped["holdout/accuracy"] == 0.6
+    assert scoped["holdout/val/accuracy"] == 0.6
     assert scoped["epoch"] == 1.0
     assert "loss" not in scoped
     assert "eval_loss" not in scoped
@@ -253,15 +255,15 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "loss": 1.2,
         "eval_loss": 0.9,
         "test_f1": 0.8,
-        "holdout_accuracy": 0.6,
+        "holdout_val_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
     }
     rewritten = wandb_utils_module.rewrite_logs_preserving_scoped_metric_keys(logs)
 
     assert rewritten["train/loss"] == 1.2
-    assert rewritten["eval/loss"] == 0.9
+    assert rewritten["val/loss"] == 0.9
     assert rewritten["test/f1"] == 0.8
-    assert rewritten["holdout/accuracy"] == 0.6
+    assert rewritten["holdout/val/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
     assert "train/pretraining/val/loss" not in rewritten
 
@@ -289,14 +291,16 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
         "loss": 1.2,
         "eval_accuracy": 0.8,
         "test_f1": 0.7,
-        "holdout_exact_match": 0.6,
+        "holdout_val_exact_match": 0.6,
+        "holdout_test_exact_match": 0.5,
     }
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "finetune")
 
     assert scoped["train/loss"] == 1.2
     assert scoped["val/accuracy"] == 0.8
     assert scoped["test/f1"] == 0.7
-    assert scoped["holdout/exact_match"] == 0.6
+    assert scoped["holdout/val/exact_match"] == 0.6
+    assert scoped["holdout/test/exact_match"] == 0.5
 
 
 def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
@@ -414,7 +418,7 @@ def test_holdout_evaluation_callback_runs_on_epoch(tmp_path: Path) -> None:
     assert trainer.calls == [
         {
             "eval_dataset": "holdout-dataset",
-            "metric_key_prefix": "holdout",
+            "metric_key_prefix": "holdout_val",
         }
     ]
 
@@ -461,8 +465,53 @@ def test_holdout_evaluation_callback_runs_on_eval_steps(tmp_path: Path) -> None:
     assert trainer.calls == [
         {
             "eval_dataset": "holdout-dataset",
-            "metric_key_prefix": "holdout",
+            "metric_key_prefix": "holdout_val",
         }
+    ]
+
+
+def test_holdout_evaluation_callback_logs_baseline_when_regular_eval_not_due(
+    tmp_path: Path,
+) -> None:
+    """Hold-out callback should add a normal-val baseline when Trainer will not."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="epoch",
+        baseline_eval_dataset="baseline-dataset",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    callback.on_epoch_end(
+        args=trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out")),
+        state=trainer_logging_module.TrainerState(epoch=1.0),
+        control=trainer_logging_module.TrainerControl(should_evaluate=False),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "baseline-dataset",
+            "metric_key_prefix": "eval",
+        },
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout_val",
+        },
     ]
 
 
@@ -1211,7 +1260,7 @@ def test_train_runs_holdout_evaluation_when_available(
         {
             "test_ds": holdout_df,
             "label2id": None,
-            "metric_key_prefix": "holdout",
+            "metric_key_prefix": "holdout_test",
         },
     ]
 
