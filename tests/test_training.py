@@ -1619,6 +1619,19 @@ def test_build_experiment_metadata_includes_training_args() -> None:
     assert payload["training_args"]["num_train_epochs"] == 4
 
 
+def test_build_experiment_metadata_includes_wandb_sweep_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime metadata should include W&B sweep linkage from generated runs."""
+    monkeypatch.setenv("WANDB_SWEEP_ID", "codllm-sweep")
+    monkeypatch.setenv("WANDB_RUN_GROUP", "sweep")
+
+    payload = wandb_utils_module.build_experiment_metadata(Config())
+
+    assert payload["runtime"]["hpc_env"]["WANDB_SWEEP_ID"] == "codllm-sweep"
+    assert payload["runtime"]["hpc_env"]["WANDB_RUN_GROUP"] == "sweep"
+
+
 def test_log_wandb_run_metadata_initializes_and_updates_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

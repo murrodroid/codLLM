@@ -49,6 +49,8 @@ Processed raw-data caches live under `Config.data_processed_dir`; prepared split
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
 prepared split content.
+Generated TOML sweep runs export `WANDB_SWEEP_ID=codllm-<experiment-name-slug>` and
+`WANDB_RUN_GROUP=<experiment-name>` unless those values are explicitly set in `[env]`.
 H100 profiles request 17 CPU cores so H100 runtime specs can use 16 DataLoader workers plus the main process.
 
 On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,

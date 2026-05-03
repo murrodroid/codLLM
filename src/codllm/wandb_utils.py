@@ -200,6 +200,8 @@ def _runtime_metadata() -> dict[str, Any]:
         "LSB_QUEUE",
         "LSB_HOSTS",
         "CUDA_VISIBLE_DEVICES",
+        "WANDB_SWEEP_ID",
+        "WANDB_RUN_GROUP",
         "HF_HOME",
         "HF_HUB_CACHE",
         "TRANSFORMERS_CACHE",

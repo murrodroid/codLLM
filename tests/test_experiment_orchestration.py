@@ -82,6 +82,49 @@ CODLLM_HF_MODEL = "google/flan-t5-small"
     assert "export CODLLM_WANDB_RUN_NAME=run" in content
 
 
+def test_sweep_env_file_sets_wandb_sweep_metadata(tmp_path: Path) -> None:
+    """Generated TOML sweep runs should populate W&B native sweep fields."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[sweep]
+CODLLM_LR = [1e-5, 2e-5]
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    content = format_env_file(spec.expanded_runs()[0], spec)
+
+    assert "export WANDB_SWEEP_ID=codllm-run" in content
+    assert "export WANDB_RUN_GROUP=run" in content
+    assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=1" in content
+
+
+def test_sweep_env_file_preserves_explicit_wandb_sweep_id(tmp_path: Path) -> None:
+    """Explicit W&B sweep env values should override generated defaults."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[env]
+WANDB_SWEEP_ID = "external-sweep"
+WANDB_RUN_GROUP = "external-group"
+
+[sweep]
+CODLLM_LR = [1e-5]
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    content = format_env_file(spec.expanded_runs()[0], spec)
+
+    assert "export WANDB_SWEEP_ID=external-sweep" in content
+    assert "export WANDB_RUN_GROUP=external-group" in content
+
+
 def test_prepare_lsf_submission_writes_script_env_files_and_manifest(
     tmp_path: Path,
 ) -> None:
