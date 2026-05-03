@@ -11,6 +11,7 @@ from codllm.config import Config, DataSourceConfig
 from codllm.input import COPENHAGEN_MAPPING
 from codllm.data.handler import (
     DataHandler,
+    DataSplits,
     DatasetMapping,
     MAPPING_REGISTRY,
     _build_text,
@@ -346,6 +347,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         assert "copenhagen" in MAPPING_REGISTRY
         assert COPENHAGEN_MAPPING.multi_code_cols == []
@@ -378,6 +380,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_processed_dataset(
@@ -406,6 +409,7 @@ class TestLoaders:
             dataset_label_column="target",
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_processed_dataset(
@@ -431,6 +435,7 @@ class TestLoaders:
                 )
             ],
             training_input=["cod", "city"],
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         with pytest.raises(ValueError):
@@ -459,6 +464,7 @@ class TestLoaders:
             },
             max_label_count=2,
             label_separator=",",
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6])
         raw = pd.DataFrame(
@@ -509,6 +515,7 @@ class TestLoaders:
             val_size=0.0,
             test_size=0.0,
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6, 7])
 
@@ -570,6 +577,7 @@ class TestLoaders:
             val_size=0.0,
             test_size=0.0,
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[])
 
@@ -645,7 +653,8 @@ class TestLoaders:
             [
                 ["text-a", "A09.001", "", "1", "20", "RID-001"],
                 ["text-b", "Q36.9", "", "1", "21", "RID-002"],
-                ["text-c", "X99.999", "", "1", "22", "RID-003"],
+                ["text-c", "Q36.9001", "", "1", "22", "RID-003"],
+                ["text-d", "X99.999", "", "1", "23", "RID-004"],
             ]
         ).to_csv(csv_path, index=False)
 
@@ -667,10 +676,9 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
-            pretrain_masterlist_path=str(masterlist_path),
-            pretrain_masterlist_sheet_name="Masterlist",
-            pretrain_transfer_sheet_name="2020to2024transfer",
-            label_harmonization_enabled=True,
+            label_harmonization_masterlist_path=str(masterlist_path),
+            label_harmonization_masterlist_sheet_name="Masterlist",
+            label_harmonization_transfer_sheet_name="2020to2024transfer",
         )
         mapping = _make_mapping(multi_code_cols=[])
 
@@ -679,9 +687,13 @@ class TestLoaders:
             mapping_registry={"test_mapping": mapping},
         )
 
-        assert result["record_id"].tolist() == ["RID-001", "RID-002"]
-        assert result["label"].tolist() == ["A09.052", "Q36.900"]
-        assert result["y_codes"].tolist() == [["A09.052"], ["Q36.900"]]
+        assert result["record_id"].tolist() == ["RID-001", "RID-002", "RID-003"]
+        assert result["label"].tolist() == ["A09.052", "Q36.900", "Q36.900"]
+        assert result["y_codes"].tolist() == [
+            ["A09.052"],
+            ["Q36.900"],
+            ["Q36.900"],
+        ]
 
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
@@ -701,6 +713,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_and_save_processed_dataset(
@@ -791,6 +804,55 @@ class TestDataHandler:
             3.0
         )
 
+    def test_get_pretraining_train_dataframe_adds_multicod_synthetic_rows(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining can synthesize multi-COD rows by merging masterlist causes."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=4)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_upsample_enabled=False,
+            pretrain_multicod_synthetic_ratio=0.5,
+            pretrain_multicod_synthetic_text_separator=" + ",
+            max_label_count=3,
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+        multicod_metrics = handler.get_pretraining_multicod_metrics()
+
+        assert pretrain_df is not None
+        synthetic = pretrain_df[
+            pretrain_df["source_id"].str.startswith("synthetic_pretrain_multicod:")
+        ]
+        assert len(pretrain_df) == 6
+        assert len(synthetic) == 2
+        assert synthetic["text"].str.contains(r"cod: .* \+ ").all()
+        assert synthetic["y_codes"].map(len).between(2, 3).all()
+        assert synthetic["label"].str.contains(",").all()
+        assert multicod_metrics is not None
+        assert multicod_metrics["enabled"] is True
+        assert multicod_metrics["ratio"] == pytest.approx(0.5)
+        assert multicod_metrics["rows_before"] == 4
+        assert multicod_metrics["rows_after"] == 6
+        assert multicod_metrics["synthetic_rows"] == 2
+        assert multicod_metrics["label_count_distribution"]["1"] == 4
+        assert (
+            sum(
+                count
+                for label_count, count in multicod_metrics[
+                    "label_count_distribution"
+                ].items()
+                if label_count != "1"
+            )
+            == 2
+        )
+
     def test_get_masterlist_label_vocabulary_loads_sorted_unique_labels(
         self, tmp_path: Path
     ) -> None:
@@ -799,8 +861,8 @@ class TestDataHandler:
         _write_masterlist(masterlist_path, num_rows=4)
 
         cfg = Config(
-            pretrain_masterlist_path=str(masterlist_path),
-            pretrain_masterlist_sheet_name="Masterlist",
+            label_harmonization_masterlist_path=str(masterlist_path),
+            label_harmonization_masterlist_sheet_name="Masterlist",
             training_input=["cod"],
             data_sources=[],
         )
@@ -891,7 +953,8 @@ class TestDataHandler:
             label_column="label",
             target_labels=["A00"],
             perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
+            perturbation_mean=0.1,
+            perturbation_variance=0.0,
             sample_fraction=1.0,
             seed=9,
         )
@@ -933,7 +996,8 @@ class TestDataHandler:
             label_column="label",
             target_labels=["A00"],
             perturbation_names=["delete_random_char"],
-            perturbations_per_sample=1,
+            perturbation_mean=0.2,
+            perturbation_variance=0.0,
             sample_fraction=1.0,
             seed=9,
         )
@@ -941,6 +1005,100 @@ class TestDataHandler:
         assert manipulated.iloc[0]["text"] != source.iloc[0]["text"]
         assert manipulated.iloc[0]["text"].startswith("cause=")
         assert "years=1 | gender=male" in manipulated.iloc[0]["text"]
+
+    def test_apply_balance_policy_tracks_visualization_metrics(self) -> None:
+        """Balance policy should expose summary metrics for W&B visualizations."""
+        cfg = Config(
+            text_field_separator=" | ",
+            balance_strategy="upsample",
+            balance_target_quantile=1.0,
+            balance_upsample_inverse_power=1.0,
+            balance_upsample_budget_ratio=1.0,
+            balance_base_perturbation_rate=1.0,
+            balance_perturbations=["delete_random_char"],
+            balance_perturbation_mean=0.1,
+            balance_perturbation_variance=0.0,
+        )
+        handler = DataHandler(cfg)
+        source = _balance_df()
+        balanced = handler._apply_balance_policy(source)
+        metrics = handler.get_training_balance_metrics()
+
+        assert metrics is not None
+        assert len(balanced) > len(source)
+        assert metrics["enabled"] is True
+        assert metrics["strategy"] == "upsample"
+        assert metrics["rows_before"] == len(source)
+        assert metrics["rows_after"] == len(balanced)
+        assert metrics["rows_added"] == len(balanced) - len(source)
+        assert metrics["base_perturbed_rows"] > 0
+        assert metrics["label_distribution_before"]["A00"] == 2
+        assert metrics["label_distribution_after"]["B00"] >= 1
+
+    def test_manipulate_classes_scales_perturbation_count_by_cod_length(
+        self,
+    ) -> None:
+        """Length-scaled perturbation settings should affect longer COD text more."""
+        cfg = Config(text_field_separator=" | ")
+        source = pd.DataFrame(
+            {
+                "text": [
+                    "cod: ab | age: 1 | sex: male",
+                    "cod: abcdefghij | age: 1 | sex: male",
+                ],
+                "label": ["A00", "A00"],
+            }
+        )
+
+        manipulated = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=["A00"],
+            perturbation_names=["delete_random_char"],
+            perturbation_mean=0.5,
+            perturbation_variance=0.0,
+            sample_fraction=1.0,
+            seed=9,
+        )
+
+        short_delta = len(source.iloc[0]["text"]) - len(manipulated.iloc[0]["text"])
+        long_delta = len(source.iloc[1]["text"]) - len(manipulated.iloc[1]["text"])
+        assert short_delta == 1
+        assert long_delta == 5
+
+    def test_manipulate_classes_is_deterministic_for_seed(self) -> None:
+        """Manipulation should remain reproducible with the configured data seed."""
+        cfg = Config(text_field_separator=" | ")
+        source = _balance_df()
+
+        first = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=None,
+            perturbation_names=["delete_random_char", "qwerty_misspell"],
+            perturbation_mean=0.2,
+            perturbation_variance=0.01,
+            sample_fraction=1.0,
+            seed=9,
+        )
+        second = manipulate_classes(
+            cfg=cfg,
+            df=source,
+            text_column="text",
+            label_column="label",
+            target_labels=None,
+            perturbation_names=["delete_random_char", "qwerty_misspell"],
+            perturbation_mean=0.2,
+            perturbation_variance=0.01,
+            sample_fraction=1.0,
+            seed=9,
+        )
+
+        assert first["text"].tolist() == second["text"].tolist()
 
     def test_split_dataframe_uses_configured_sizes(self) -> None:
         """Split sizes should be respected for train/validation/test output."""
@@ -978,6 +1136,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             dataset_size=1.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(cfg, mapping_registry={"test_mapping": _make_mapping()})
         splits = handler.get_splits()
@@ -1009,6 +1168,87 @@ class TestDataHandler:
         assert len(splits.train) == 14
         assert len(splits.val) == 4
         assert len(splits.test) == 2
+
+    def test_get_splits_reuses_prepared_splits_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Handler should reuse cached split-level data when config metadata matches."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.parquet"
+        _processed_df(num_rows=20).to_parquet(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        first_handler = DataHandler(cfg)
+        first_handler._write_processing_metadata(
+            first_handler._build_processing_metadata()
+        )
+        first_splits = first_handler.get_splits()
+
+        second_handler = DataHandler(cfg)
+
+        def fail_prepare(processed_df: pd.DataFrame) -> DataSplits:
+            raise AssertionError("prepared splits cache was not reused")
+
+        monkeypatch.setattr(
+            second_handler,
+            "_prepare_splits_from_processed",
+            fail_prepare,
+        )
+        cached_splits = second_handler.get_splits()
+
+        assert len(first_splits.train) == len(cached_splits.train)
+        assert len(first_splits.val) == len(cached_splits.val)
+        assert len(first_splits.test) == len(cached_splits.test)
+
+    def test_get_splits_rebuilds_prepared_splits_when_split_config_changes(
+        self, tmp_path: Path
+    ) -> None:
+        """Split-level cache keys should include split configuration."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.parquet"
+        _processed_df(num_rows=20).to_parquet(processed_path, index=False)
+
+        base_cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        base_handler = DataHandler(base_cfg)
+        base_handler._write_processing_metadata(
+            base_handler._build_processing_metadata()
+        )
+        base_splits = base_handler.get_splits()
+
+        changed_cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.5,
+            val_size=0.25,
+            test_size=0.25,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        changed_handler = DataHandler(changed_cfg)
+        changed_splits = changed_handler.get_splits()
+
+        assert len(base_splits.train) == 14
+        assert len(changed_splits.train) == 10
+        assert len(changed_splits.val) == 5
+        assert len(changed_splits.test) == 5
 
     def test_get_splits_ignores_balance_only_metadata_changes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1108,6 +1348,7 @@ class TestDataHandler:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(
             cfg,
@@ -1146,6 +1387,7 @@ class TestDataHandler:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(
             cfg,
@@ -1199,6 +1441,7 @@ class TestDataHandler:
             test_size=0.25,
             balance_strategy="none",
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping()}
 
@@ -1265,6 +1508,7 @@ class TestDataHandler:
             test_size=0.25,
             balance_strategy="none",
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping(multi_code_cols=[2, 6])}
 
@@ -1312,6 +1556,107 @@ class TestDataHandler:
         assert len(splits.train) == 8
         assert len(splits.val) == 1
         assert len(splits.test) == 1
+
+    def test_get_splits_holds_out_configured_source_before_sampling(
+        self, tmp_path: Path
+    ) -> None:
+        """hold_out_dataset should remove one source from train/val/test splits."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.concat(
+            [
+                _processed_df(num_rows=20),
+                _processed_df(num_rows=5).assign(
+                    source_id="external",
+                    record_id=lambda df: [f"EXT-{idx:03d}" for idx in range(len(df))],
+                ),
+            ],
+            ignore_index=True,
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            dataset_size=0.5,
+            hold_out_dataset="external",
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        assert len(splits.train) == 8
+        assert len(splits.val) == 1
+        assert len(splits.test) == 1
+        assert splits.holdout is not None
+        assert len(splits.holdout) == 5
+        assert set(splits.train["source_id"]) == {"test_source"}
+        assert set(splits.val["source_id"]) == {"test_source"}
+        assert set(splits.test["source_id"]) == {"test_source"}
+        assert set(splits.holdout["source_id"]) == {"external"}
+
+    def test_get_splits_rejects_unknown_hold_out_dataset(self, tmp_path: Path) -> None:
+        """Unknown hold-out source ids should fail before training starts."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        _processed_df(num_rows=10).to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            hold_out_dataset="missing_source",
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+
+        with pytest.raises(ValueError, match="missing_source"):
+            handler.get_splits()
+
+    def test_get_splits_samples_holdout_eval_when_enabled(self, tmp_path: Path) -> None:
+        """hold_out_evaluate_ratio should sample holdout rows for interim eval."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.concat(
+            [
+                _processed_df(num_rows=10),
+                _processed_df(num_rows=20).assign(
+                    source_id="external",
+                    record_id=lambda df: [f"EXT-{idx:03d}" for idx in range(len(df))],
+                ),
+            ],
+            ignore_index=True,
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            hold_out_dataset="external",
+            hold_out_evaluate_per="epoch",
+            hold_out_evaluate_ratio=0.25,
+            dataset_size=1.0,
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        assert splits.holdout is not None
+        assert splits.holdout_eval is not None
+        assert len(splits.holdout) == 20
+        assert len(splits.holdout_eval) == 5
+        assert set(splits.holdout_eval["source_id"]) == {"external"}
 
     def test_get_splits_applies_base_perturbation_to_all_labels(
         self, tmp_path: Path

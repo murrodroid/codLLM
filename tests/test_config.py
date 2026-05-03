@@ -46,7 +46,8 @@ ENV_KEYS = [
     "CODLLM_BALANCE_STRATEGY",
     "CODLLM_BALANCE_TARGET_QUANTILE",
     "CODLLM_BALANCE_PERTURBATIONS",
-    "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE",
+    "CODLLM_BALANCE_PERTURBATION_MEAN",
+    "CODLLM_BALANCE_PERTURBATION_VARIANCE",
     "CODLLM_BALANCE_UPSAMPLE_LABELS",
     "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER",
     "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO",
@@ -62,6 +63,9 @@ ENV_KEYS = [
     "CODLLM_TORCH_DTYPE",
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
+    "CODLLM_HOLD_OUT_DATASET",
+    "CODLLM_HOLD_OUT_EVALUATE_PER",
+    "CODLLM_HOLD_OUT_EVALUATE_RATIO",
     "CODLLM_TRAIN_SIZE",
     "CODLLM_VAL_SIZE",
     "CODLLM_TEST_SIZE",
@@ -78,7 +82,12 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
+    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO",
+    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
+    "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
+    "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME",
+    "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME",
     "CODLLM_INFERENCE_VALIDATE_REGISTRY",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
@@ -116,6 +125,12 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     assert cfg.max_grad_norm == 0.5
     assert cfg.warmup_ratio == 0.1
     assert cfg.balance_strategy == "none"
+    assert cfg.label_harmonization_enabled is True
+    assert cfg.label_harmonization_masterlist_path == (
+        "data/raw/ICD10h_Masterlist_2024.xlsx"
+    )
+    assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
+    assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
 
 
 def test_config_from_env_applies_runtime_overrides(
@@ -165,7 +180,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_BALANCE_STRATEGY", "upsample")
     monkeypatch.setenv("CODLLM_BALANCE_TARGET_QUANTILE", "0.6")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS", "delete_random_char")
-    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE", "2")
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_MEAN", "0.08")
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_VARIANCE", "0.02")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_LABELS", "A00,A01")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0.6")
     monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "0.25")
@@ -181,6 +197,9 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_TORCH_DTYPE", "float32")
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_DATASET", "amsterdam")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_PER", "epoche")
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
     monkeypatch.setenv("CODLLM_VAL_SIZE", "0.2")
     monkeypatch.setenv("CODLLM_TEST_SIZE", "0.1")
@@ -202,7 +221,17 @@ def test_config_from_env_applies_runtime_overrides(
         "delete_random_char,qwerty_misspell",
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "0.2")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
+    monkeypatch.setenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
+        "data/raw/ICD10h_Masterlist_2024.xlsx",
+    )
+    monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME", "Masterlist")
+    monkeypatch.setenv(
+        "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME", "2020to2024transfer"
+    )
     monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
@@ -265,7 +294,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.balance_strategy == "upsample"
     assert cfg.balance_target_quantile == 0.6
     assert cfg.balance_perturbations == ["delete_random_char"]
-    assert cfg.balance_perturbations_per_sample == 2
+    assert cfg.balance_perturbation_mean == 0.08
+    assert cfg.balance_perturbation_variance == 0.02
     assert cfg.balance_upsample_labels == ["A00", "A01"]
     assert cfg.balance_upsample_inverse_power == 0.6
     assert cfg.balance_upsample_budget_ratio == 0.25
@@ -281,6 +311,9 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.torch_dtype == "float32"
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
+    assert cfg.hold_out_dataset == "amsterdam"
+    assert cfg.hold_out_evaluate_per == "epoch"
+    assert cfg.hold_out_evaluate_ratio == 0.2
     assert cfg.train_size == 0.7
     assert cfg.val_size == 0.2
     assert cfg.test_size == 0.1
@@ -300,7 +333,14 @@ def test_config_from_env_applies_runtime_overrides(
         "qwerty_misspell",
     ]
     assert cfg.pretrain_upsample_perturbations_per_sample == 2
+    assert cfg.pretrain_multicod_synthetic_ratio == 0.2
+    assert cfg.pretrain_multicod_synthetic_text_separator == " + "
     assert cfg.label_harmonization_enabled is True
+    assert cfg.label_harmonization_masterlist_path == (
+        "data/raw/ICD10h_Masterlist_2024.xlsx"
+    )
+    assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
+    assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
     assert cfg.inference_validate_registry is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
@@ -317,6 +357,22 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.wandb.log_model == "checkpoint"
     assert base.seed == 42
     assert base.output_dir == "./runs"
+
+
+def test_config_from_env_uses_pretrain_masterlist_env_as_harmonization_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy masterlist env names should still configure harmonization when needed."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_PATH", "custom-masterlist.xlsx")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME", "Codes")
+    monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "Transfer")
+
+    cfg = config_from_env()
+
+    assert cfg.label_harmonization_masterlist_path == "custom-masterlist.xlsx"
+    assert cfg.label_harmonization_masterlist_sheet_name == "Codes"
+    assert cfg.label_harmonization_transfer_sheet_name == "Transfer"
 
 
 def test_config_from_env_rejects_invalid_boolean(
@@ -501,6 +557,26 @@ def test_config_from_env_rejects_invalid_training_input(
         config_from_env()
 
 
+def test_config_from_env_rejects_invalid_holdout_evaluate_per(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hold-out interim evaluation cadence should be constrained."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_PER", "daily")
+    with pytest.raises(ValueError, match="CODLLM_HOLD_OUT_EVALUATE_PER"):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_holdout_evaluate_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hold-out interim evaluation ratio should stay in the sampling interval."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0")
+    with pytest.raises(ValueError, match="CODLLM_HOLD_OUT_EVALUATE_RATIO"):
+        config_from_env()
+
+
 def test_config_from_env_rejects_empty_input_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -537,6 +613,26 @@ def test_config_from_env_rejects_invalid_balance_base_perturbation_rate(
     """Base perturbation rate should stay inside [0, 1]."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "1.5")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_balance_perturbation_mean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Balance perturbation mean should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_MEAN", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_balance_perturbation_variance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Balance perturbation variance should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_VARIANCE", "-0.1")
     with pytest.raises(ValueError):
         config_from_env()
 
@@ -617,6 +713,26 @@ def test_config_from_env_rejects_invalid_pretrain_perturbations_per_sample(
     """Pretraining perturbations per sample must be at least one."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_pretrain_multicod_synthetic_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining multi-COD synthetic ratio should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_empty_pretrain_multicod_separator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining multi-COD text separator should not be empty."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", "")
     with pytest.raises(ValueError):
         config_from_env()
 

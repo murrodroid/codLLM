@@ -5,11 +5,13 @@ import pandas as pd
 
 @dataclass
 class DataSplits:
-    """Container for train, validation, and test dataframe splits."""
+    """Container for train, validation, test, and optional held-out dataframe splits."""
 
     train: pd.DataFrame
     val: pd.DataFrame
     test: pd.DataFrame
+    holdout: pd.DataFrame | None = None
+    holdout_eval: pd.DataFrame | None = None
 
 
 def resolve_training_frames(

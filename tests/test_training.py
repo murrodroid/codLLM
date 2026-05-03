@@ -108,8 +108,10 @@ def test_build_training_args_v5_compatible(monkeypatch: pytest.MonkeyPatch) -> N
     without_eval = build_training_args(cfg, has_eval=False)
     assert with_eval.eval_strategy.value == "steps"
     assert with_eval.eval_steps == cfg.eval_steps
+    assert with_eval.include_for_metrics == ["inputs"]
     assert without_eval.eval_strategy.value == "no"
     assert without_eval.eval_steps is None
+    assert without_eval.include_for_metrics == []
     assert with_eval.seed == 123
     assert with_eval.data_seed == 321
     assert with_eval.dataloader_num_workers == 2
@@ -227,11 +229,12 @@ def test_build_training_args_disables_fp16_when_requested(
 
 def test_scope_metric_logs_for_pretrain_stage() -> None:
     """Pretraining metrics should be logged under the pretraining category."""
-    logs = {"loss": 1.2, "eval_loss": 0.9, "epoch": 1.0}
+    logs = {"loss": 1.2, "eval_loss": 0.9, "holdout_val_accuracy": 0.6, "epoch": 1.0}
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretrain")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
+    assert scoped["holdout/val/accuracy"] == 0.6
     assert scoped["epoch"] == 1.0
     assert "loss" not in scoped
     assert "eval_loss" not in scoped
@@ -252,14 +255,25 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "loss": 1.2,
         "eval_loss": 0.9,
         "test_f1": 0.8,
+        "holdout_val_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
+        "epoch": 3.0,
+        "step": 42,
+        "global_step": 42,
     }
     rewritten = wandb_utils_module.rewrite_logs_preserving_scoped_metric_keys(logs)
 
     assert rewritten["train/loss"] == 1.2
-    assert rewritten["eval/loss"] == 0.9
+    assert rewritten["val/loss"] == 0.9
     assert rewritten["test/f1"] == 0.8
+    assert rewritten["holdout/val/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
+    assert rewritten["epoch"] == 3.0
+    assert rewritten["step"] == 42
+    assert rewritten["global_step"] == 42
+    assert "train/epoch" not in rewritten
+    assert "train/step" not in rewritten
+    assert "train/global_step" not in rewritten
     assert "train/pretraining/val/loss" not in rewritten
 
 
@@ -282,12 +296,39 @@ def test_patch_transformers_wandb_log_rewrite_preserves_scoped_keys() -> None:
 
 def test_scope_metric_logs_for_finetune_stage() -> None:
     """Fine-tuning metrics should route to train/val/test categories."""
-    logs = {"loss": 1.2, "eval_accuracy": 0.8, "test_f1": 0.7}
+    logs = {
+        "loss": 1.2,
+        "eval_accuracy": 0.8,
+        "test_f1": 0.7,
+        "holdout_val_exact_match": 0.6,
+        "holdout_test_exact_match": 0.5,
+    }
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "finetune")
 
     assert scoped["train/loss"] == 1.2
     assert scoped["val/accuracy"] == 0.8
     assert scoped["test/f1"] == 0.7
+    assert scoped["holdout/val/exact_match"] == 0.6
+    assert scoped["holdout/test/exact_match"] == 0.5
+
+
+def test_metric_artifact_scope_uses_stage_scoped_namespace() -> None:
+    """Metric artifact scopes should match W&B metric namespaces."""
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("eval", "finetune") == "val"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("holdout_val", "finetune")
+        == "holdout/val"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("holdout_test", "finetune")
+        == "holdout/test"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("eval", "pretrain")
+        == "pretraining/val"
+    )
 
 
 def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
@@ -370,6 +411,136 @@ def test_evaluate_every_n_epochs_callback_runs_on_interval_and_final_epoch(
         control=final_control,
     )
     assert final_updated.should_evaluate is True
+
+
+def test_holdout_evaluation_callback_runs_on_epoch(tmp_path: Path) -> None:
+    """Hold-out callback should evaluate sampled holdout rows at epoch boundaries."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="epoch",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording holdout evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    callback.on_epoch_end(
+        args=trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out")),
+        state=trainer_logging_module.TrainerState(epoch=1.0),
+        control=trainer_logging_module.TrainerControl(),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout_val",
+        }
+    ]
+
+
+def test_holdout_evaluation_callback_runs_on_eval_steps(tmp_path: Path) -> None:
+    """Hold-out callback should evaluate sampled holdout rows at eval-step intervals."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="steps",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording holdout evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    args = trainer_logging_module.TrainingArguments(
+        output_dir=str(tmp_path / "out"),
+        eval_steps=5,
+    )
+    callback.on_step_end(
+        args=args,
+        state=trainer_logging_module.TrainerState(global_step=4),
+        control=trainer_logging_module.TrainerControl(),
+    )
+    callback.on_step_end(
+        args=args,
+        state=trainer_logging_module.TrainerState(global_step=5),
+        control=trainer_logging_module.TrainerControl(),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout_val",
+        }
+    ]
+
+
+def test_holdout_evaluation_callback_logs_baseline_when_regular_eval_not_due(
+    tmp_path: Path,
+) -> None:
+    """Hold-out callback should add a normal-val baseline when Trainer will not."""
+    callback = trainer_logging_module.HoldoutEvaluationCallback(
+        evaluate_per="epoch",
+        baseline_eval_dataset="baseline-dataset",
+        eval_dataset="holdout-dataset",
+        eval_steps=5,
+    )
+
+    class DummyTrainer:
+        """Trainer stub recording evaluation calls."""
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def evaluate(self, eval_dataset: Any, metric_key_prefix: str) -> None:
+            self.calls.append(
+                {
+                    "eval_dataset": eval_dataset,
+                    "metric_key_prefix": metric_key_prefix,
+                }
+            )
+
+    trainer = DummyTrainer()
+    callback.attach_trainer(trainer)
+    callback.on_epoch_end(
+        args=trainer_logging_module.TrainingArguments(output_dir=str(tmp_path / "out")),
+        state=trainer_logging_module.TrainerState(epoch=1.0),
+        control=trainer_logging_module.TrainerControl(should_evaluate=False),
+    )
+
+    assert trainer.calls == [
+        {
+            "eval_dataset": "baseline-dataset",
+            "metric_key_prefix": "eval",
+        },
+        {
+            "eval_dataset": "holdout-dataset",
+            "metric_key_prefix": "holdout_val",
+        },
+    ]
 
 
 def test_build_training_args_best_save_strategy_sets_metric(
@@ -745,6 +916,7 @@ def test_train_uses_validation_split_from_data_handler(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -812,6 +984,7 @@ def test_train_sequence_classification_builds_masterlist_label_space(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -923,6 +1096,7 @@ def test_train_omits_eval_when_validation_is_empty(
         stage: stages_module.TrainingStage,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1028,6 +1202,97 @@ def test_train_runs_final_test_evaluation(
     assert captured["test_ds"] is splits.test
 
 
+def test_train_runs_holdout_evaluation_when_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """train should evaluate a configured held-out source after normal test eval."""
+    cfg = Config(
+        output_dir=str(tmp_path / "runs"),
+        hold_out_dataset="external",
+        hold_out_evaluate_per="epoch",
+    )
+    holdout_df = pd.DataFrame(
+        {
+            "source_id": ["external", "external"],
+            "text": ["h1", "h2"],
+            "label": ["A04", "A05"],
+        }
+    )
+    holdout_eval_df = holdout_df.iloc[:1].copy()
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),
+        test=pd.DataFrame({"text": ["x1"], "label": ["A02"]}),
+        holdout=holdout_df,
+        holdout_eval=holdout_eval_df,
+    )
+
+    class DummyDataHandler:
+        """Stub data handler that returns fixed splits with a holdout split."""
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            return splits
+
+    captured_train: dict[str, Any] = {}
+
+    def fake_train_from_datasets(
+        cfg: Config,
+        stage: stages_module.TrainingStage,
+        train_ds: Any,
+        eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
+        run_data_metadata: Optional[dict[str, Any]] = None,
+        label2id: Optional[dict[str, int]] = None,
+        id2label: Optional[dict[int, str]] = None,
+    ) -> tuple[str, str]:
+        del cfg, stage, train_ds, eval_ds, run_data_metadata, label2id, id2label
+        captured_train["holdout_eval_ds"] = holdout_eval_ds
+        return "trainer", "tokenizer"
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "_train_from_datasets",
+        fake_train_from_datasets,
+    )
+    captured_calls: list[dict[str, Any]] = []
+
+    def fake_evaluate_test_split(
+        cfg: Config,
+        trainer: Any,
+        tokenizer: Any,
+        test_ds: Any,
+        label2id: Optional[dict[str, int]] = None,
+        metric_key_prefix: str = "test",
+    ) -> dict[str, float]:
+        captured_calls.append(
+            {
+                "test_ds": test_ds,
+                "label2id": label2id,
+                "metric_key_prefix": metric_key_prefix,
+            }
+        )
+        return {f"{metric_key_prefix}_accuracy": 1.0}
+
+    monkeypatch.setattr(
+        pipeline_module, "evaluate_test_split", fake_evaluate_test_split
+    )
+    pipeline_module.train(cfg, data_handler=DummyDataHandler())
+
+    assert captured_train["holdout_eval_ds"] is holdout_eval_df
+    assert captured_calls == [
+        {
+            "test_ds": splits.test,
+            "label2id": None,
+            "metric_key_prefix": "test",
+        },
+        {
+            "test_ds": holdout_df,
+            "label2id": None,
+            "metric_key_prefix": "holdout_test",
+        },
+    ]
+
+
 def test_train_uses_pretraining_dataset_when_available(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1068,6 +1333,13 @@ def test_train_uses_pretraining_dataset_when_available(
                 "perturbation_rate": 1.0,
             }
 
+        def get_pretraining_multicod_metrics(self) -> dict[str, Any]:
+            return {
+                "enabled": True,
+                "ratio": 0.25,
+                "synthetic_rows": 5,
+            }
+
     captured: dict[str, Any] = {}
 
     def fake_train_with_optional_pretraining(
@@ -1077,6 +1349,7 @@ def test_train_uses_pretraining_dataset_when_available(
         pretrain_ds: Any,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1130,6 +1403,11 @@ def test_train_uses_pretraining_dataset_when_available(
         "rows_added": 18,
         "perturbation_rate": 1.0,
     }
+    assert captured["run_data_metadata"]["pretraining"]["multicod_synthetic"] == {
+        "enabled": True,
+        "ratio": 0.25,
+        "synthetic_rows": 5,
+    }
 
 
 def test_train_with_pretraining_uses_stage_specific_hyperparameters(
@@ -1173,6 +1451,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
         disable_fp16: bool,
         train_ds: Any,
         eval_ds: Optional[Any] = None,
+        holdout_eval_ds: Optional[Any] = None,
         run_data_metadata: Optional[dict[str, Any]] = None,
         label2id: Optional[dict[str, int]] = None,
         id2label: Optional[dict[int, str]] = None,
@@ -1184,6 +1463,7 @@ def test_train_with_pretraining_uses_stage_specific_hyperparameters(
             disable_fp16,
             train_ds,
             eval_ds,
+            holdout_eval_ds,
             run_data_metadata,
             label2id,
             id2label,
@@ -1414,6 +1694,19 @@ def test_build_experiment_metadata_includes_training_args() -> None:
 
     assert payload["training_args"]["learning_rate"] == 3e-5
     assert payload["training_args"]["num_train_epochs"] == 4
+
+
+def test_build_experiment_metadata_includes_wandb_sweep_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime metadata should include W&B sweep linkage from generated runs."""
+    monkeypatch.setenv("WANDB_SWEEP_ID", "codllm-sweep")
+    monkeypatch.setenv("WANDB_RUN_GROUP", "sweep")
+
+    payload = wandb_utils_module.build_experiment_metadata(Config())
+
+    assert payload["runtime"]["hpc_env"]["WANDB_SWEEP_ID"] == "codllm-sweep"
+    assert payload["runtime"]["hpc_env"]["WANDB_RUN_GROUP"] == "sweep"
 
 
 def test_log_wandb_run_metadata_initializes_and_updates_config(

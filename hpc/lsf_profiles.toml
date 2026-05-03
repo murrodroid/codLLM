@@ -20,9 +20,75 @@ job_name_prefix = "codllm"
 storage_folder = "/work3/$USER"
 modules = ["cuda/12.2"]
 
+[h100-9h]
+queue = "gpuh100"
+wall_time = "9:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-8h]
+queue = "gpuh100"
+wall_time = "8:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-7h]
+queue = "gpuh100"
+wall_time = "7:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-6h]
+queue = "gpuh100"
+wall_time = "6:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
 [h100-5h]
 queue = "gpuh100"
 wall_time = "5:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-4h]
+queue = "gpuh100"
+wall_time = "4:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+[h100-3h]
+queue = "gpuh100"
+wall_time = "3:00"
 cores = 17
 memory = "4GB"
 gpu = "num=1:mode=exclusive_process"

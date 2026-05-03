@@ -20,6 +20,7 @@ from codllm.settings.types import (
     LRSchedulerType,
     ModelTask,
     MultiCodSyntheticSourceScope,
+    HoldOutEvaluatePer,
     SaveStrategy,
     SaveStrategyBestMetric,
     TorchDType,
@@ -363,6 +364,42 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if dataset_size is not None:
         cfg.dataset_size = dataset_size
 
+    hold_out_dataset = os.getenv("CODLLM_HOLD_OUT_DATASET")
+    if hold_out_dataset is not None:
+        normalized_hold_out_dataset = hold_out_dataset.strip()
+        cfg.hold_out_dataset = normalized_hold_out_dataset or None
+
+    hold_out_evaluate_per = os.getenv("CODLLM_HOLD_OUT_EVALUATE_PER")
+    if hold_out_evaluate_per is not None:
+        normalized_hold_out_evaluate_per = hold_out_evaluate_per.strip().lower()
+        if normalized_hold_out_evaluate_per in {"", "none", "null", "no", "off"}:
+            cfg.hold_out_evaluate_per = None
+        else:
+            aliases = {
+                "step": "steps",
+                "steps": "steps",
+                "epoch": "epoch",
+                "epochs": "epoch",
+                "epoche": "epoch",
+            }
+            if normalized_hold_out_evaluate_per not in aliases:
+                allowed = "epoch, steps, none"
+                raise ValueError(
+                    f"CODLLM_HOLD_OUT_EVALUATE_PER must be one of: {allowed}."
+                )
+            cfg.hold_out_evaluate_per = cast(
+                HoldOutEvaluatePer,
+                aliases[normalized_hold_out_evaluate_per],
+            )
+
+    hold_out_evaluate_ratio = _parse_env_float("CODLLM_HOLD_OUT_EVALUATE_RATIO")
+    if hold_out_evaluate_ratio is not None:
+        if hold_out_evaluate_ratio <= 0 or hold_out_evaluate_ratio > 1:
+            raise ValueError(
+                "CODLLM_HOLD_OUT_EVALUATE_RATIO must be in the interval (0, 1]."
+            )
+        cfg.hold_out_evaluate_ratio = hold_out_evaluate_ratio
+
     lr = _parse_env_float("CODLLM_LR")
     if lr is not None:
         if lr <= 0:
@@ -414,6 +451,59 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         and pretrain_transfer_sheet_name.strip() != ""
     ):
         cfg.pretrain_transfer_sheet_name = pretrain_transfer_sheet_name.strip()
+
+    label_harmonization_enabled = _parse_env_bool("CODLLM_LABEL_HARMONIZATION_ENABLED")
+    if label_harmonization_enabled is not None:
+        cfg.label_harmonization_enabled = label_harmonization_enabled
+
+    label_harmonization_masterlist_path = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH"
+    )
+    if (
+        label_harmonization_masterlist_path is not None
+        and label_harmonization_masterlist_path.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_path = (
+            label_harmonization_masterlist_path.strip()
+        )
+    elif (
+        pretrain_masterlist_path is not None and pretrain_masterlist_path.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_path = cfg.pretrain_masterlist_path
+
+    label_harmonization_masterlist_sheet_name = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME"
+    )
+    if (
+        label_harmonization_masterlist_sheet_name is not None
+        and label_harmonization_masterlist_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_sheet_name = (
+            label_harmonization_masterlist_sheet_name.strip()
+        )
+    elif (
+        pretrain_masterlist_sheet_name is not None
+        and pretrain_masterlist_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_sheet_name = (
+            cfg.pretrain_masterlist_sheet_name
+        )
+
+    label_harmonization_transfer_sheet_name = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME"
+    )
+    if (
+        label_harmonization_transfer_sheet_name is not None
+        and label_harmonization_transfer_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_transfer_sheet_name = (
+            label_harmonization_transfer_sheet_name.strip()
+        )
+    elif (
+        pretrain_transfer_sheet_name is not None
+        and pretrain_transfer_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_transfer_sheet_name = cfg.pretrain_transfer_sheet_name
 
     pretrain_num_train_epochs = _parse_env_int("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS")
     if pretrain_num_train_epochs is not None:
@@ -496,6 +586,28 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             pretrain_upsample_perturbations_per_sample
         )
 
+    pretrain_multicod_synthetic_ratio = _parse_env_float(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO"
+    )
+    if pretrain_multicod_synthetic_ratio is not None:
+        if pretrain_multicod_synthetic_ratio < 0:
+            raise ValueError(
+                "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO must be non-negative."
+            )
+        cfg.pretrain_multicod_synthetic_ratio = pretrain_multicod_synthetic_ratio
+
+    pretrain_multicod_synthetic_text_separator = os.getenv(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR"
+    )
+    if pretrain_multicod_synthetic_text_separator is not None:
+        if pretrain_multicod_synthetic_text_separator == "":
+            raise ValueError(
+                "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR must not be empty."
+            )
+        cfg.pretrain_multicod_synthetic_text_separator = (
+            pretrain_multicod_synthetic_text_separator
+        )
+
     masterlist_inject_enabled = _parse_env_bool("CODLLM_MASTERLIST_INJECT_ENABLED")
     if masterlist_inject_enabled is not None:
         cfg.masterlist_inject_enabled = masterlist_inject_enabled
@@ -534,10 +646,6 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         cfg.masterlist_inject_perturbations_per_sample = (
             masterlist_inject_perturbations_per_sample
         )
-
-    label_harmonization_enabled = _parse_env_bool("CODLLM_LABEL_HARMONIZATION_ENABLED")
-    if label_harmonization_enabled is not None:
-        cfg.label_harmonization_enabled = label_harmonization_enabled
 
     inference_validate_registry = _parse_env_bool("CODLLM_INFERENCE_VALIDATE_REGISTRY")
     if inference_validate_registry is not None:
@@ -614,15 +722,21 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             p.strip() for p in balance_perturbations.split(",") if p.strip()
         ]
 
-    balance_perturbations_per_sample = _parse_env_int(
-        "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE"
+    balance_perturbation_mean = _parse_env_float("CODLLM_BALANCE_PERTURBATION_MEAN")
+    if balance_perturbation_mean is not None:
+        if balance_perturbation_mean < 0:
+            raise ValueError("CODLLM_BALANCE_PERTURBATION_MEAN must be non-negative.")
+        cfg.balance_perturbation_mean = balance_perturbation_mean
+
+    balance_perturbation_variance = _parse_env_float(
+        "CODLLM_BALANCE_PERTURBATION_VARIANCE"
     )
-    if balance_perturbations_per_sample is not None:
-        if balance_perturbations_per_sample < 1:
+    if balance_perturbation_variance is not None:
+        if balance_perturbation_variance < 0:
             raise ValueError(
-                "CODLLM_BALANCE_PERTURBATIONS_PER_SAMPLE must be at least 1."
+                "CODLLM_BALANCE_PERTURBATION_VARIANCE must be non-negative."
             )
-        cfg.balance_perturbations_per_sample = balance_perturbations_per_sample
+        cfg.balance_perturbation_variance = balance_perturbation_variance
 
     balance_upsample_labels = os.getenv("CODLLM_BALANCE_UPSAMPLE_LABELS")
     if balance_upsample_labels is not None and balance_upsample_labels.strip() != "":

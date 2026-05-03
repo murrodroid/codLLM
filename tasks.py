@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from typing import Iterator
 
 from invoke import Collection, Context, Exit, task
 
+from codllm.config import config_from_env
+from codllm.data import DataHandler
 from codllm.experiments import (
     ExperimentRun,
     ExperimentSpec,
@@ -146,6 +150,43 @@ def hpc_storage(ctx: Context) -> None:
             print(f"WARNING: {key} is outside RUN_STORAGE_DIR: {value}")
 
 
+@task(name="build")
+def hpc_build(
+    ctx: Context,
+    config: str,
+    profile: str = "h100-10h",
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    sweep_index: int = 0,
+    force_reprocess: bool | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Build reusable data caches for an experiment spec without starting training."""
+    del ctx
+    spec = load_experiment_spec(config)
+    if spec.command != "train":
+        raise Exit(
+            f"Task 'hpc.build' only supports command='train' specs, got {spec.command!r}.",
+            code=2,
+        )
+    lsf_profile = load_lsf_profile(profile, profiles)
+
+    runs = _select_runs(spec, sweep_index)
+    print(
+        f"Building data dependencies for {len(runs)} run(s) from {spec.path} "
+        f"with profile {lsf_profile.name}."
+    )
+    for run_number, run in enumerate(runs, start=1):
+        _build_run_dependencies(
+            spec=spec,
+            run=run,
+            profile=lsf_profile,
+            run_number=run_number,
+            total_runs=len(runs),
+            force_reprocess=force_reprocess,
+            dry_run=dry_run,
+        )
+
+
 @task(name="submit")
 def hpc_submit(
     ctx: Context,
@@ -181,6 +222,104 @@ def _select_run(spec: ExperimentSpec, sweep_index: int) -> ExperimentRun:
     if len(runs) > 1:
         print(f"Selected sweep run {sweep_index}/{len(runs)} from {spec.name}.")
     return runs[sweep_index - 1]
+
+
+def _select_runs(spec: ExperimentSpec, sweep_index: int) -> list[ExperimentRun]:
+    """Select one or all expanded runs for build-oriented tasks."""
+    if sweep_index == 0:
+        return spec.expanded_runs()
+    return [_select_run(spec, sweep_index)]
+
+
+def _build_run_dependencies(
+    spec: ExperimentSpec,
+    run: ExperimentRun,
+    profile: LsfProfile,
+    run_number: int,
+    total_runs: int,
+    force_reprocess: bool | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Build cached data artifacts for one expanded experiment run."""
+    if run.command != "train":
+        raise Exit(
+            f"Task 'hpc.build' only supports command='train' runs, got {run.command!r}.",
+            code=2,
+        )
+
+    effective_force_reprocess = (
+        run.force_reprocess if force_reprocess is None else force_reprocess
+    )
+    print(f"[{run_number}/{total_runs}] {run.name}")
+    if dry_run:
+        print(
+            "  would build processed data and prepared splits "
+            f"(force_reprocess={int(effective_force_reprocess)})"
+        )
+        return
+
+    runtime_defaults = _hpc_runtime_env_defaults(profile)
+    run_env = runtime_defaults | run.env_with_runtime_metadata(spec)
+    with _temporary_environ(run_env):
+        cfg = config_from_env()
+        print(f"  CODLLM_DATA_RAW_DIR={cfg.data_raw_dir}")
+        print(f"  CODLLM_DATA_PROCESSED_DIR={cfg.data_processed_dir}")
+        print(f"  CODLLM_OUTPUT_DIR={cfg.output_dir}")
+        handler = DataHandler(cfg)
+        splits = handler.get_splits(force_reprocess=effective_force_reprocess)
+        print(
+            "  prepared splits: "
+            f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}"
+        )
+        if splits.holdout is not None:
+            print(f"  holdout rows: {len(splits.holdout)}")
+        if splits.holdout_eval is not None:
+            print(f"  holdout eval rows: {len(splits.holdout_eval)}")
+
+        if cfg.pretrain_enabled:
+            pretrain_df = handler.get_pretraining_train_dataframe()
+            pretrain_rows = 0 if pretrain_df is None else len(pretrain_df)
+            print(f"  pretraining dataframe rows: {pretrain_rows}")
+        if cfg.model_task == "sequence_classification":
+            labels = handler.get_masterlist_label_vocabulary()
+            print(f"  classifier label vocabulary: {len(labels)} labels")
+
+
+def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
+    """Return login-node defaults that mirror the generated LSF script."""
+    storage_folder = os.environ.get("STORAGE_FOLDER") or os.path.expandvars(
+        profile.storage_folder
+    )
+    if profile.run_storage_dir:
+        profile_run_storage_dir = os.path.expandvars(profile.run_storage_dir)
+    else:
+        profile_run_storage_dir = str(Path(storage_folder) / "codllm")
+    run_storage_dir = os.environ.get("RUN_STORAGE_DIR") or profile_run_storage_dir
+    project_dir = Path.cwd()
+
+    defaults = {
+        "STORAGE_FOLDER": storage_folder,
+        "RUN_STORAGE_DIR": run_storage_dir,
+        "CODLLM_OUTPUT_DIR": str(Path(run_storage_dir) / "runs"),
+        "CODLLM_DATA_RAW_DIR": str(project_dir / "data/raw"),
+        "CODLLM_DATA_PROCESSED_DIR": str(Path(run_storage_dir) / "data/processed"),
+    }
+    return {key: os.environ.get(key, value) for key, value in defaults.items()}
+
+
+@contextmanager
+def _temporary_environ(updates: dict[str, str]) -> Iterator[None]:
+    """Temporarily apply environment overrides while preserving the caller env."""
+    previous_values = {key: os.environ.get(key) for key in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for key, previous_value in previous_values.items():
+            if previous_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous_value
 
 
 def _format_spec_summary(spec: ExperimentSpec) -> str:
@@ -246,6 +385,7 @@ experiments.add_task(experiments_plan)
 namespace.add_collection(experiments)
 
 hpc = Collection("hpc")
+hpc.add_task(hpc_build)
 hpc.add_task(hpc_profiles)
 hpc.add_task(hpc_storage)
 hpc.add_task(hpc_submit)

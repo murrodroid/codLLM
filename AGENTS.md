@@ -21,6 +21,9 @@
   * To list configured LSF profiles, use `uv run invoke hpc.profiles`.
   * To inspect uv/cache paths before HPC work, source `hpc/env.sh` and run `bash hpc/storage-check.sh`.
     If invoke is already installed, `uv run --no-sync invoke hpc.storage` provides the same check.
+  * To prebuild processed-data and prepared-split caches for an experiment spec on HPC, use
+    `uv run invoke hpc.build --config <path> --profile <profile>`. Use the same profile intended for `hpc.submit`.
+    By default this builds all expanded runs; pass `--sweep-index <n>` to build one run.
   * To generate and submit an LSF job, use
     `uv run invoke hpc.submit --config <path> --profile <profile> --user <lucas|elias>`.
   * To generate an LSF job without submitting it, add `--dry-run`.
@@ -42,6 +45,17 @@ Experiment orchestration is handled separately from model code. Human-editable e
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
 new handwritten shell scripts in `jobs/`.
+Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
+under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
+balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
+prepared split content.
+Generated TOML sweep runs export `WANDB_SWEEP_ID=codllm-<experiment-name-slug>` and
+`WANDB_RUN_GROUP=<experiment-name>` unless those values are explicitly set in `[env]`.
+Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
+`<scope>/errors/*`, where scopes include `val`, `test`, `holdout/val`, `holdout/test`, and pretraining scopes.
+Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.
+Prepared split cache metadata includes training balance diagnostics used by these visualizations; keep those diagnostics
+cache-safe and summary-only rather than adding visualization-only columns to training dataframes.
 H100 profiles request 17 CPU cores so H100 runtime specs can use 16 DataLoader workers plus the main process.
 
 On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,
@@ -66,13 +80,33 @@ unexpected dependency downloads.
     `Config`; wire code to `Config` so behavior updates dynamically when config changes.
   * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
     all relevant call sites and tests use the config-driven value.
+  * Label harmonization is standard processed-data behavior controlled by `Config.label_harmonization_enabled`,
+    `Config.label_harmonization_masterlist_path`, `Config.label_harmonization_masterlist_sheet_name`,
+    `Config.label_harmonization_transfer_sheet_name`, and the matching `CODLLM_LABEL_HARMONIZATION_*` env vars. Do not
+    use `pretrain_*` settings for processed-data harmonization or classifier label vocabulary.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
+  * Synthetic multi-COD rows for masterlist pretraining are controlled independently by
+    `Config.pretrain_multicod_synthetic_ratio`, `Config.pretrain_multicod_synthetic_text_separator`,
+    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO`, and
+    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR`; do not reuse fine-tuning
+    `multicod_synthetic_ratio` for pretraining.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
+  * Balance perturbation count is controlled by `Config.balance_perturbation_mean`,
+    `Config.balance_perturbation_variance`, `CODLLM_BALANCE_PERTURBATION_MEAN`, and
+    `CODLLM_BALANCE_PERTURBATION_VARIANCE`. These values scale by the length of the processed `cod` text segment;
+    do not reintroduce a fixed balance perturbations-per-sample control for training rows.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default.
+  * Dataset leave-one-source-out evaluation is controlled by `Config.hold_out_dataset` and
+    `CODLLM_HOLD_OUT_DATASET`. Hold-out matching uses processed `source_id` values, removes the entire matching source
+    from train/val/test splitting, keeps normal val/test splits on the remaining sources, and evaluates the held-out
+    rows after training with `holdout_*` metrics. During-training sampled hold-out evaluation is controlled separately
+    by `Config.hold_out_evaluate_per`, `Config.hold_out_evaluate_ratio`, `CODLLM_HOLD_OUT_EVALUATE_PER`, and
+    `CODLLM_HOLD_OUT_EVALUATE_RATIO`; the final post-training hold-out evaluation must always use the full held-out
+    source.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
     `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners

@@ -30,11 +30,15 @@ def build_training_args(
     stage: TrainingStage | None = None,
     generation_max_length: int | None = None,
     disable_fp16: bool = False,
+    include_inputs_for_metrics: bool | None = None,
 ) -> TrainingArguments:
     """Build training arguments for seq2seq or classification stages."""
     resolved_stage = stage or build_train_stage(cfg)
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
+    metric_inputs_enabled = (
+        has_eval if include_inputs_for_metrics is None else include_inputs_for_metrics
+    )
     if cfg.save_strategy == "best" and eval_strategy == "no":
         raise ValueError(
             "save_strategy='best' requires validation data and eval_strategy "
@@ -89,6 +93,7 @@ def build_training_args(
         "logging_steps": cfg.logging_steps,
         "eval_strategy": eval_strategy,
         "eval_steps": eval_steps,
+        "include_for_metrics": ["inputs"] if metric_inputs_enabled else [],
         "save_strategy": cfg.save_strategy,
         "save_steps": cfg.save_steps,
         "fp16": fp16,

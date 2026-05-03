@@ -210,9 +210,9 @@ def _normalize_icd10h_code_shape(code: str) -> str:
         return normalized
     if not suffix.isdigit():
         return normalized
-    if len(suffix) < 1 or len(suffix) > 3:
+    if len(suffix) < 1:
         return normalized
-    return f"{prefix}.{suffix.ljust(3, '0')}"
+    return f"{prefix}.{suffix[:3].ljust(3, '0')}"
 
 
 def _coerce_row_codes(raw_codes: Any, separator: str) -> list[str]:

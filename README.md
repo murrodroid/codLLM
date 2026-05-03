@@ -21,6 +21,28 @@ cause-of-death records with ICD10h classifications.
 > **Important:** The datasets used in this project are not included in this repository and
 > are subject to separate data-sharing agreements with the respective institutions.
 
+## One-Time Environment Setup
+
+Add your Hugging Face and W&B credentials to your shell startup file so local runs and HPC submissions can read them.
+Replace the placeholder values before running:
+
+```bash
+SHELL_RC="$HOME/.profile"
+case "$(basename "${SHELL:-}")" in
+  zsh) SHELL_RC="${ZDOTDIR:-$HOME}/.zshrc" ;;
+  bash) SHELL_RC="$HOME/.bashrc" ;;
+esac
+
+cat <<'EOF' >> "$SHELL_RC"
+
+# codLLM environment
+export HF_TOKEN="$HUGGINGFACE_HUB_TOKEN"
+export WANDB_API_KEY="PASTE_WANDB_API_KEY_HERE"
+EOF
+
+source "$SHELL_RC"
+```
+
 ## Method Overview
 
 The pipeline consists of:
@@ -147,6 +169,9 @@ export CODLLM_SAVE_STRATEGY_BEST_METRIC=macro_f1
 export CODLLM_LR=3e-5
 export CODLLM_WEIGHT_DECAY=0.0
 export CODLLM_MAX_GRAD_NORM=0.5
+export CODLLM_HOLD_OUT_DATASET=
+export CODLLM_HOLD_OUT_EVALUATE_PER=
+export CODLLM_HOLD_OUT_EVALUATE_RATIO=0.05
 export CODLLM_TRAINING_INPUT="cod,age,sex"
 export CODLLM_INPUT_PREFIX_COD="cod: "
 export CODLLM_INPUT_PREFIX_AGE="age: "
@@ -202,6 +227,13 @@ Each training invocation writes checkpoints under a run-scoped folder:
 
 ## Feature Implementations
 
+### Label Harmonization
+
+Processed training labels are harmonized by default before split preparation, balancing, masterlist injection, or
+training. The processing step reads the configured 2024 ICD10h masterlist and transfer sheet, maps 2020 labels through
+`2020to2024transfer`, normalizes every code to the `A00.000` shape, and removes rows where any label is absent from the
+masterlist. Set `CODLLM_LABEL_HARMONIZATION_ENABLED=0` only for tests or deliberate raw-label inspection.
+
 ### Multi-COD Training Data
 
 Multi-label COD training is controlled through `Config` and matching `CODLLM_*` env vars:
@@ -229,21 +261,33 @@ unrealistic examples because datasets differ in language, time period, field cov
 Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 
 - `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling,
-  `"sqrt"` enables square-root class balancing. Default: `"none"`.
+  `"sqrt"` enables square-root class balancing. Env: `CODLLM_BALANCE_STRATEGY`. Default: `"none"`.
 - `balance_target_quantile`: quantile used to compute the target class count for upsampling.
+  Env: `CODLLM_BALANCE_TARGET_QUANTILE`.
 - `balance_upsample_labels`: optional allow-list of labels that may be upsampled (empty = all eligible minority labels).
-- `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
-- `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale upsampling dynamically.
+  Env: `CODLLM_BALANCE_UPSAMPLE_LABELS`.
+- `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority
+  classes more. Env: `CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER`.
+- `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale
+  upsampling dynamically. Env: `CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO`.
 - `balance_perturbations`: augmentation functions applied to the `cod:` text segment.
-- `balance_perturbations_per_sample`: number of perturbations chained per affected sample.
+  Env: `CODLLM_BALANCE_PERTURBATIONS`.
+- `balance_perturbation_mean`: expected perturbation applications per character in the `cod:` text segment.
+  Env: `CODLLM_BALANCE_PERTURBATION_MEAN`.
+- `balance_perturbation_variance`: perturbation-count variance per character in the `cod:` text segment.
+  Env: `CODLLM_BALANCE_PERTURBATION_VARIANCE`.
 - `balance_base_perturbation_rate`: chance/rate (`0..1`) to perturb all training rows after upsampling.
+  Env: `CODLLM_BALANCE_BASE_PERTURBATION_RATE`.
+
+For train-time upsampling, use `CODLLM_BALANCE_STRATEGY=upsample`. These knobs are separate from the
+`CODLLM_PRETRAIN_UPSAMPLE_*` variables, which only affect masterlist pretraining.
 
 Typical setups:
 
 - Minority upsampling + global perturbation: set `balance_strategy="upsample"` and tune `balance_target_quantile`, `balance_upsample_inverse_power`, `balance_upsample_budget_ratio`, and `balance_base_perturbation_rate`.
 - Global perturbation without upsampling: set `balance_strategy="none"` and `balance_base_perturbation_rate > 0`.
 
-Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows.
+Runtime order: minority labels are upsampled first using random row draws from each minority class, then perturbations are applied across the resulting training rows. For each affected row, the perturbation count is sampled from the configured length-scaled mean and variance, so longer `cod:` text receives more edits on average.
 
 ### Masterlist Pretraining
 
@@ -260,10 +304,14 @@ Pretraining-specific knobs:
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO` creates synthetic pretraining multi-COD rows by randomly combining
+  masterlist single-COD examples after pretraining upsampling. Requires `CODLLM_MAX_LABEL_COUNT >= 2`. Default: `0.0`.
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` joins the merged masterlist cause strings. Default: `"; "`.
 - Fine-tuning warmup remains controlled separately by `CODLLM_WARMUP_RATIO`.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
-- For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
-- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
+- For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the
+  label-harmonization masterlist `ICD10h` values.
+- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries. When pretraining multi-COD synthesis is enabled, metadata also includes `pretraining.multicod_synthetic`.
 
 ## HPC Usage (LSF, No Docker)
 
@@ -315,6 +363,25 @@ Inspect the concrete runs created by a spec:
 
 ```bash
 uv run --no-sync invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
+```
+
+Build reusable processed-data and prepared-split caches for every expanded run in a spec:
+
+```bash
+uv run --no-sync invoke hpc.build \
+  --config runs/single/base_small.toml \
+  --profile h100-10h
+```
+
+`hpc.build` uses the same storage defaults as the generated LSF script for the selected profile, so use the same
+`--profile` value you plan to pass to `hpc.submit`. For sweep specs, `hpc.build` builds all expanded runs by default
+and reuses matching caches as it goes. To build one specific run from a sweep, pass its one-based index:
+
+```bash
+uv run --no-sync invoke hpc.build \
+  --config runs/sweeps/multicod_pretrain.toml \
+  --profile h100-10h \
+  --sweep-index 2
 ```
 
 Generate an LSF submission without submitting it:
@@ -438,8 +505,11 @@ For `jobs/train_h100.sh`, submit in the same style as `jobs/train.sh`:
 bsub -env "all,JOB_CONFIG_FILE=jobs/configs/t5-large_h100.env,REQUIRE_JOB_CONFIG_FILE=1" < jobs/train_h100.sh
 ```
 
-For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
-You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
+For job arrays or many concurrent runs, shared processed-data and prepared-split writes are lock-protected.
+You should normally keep `FORCE_REPROCESS=0` so workers reuse cached raw processed rows and cached prepared
+train/validation/test splits when metadata matches. Prepared splits are stored under the processed-data directory in
+`<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis, balancing,
+hold-out evaluation sampling, and masterlist injection.
 
 ### 3) Monitor
 
@@ -464,7 +534,7 @@ tail -f logs/<job_id>.out
 - `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.training`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
-- `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed-cache lock wait timeout, default: `900`)
+- `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed/prepared-split cache lock wait timeout, default: `900`)
 - `CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS` (run-dir lock wait timeout, default: `120`)
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `CODLLM_VERBOSE` (`1`/`0`, default: `1`; prints resolved setup before training)
@@ -493,15 +563,35 @@ tail -f logs/<job_id>.out
 - `CODLLM_LR` (default: `1e-5`)
 - `CODLLM_WEIGHT_DECAY` (default: `0.0`)
 - `CODLLM_MAX_GRAD_NORM` (default: `0.5`)
+- `CODLLM_HOLD_OUT_DATASET` (optional processed `source_id`; removes that entire source from train/val/test splits and evaluates it after training with `holdout_*` metrics)
+- `CODLLM_HOLD_OUT_EVALUATE_PER` (`epoch`, `steps`, or empty/`none`; default: empty; enables sampled hold-out evaluation during training)
+- `CODLLM_HOLD_OUT_EVALUATE_RATIO` (default: `0.05`; fraction of the held-out source used for during-training hold-out evaluation)
 - `CODLLM_TRAINING_INPUT` (comma-separated: `cod`, `age`, `sex`; default: `cod,age,sex`)
 - `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
 - `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
 - `CODLLM_INPUT_PREFIX_SEX` (default: `"sex: "`)
+- `CODLLM_LABEL_HARMONIZATION_ENABLED` (`1`/`0`; default: `1`; standardizes processed labels before split preparation)
+- `CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
+- `CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
+- `CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME` (default: `2020to2024transfer`)
 - `CODLLM_MAX_LABEL_COUNT` (default: `1`; use values greater than `1` for seq2seq multi-COD training)
 - `CODLLM_MULTICOD_SHUFFLE_LABELS` (`1`/`0`; default: `1`)
 - `CODLLM_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
 - `CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE` (`within_source`, `any_source`; default: `within_source`)
 - `CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
+- `CODLLM_BALANCE_STRATEGY` (`none`, `upsample`, `sqrt`; default: `none`; controls train-time balancing only)
+- `CODLLM_BALANCE_TARGET_QUANTILE` (default: `0.5`; target class-count quantile for `upsample`)
+- `CODLLM_BALANCE_UPSAMPLE_LABELS` (comma-separated label allow-list; empty = all eligible minority labels)
+- `CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER` (default: `0.5`; inverse-frequency exponent in `(0, 1]`)
+- `CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO` (default: `0.4`; synthetic-row budget as a ratio of train rows)
+- `CODLLM_BALANCE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
+- `CODLLM_BALANCE_PERTURBATION_MEAN` (default: `0.05`; expected perturbation applications per `cod:` character)
+- `CODLLM_BALANCE_PERTURBATION_VARIANCE` (default: `0.0`; perturbation-count variance per `cod:` character)
+- `CODLLM_BALANCE_BASE_PERTURBATION_RATE` (default: `0.05`; fraction/chance of train rows perturbed after balancing)
+- `CODLLM_BALANCE_SQRT_FLOOR` (default: `0`; minimum target count for `sqrt` balancing)
+- `CODLLM_BALANCE_SQRT_DECAY` (default: `0.0`; decay factor for `sqrt` balancing)
+- `CODLLM_BALANCE_SQRT_POWER` (default: `0.5`; square-root balancing power)
+- `CODLLM_BALANCE_SQRT_BUDGET_SCALE` (default: `1.05`; budget multiplier for `sqrt` balancing)
 - `CODLLM_PRETRAIN_ENABLED` (`1`/`0`; when enabled, runs masterlist pretraining before normal training)
 - `CODLLM_PRETRAIN_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
 - `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
@@ -514,9 +604,57 @@ tail -f logs/<job_id>.out
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` (default: `10`)
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` (default: `1`)
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 
+
+## Hold-Out Dataset Evaluation
+
+Set `CODLLM_HOLD_OUT_DATASET` to one processed `source_id` to run a leave-one-source-out experiment. The matching
+source is removed before `dataset_size` sampling and before train/validation/test splitting, so the model still trains
+and evaluates normally on the remaining sources. After training, the full held-out source is evaluated separately and
+logged with `holdout_*` metrics in the top-level W&B `holdout` section.
+
+During training, sampled hold-out evaluation is optional. Set `CODLLM_HOLD_OUT_EVALUATE_PER=epoch` or
+`CODLLM_HOLD_OUT_EVALUATE_PER=steps` to evaluate a deterministic sample of the held-out source during training.
+`CODLLM_HOLD_OUT_EVALUATE_RATIO` controls that sample fraction; for example `0.05` evaluates 5% of the held-out source
+during training. The final post-training hold-out evaluation always uses the full held-out source.
+
+Leave `CODLLM_HOLD_OUT_DATASET` unset or empty to disable hold-out evaluation. Do not use the literal string `None`;
+that would be interpreted as a source id.
+
+```bash
+export CODLLM_HOLD_OUT_DATASET=amsterdam_1854_1926
+export CODLLM_HOLD_OUT_EVALUATE_PER=epoch
+export CODLLM_HOLD_OUT_EVALUATE_RATIO=0.05
+uv run python -m codllm.training
+```
+
+Default source ids:
+
+- `belgium_1920_1930`
+- `amsterdam_1854_1926`
+- `copenhagen_may2025`
+- `ipswich_1871_1911`
+- `madrid_1905_1927`
+- `historic_strings_en_2024`
+
+For TOML sweeps, use quoted source ids and `""` for the no-holdout baseline:
+
+```toml
+[sweep]
+CODLLM_HOLD_OUT_DATASET = [
+  "",
+  "belgium_1920_1930",
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "ipswich_1871_1911",
+  "madrid_1905_1927",
+  "historic_strings_en_2024",
+]
+```
 
 ## License
 
