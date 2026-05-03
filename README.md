@@ -324,6 +324,19 @@ Inspect the concrete runs created by a spec:
 uv run --no-sync invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
 ```
 
+Build reusable processed-data and prepared-split caches for every expanded run in a spec:
+
+```bash
+uv run --no-sync invoke hpc.build --config runs/single/base_small.toml
+```
+
+For sweep specs, `hpc.build` builds all expanded runs by default and reuses matching caches as it goes. To build one
+specific run from a sweep, pass its one-based index:
+
+```bash
+uv run --no-sync invoke hpc.build --config runs/sweeps/multicod_pretrain.toml --sweep-index 2
+```
+
 Generate an LSF submission without submitting it:
 
 ```bash

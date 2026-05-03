@@ -21,6 +21,9 @@
   * To list configured LSF profiles, use `uv run invoke hpc.profiles`.
   * To inspect uv/cache paths before HPC work, source `hpc/env.sh` and run `bash hpc/storage-check.sh`.
     If invoke is already installed, `uv run --no-sync invoke hpc.storage` provides the same check.
+  * To prebuild processed-data and prepared-split caches for an experiment spec on HPC, use
+    `uv run invoke hpc.build --config <path>`. By default this builds all expanded runs; pass
+    `--sweep-index <n>` to build one run.
   * To generate and submit an LSF job, use
     `uv run invoke hpc.submit --config <path> --profile <profile> --user <lucas|elias>`.
   * To generate an LSF job without submitting it, add `--dry-run`.
