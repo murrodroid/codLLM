@@ -533,6 +533,28 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             pretrain_upsample_perturbations_per_sample
         )
 
+    pretrain_multicod_synthetic_ratio = _parse_env_float(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO"
+    )
+    if pretrain_multicod_synthetic_ratio is not None:
+        if pretrain_multicod_synthetic_ratio < 0:
+            raise ValueError(
+                "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO must be non-negative."
+            )
+        cfg.pretrain_multicod_synthetic_ratio = pretrain_multicod_synthetic_ratio
+
+    pretrain_multicod_synthetic_text_separator = os.getenv(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR"
+    )
+    if pretrain_multicod_synthetic_text_separator is not None:
+        if pretrain_multicod_synthetic_text_separator == "":
+            raise ValueError(
+                "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR must not be empty."
+            )
+        cfg.pretrain_multicod_synthetic_text_separator = (
+            pretrain_multicod_synthetic_text_separator
+        )
+
     masterlist_inject_enabled = _parse_env_bool("CODLLM_MASTERLIST_INJECT_ENABLED")
     if masterlist_inject_enabled is not None:
         cfg.masterlist_inject_enabled = masterlist_inject_enabled

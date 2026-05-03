@@ -147,6 +147,8 @@ class Config:
         default_factory=default_pretrain_perturbations
     )
     pretrain_upsample_perturbations_per_sample: int = 1
+    pretrain_multicod_synthetic_ratio: float = 0.0
+    pretrain_multicod_synthetic_text_separator: str = "; "
     masterlist_inject_enabled: bool = False
     masterlist_inject_target_per_label: int = 10
     masterlist_inject_perturbations: list[str] = field(

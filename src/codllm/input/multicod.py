@@ -5,6 +5,7 @@ from typing import Any
 import pandas as pd
 
 from codllm.settings.schema import Config
+from codllm.settings.types import MultiCodSyntheticSourceScope
 from codllm.input.transform import _build_label, _coerce_row_codes
 
 ANY_SOURCE_GROUP = "any_source"
@@ -28,7 +29,10 @@ def _cod_segment_value(text: Any, field_separator: str, cod_prefix: str) -> str 
 
 
 def _merge_cod_texts(
-    anchor_text: Any, source_texts: list[Any], cfg: Config
+    anchor_text: Any,
+    source_texts: list[Any],
+    cfg: Config,
+    text_separator: str,
 ) -> str | None:
     """Merge the cod segments from source rows into the anchor row's text shape."""
     cod_values = [
@@ -48,9 +52,7 @@ def _merge_cod_texts(
     cod_prefix = cfg.input_field_prefix("cod")
     for idx, part in enumerate(parts):
         if part.strip().startswith(cod_prefix):
-            parts[idx] = (
-                f"{cod_prefix}{cfg.multicod_synthetic_text_separator.join(cod_values)}"
-            )
+            parts[idx] = f"{cod_prefix}{text_separator.join(cod_values)}"
             return cfg.text_field_separator.join(parts)
     return None
 
@@ -80,12 +82,12 @@ def _single_label_candidate_rows(
 
 def _group_candidate_rows(
     candidates: list[dict[str, Any]],
-    cfg: Config,
+    source_scope: MultiCodSyntheticSourceScope,
 ) -> dict[str, list[dict[str, Any]]]:
     """Group synthetic merge candidates according to the configured source scope."""
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidates:
-        if cfg.multicod_synthetic_source_scope == "any_source":
+        if source_scope == "any_source":
             group_key = ANY_SOURCE_GROUP
         else:
             group_key = candidate["source_id"]
@@ -117,27 +119,48 @@ def _sample_distinct_label_rows(
     return [rng.choice(rows_by_label[label]) for label in sampled_labels]
 
 
-def build_synthetic_multicod_rows(dataframe: pd.DataFrame, cfg: Config) -> pd.DataFrame:
+def build_synthetic_multicod_rows(
+    dataframe: pd.DataFrame,
+    cfg: Config,
+    *,
+    synthetic_ratio: float | None = None,
+    source_scope: MultiCodSyntheticSourceScope | None = None,
+    text_separator: str | None = None,
+    synthetic_source_prefix: str = "synthetic_multicod",
+    seed_offset: int = 17,
+) -> pd.DataFrame:
     """Build synthetic multi-COD rows by merging single-label rows."""
-    if dataframe.empty or cfg.max_label_count < 2 or cfg.multicod_synthetic_ratio <= 0:
+    resolved_ratio = (
+        cfg.multicod_synthetic_ratio if synthetic_ratio is None else synthetic_ratio
+    )
+    resolved_source_scope = (
+        cfg.multicod_synthetic_source_scope if source_scope is None else source_scope
+    )
+    resolved_text_separator = (
+        cfg.multicod_synthetic_text_separator
+        if text_separator is None
+        else text_separator
+    )
+
+    if dataframe.empty or cfg.max_label_count < 2 or resolved_ratio <= 0:
         return dataframe.iloc[0:0].copy()
     if "cod" not in cfg.training_input:
         raise ValueError(
             "Synthetic multi-COD examples require 'cod' in training_input so cause strings can be merged."
         )
-    if cfg.multicod_synthetic_text_separator == "":
+    if resolved_text_separator == "":
         raise ValueError("multicod_synthetic_text_separator must not be empty.")
 
     candidates = _single_label_candidate_rows(dataframe, cfg)
-    groups = _group_candidate_rows(candidates, cfg)
+    groups = _group_candidate_rows(candidates, resolved_source_scope)
     if not groups:
         return dataframe.iloc[0:0].copy()
 
-    synthetic_count = int(round(len(candidates) * cfg.multicod_synthetic_ratio))
+    synthetic_count = int(round(len(candidates) * resolved_ratio))
     if synthetic_count < 1:
         synthetic_count = 1
 
-    rng = random.Random(cfg.resolved_data_seed() + 17)
+    rng = random.Random(cfg.resolved_data_seed() + seed_offset)
     group_keys = list(groups)
     group_weights = [len(groups[group_key]) for group_key in group_keys]
     synthetic_rows: list[dict[str, Any]] = []
@@ -158,6 +181,7 @@ def build_synthetic_multicod_rows(dataframe: pd.DataFrame, cfg: Config) -> pd.Da
             anchor_text=anchor_row.get(cfg.dataset_text_column),
             source_texts=[row.get(cfg.dataset_text_column) for row in source_rows],
             cfg=cfg,
+            text_separator=resolved_text_separator,
         )
         if merged_text is None:
             continue
@@ -168,24 +192,20 @@ def build_synthetic_multicod_rows(dataframe: pd.DataFrame, cfg: Config) -> pd.Da
         )
         source_paths = sorted({str(row.get("source_path", "")) for row in source_rows})
         synthetic_source_id = (
-            f"synthetic_multicod:{group_key}"
-            if cfg.multicod_synthetic_source_scope == "within_source"
-            else "synthetic_multicod:any_source"
+            f"{synthetic_source_prefix}:{group_key}"
+            if resolved_source_scope == "within_source"
+            else f"{synthetic_source_prefix}:any_source"
         )
 
         anchor_row["source_id"] = synthetic_source_id
         anchor_row["record_id"] = f"{synthetic_source_id}:{idx:06d}"
-        anchor_row["source_path"] = cfg.multicod_synthetic_text_separator.join(
-            source_paths
-        )
+        anchor_row["source_path"] = resolved_text_separator.join(source_paths)
         anchor_row[cfg.dataset_text_column] = merged_text
         anchor_row["y_codes"] = labels
         anchor_row[cfg.dataset_label_column] = _build_label(
             labels, separator=cfg.label_separator
         )
-        anchor_row["synthetic_source_ids"] = cfg.multicod_synthetic_text_separator.join(
-            source_ids
-        )
+        anchor_row["synthetic_source_ids"] = resolved_text_separator.join(source_ids)
         synthetic_rows.append(anchor_row)
 
     if not synthetic_rows:

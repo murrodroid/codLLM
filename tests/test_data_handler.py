@@ -11,6 +11,7 @@ from codllm.config import Config, DataSourceConfig
 from codllm.input import COPENHAGEN_MAPPING
 from codllm.data.handler import (
     DataHandler,
+    DataSplits,
     DatasetMapping,
     MAPPING_REGISTRY,
     _build_text,
@@ -791,6 +792,55 @@ class TestDataHandler:
             3.0
         )
 
+    def test_get_pretraining_train_dataframe_adds_multicod_synthetic_rows(
+        self, tmp_path: Path
+    ) -> None:
+        """Pretraining can synthesize multi-COD rows by merging masterlist causes."""
+        masterlist_path = tmp_path / "ICD10h_Masterlist_2024.xlsx"
+        _write_masterlist(masterlist_path, num_rows=4)
+
+        cfg = Config(
+            pretrain_enabled=True,
+            pretrain_masterlist_path=str(masterlist_path),
+            pretrain_masterlist_sheet_name="Masterlist",
+            pretrain_upsample_enabled=False,
+            pretrain_multicod_synthetic_ratio=0.5,
+            pretrain_multicod_synthetic_text_separator=" + ",
+            max_label_count=3,
+            training_input=["cod"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        pretrain_df = handler.get_pretraining_train_dataframe()
+        multicod_metrics = handler.get_pretraining_multicod_metrics()
+
+        assert pretrain_df is not None
+        synthetic = pretrain_df[
+            pretrain_df["source_id"].str.startswith("synthetic_pretrain_multicod:")
+        ]
+        assert len(pretrain_df) == 6
+        assert len(synthetic) == 2
+        assert synthetic["text"].str.contains(r"cod: .* \+ ").all()
+        assert synthetic["y_codes"].map(len).between(2, 3).all()
+        assert synthetic["label"].str.contains(",").all()
+        assert multicod_metrics is not None
+        assert multicod_metrics["enabled"] is True
+        assert multicod_metrics["ratio"] == pytest.approx(0.5)
+        assert multicod_metrics["rows_before"] == 4
+        assert multicod_metrics["rows_after"] == 6
+        assert multicod_metrics["synthetic_rows"] == 2
+        assert multicod_metrics["label_count_distribution"]["1"] == 4
+        assert (
+            sum(
+                count
+                for label_count, count in multicod_metrics[
+                    "label_count_distribution"
+                ].items()
+                if label_count != "1"
+            )
+            == 2
+        )
+
     def test_get_masterlist_label_vocabulary_loads_sorted_unique_labels(
         self, tmp_path: Path
     ) -> None:
@@ -1044,6 +1094,85 @@ class TestDataHandler:
         assert len(splits.train) == 14
         assert len(splits.val) == 4
         assert len(splits.test) == 2
+
+    def test_get_splits_reuses_prepared_splits_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Handler should reuse cached split-level data when config metadata matches."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.parquet"
+        _processed_df(num_rows=20).to_parquet(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        first_handler = DataHandler(cfg)
+        first_handler._write_processing_metadata(
+            first_handler._build_processing_metadata()
+        )
+        first_splits = first_handler.get_splits()
+
+        second_handler = DataHandler(cfg)
+
+        def fail_prepare(processed_df: pd.DataFrame) -> DataSplits:
+            raise AssertionError("prepared splits cache was not reused")
+
+        monkeypatch.setattr(
+            second_handler,
+            "_prepare_splits_from_processed",
+            fail_prepare,
+        )
+        cached_splits = second_handler.get_splits()
+
+        assert len(first_splits.train) == len(cached_splits.train)
+        assert len(first_splits.val) == len(cached_splits.val)
+        assert len(first_splits.test) == len(cached_splits.test)
+
+    def test_get_splits_rebuilds_prepared_splits_when_split_config_changes(
+        self, tmp_path: Path
+    ) -> None:
+        """Split-level cache keys should include split configuration."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.parquet"
+        _processed_df(num_rows=20).to_parquet(processed_path, index=False)
+
+        base_cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.7,
+            val_size=0.2,
+            test_size=0.1,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        base_handler = DataHandler(base_cfg)
+        base_handler._write_processing_metadata(base_handler._build_processing_metadata())
+        base_splits = base_handler.get_splits()
+
+        changed_cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.parquet",
+            train_size=0.5,
+            val_size=0.25,
+            test_size=0.25,
+            dataset_size=1.0,
+            data_sources=[],
+        )
+        changed_handler = DataHandler(changed_cfg)
+        changed_splits = changed_handler.get_splits()
+
+        assert len(base_splits.train) == 14
+        assert len(changed_splits.train) == 10
+        assert len(changed_splits.val) == 5
+        assert len(changed_splits.test) == 5
 
     def test_get_splits_ignores_balance_only_metadata_changes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

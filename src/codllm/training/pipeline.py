@@ -245,6 +245,16 @@ def train(
         if callable(pretrain_upsampling_metrics_loader)
         else None
     )
+    pretrain_multicod_metrics_loader = getattr(
+        handler,
+        "get_pretraining_multicod_metrics",
+        None,
+    )
+    pretrain_multicod_metrics = (
+        pretrain_multicod_metrics_loader()
+        if callable(pretrain_multicod_metrics_loader)
+        else None
+    )
     if cfg.pretrain_enabled and pretrain_loader is None:
         raise AttributeError(
             "Configured data_handler does not support pretraining datasets."
@@ -273,6 +283,10 @@ def train(
         }
         if pretrain_upsampling_metrics is not None:
             run_data_metadata["pretraining"]["upsampling"] = pretrain_upsampling_metrics
+        if pretrain_multicod_metrics is not None:
+            run_data_metadata["pretraining"]["multicod_synthetic"] = (
+                pretrain_multicod_metrics
+            )
         trainer, tokenizer = _train_with_pretraining(
             cfg=cfg,
             pretrain_stage=pretrain_stage,

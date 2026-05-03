@@ -264,10 +264,13 @@ Pretraining-specific knobs:
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` sets the pretraining target rows per label (default: `10`).
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` sets perturbation functions for synthetic pretraining rows.
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` sets perturbation chain depth per synthetic row.
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO` creates synthetic pretraining multi-COD rows by randomly combining
+  masterlist single-COD examples after pretraining upsampling. Requires `CODLLM_MAX_LABEL_COUNT >= 2`. Default: `0.0`.
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` joins the merged masterlist cause strings. Default: `"; "`.
 - Fine-tuning warmup remains controlled separately by `CODLLM_WARMUP_RATIO`.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
 - For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
-- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries.
+- Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries. When pretraining multi-COD synthesis is enabled, metadata also includes `pretraining.multicod_synthetic`.
 
 ## HPC Usage (LSF, No Docker)
 
@@ -442,8 +445,11 @@ For `jobs/train_h100.sh`, submit in the same style as `jobs/train.sh`:
 bsub -env "all,JOB_CONFIG_FILE=jobs/configs/t5-large_h100.env,REQUIRE_JOB_CONFIG_FILE=1" < jobs/train_h100.sh
 ```
 
-For job arrays or many concurrent runs, shared processed-data writes are now lock-protected.
-You should normally keep `FORCE_REPROCESS=0` so workers reuse the cache when metadata matches.
+For job arrays or many concurrent runs, shared processed-data and prepared-split writes are lock-protected.
+You should normally keep `FORCE_REPROCESS=0` so workers reuse cached raw processed rows and cached prepared
+train/validation/test splits when metadata matches. Prepared splits are stored under the processed-data directory in
+`<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis, balancing,
+hold-out evaluation sampling, and masterlist injection.
 
 ### 3) Monitor
 
@@ -468,7 +474,7 @@ tail -f logs/<job_id>.out
 - `TRAIN_EXTRA_ARGS` (optional args appended to `python -m codllm.training`)
 - `HUGGINGFACE_HUB_TOKEN`, `WANDB_API_KEY`, `WANDB_MODE`
 - `CODLLM_*` training/reproducibility settings from the section above
-- `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed-cache lock wait timeout, default: `900`)
+- `CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS` (processed/prepared-split cache lock wait timeout, default: `900`)
 - `CODLLM_RUN_DIR_LOCK_TIMEOUT_SECONDS` (run-dir lock wait timeout, default: `120`)
 - `CODLLM_LOAD_IN_8BIT` (`0` by default in `jobs/train.sh`)
 - `CODLLM_VERBOSE` (`1`/`0`, default: `1`; prints resolved setup before training)
@@ -521,6 +527,8 @@ tail -f logs/<job_id>.out
 - `CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL` (default: `10`)
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
 - `CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE` (default: `1`)
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
+- `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
 - `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`
 - `WANDB_DIR`, `WANDB_CACHE_DIR`, `XDG_CACHE_HOME_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`
 

@@ -42,6 +42,10 @@ Experiment orchestration is handled separately from model code. Human-editable e
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
 new handwritten shell scripts in `jobs/`.
+Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
+under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
+balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
+prepared split content.
 H100 profiles request 17 CPU cores so H100 runtime specs can use 16 DataLoader workers plus the main process.
 
 On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,
@@ -68,6 +72,11 @@ unexpected dependency downloads.
     all relevant call sites and tests use the config-driven value.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
+  * Synthetic multi-COD rows for masterlist pretraining are controlled independently by
+    `Config.pretrain_multicod_synthetic_ratio`, `Config.pretrain_multicod_synthetic_text_separator`,
+    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO`, and
+    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR`; do not reuse fine-tuning
+    `multicod_synthetic_ratio` for pretraining.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
   * Balance perturbation count is controlled by `Config.balance_perturbation_mean`,

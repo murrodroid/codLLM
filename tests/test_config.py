@@ -82,6 +82,8 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
+    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO",
+    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
     "CODLLM_INFERENCE_VALIDATE_REGISTRY",
     "CODLLM_OUTPUT_DIR",
@@ -210,6 +212,8 @@ def test_config_from_env_applies_runtime_overrides(
         "delete_random_char,qwerty_misspell",
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "0.2")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
     monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
@@ -312,6 +316,8 @@ def test_config_from_env_applies_runtime_overrides(
         "qwerty_misspell",
     ]
     assert cfg.pretrain_upsample_perturbations_per_sample == 2
+    assert cfg.pretrain_multicod_synthetic_ratio == 0.2
+    assert cfg.pretrain_multicod_synthetic_text_separator == " + "
     assert cfg.label_harmonization_enabled is True
     assert cfg.inference_validate_registry is True
     assert cfg.output_dir == "/tmp/output"
@@ -669,6 +675,26 @@ def test_config_from_env_rejects_invalid_pretrain_perturbations_per_sample(
     """Pretraining perturbations per sample must be at least one."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "0")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_pretrain_multicod_synthetic_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining multi-COD synthetic ratio should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_empty_pretrain_multicod_separator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining multi-COD text separator should not be empty."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", "")
     with pytest.raises(ValueError):
         config_from_env()
 

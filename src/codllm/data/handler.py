@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import hashlib
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping
@@ -40,6 +41,7 @@ from codllm.input import (
     PERTURBATION_REGISTRY,
     _build_text,
     _build_y,
+    build_synthetic_multicod_rows,
     build_processed_dataset,
     load_dataset,
     load_source_dataset,
@@ -47,6 +49,8 @@ from codllm.input import (
     shuffle_multicod_label_order,
 )
 from codllm.runtime.paths import resolve_source_path
+
+PREPARED_SPLITS_METADATA_VERSION = 1
 
 
 class DataHandler:
@@ -62,6 +66,7 @@ class DataHandler:
         if mapping_registry is not None:
             self.mapping_registry.update(mapping_registry)
         self._pretraining_upsampling_metrics: dict[str, Any] | None = None
+        self._pretraining_multicod_metrics: dict[str, Any] | None = None
         self._masterlist_inject_metrics: dict[str, Any] | None = None
 
     @property
@@ -80,6 +85,11 @@ class DataHandler:
         """Return lock path used to serialize processed-data cache access."""
         suffix = self.processed_path.suffix
         return self.processed_path.with_suffix(f"{suffix}.lock")
+
+    @property
+    def prepared_splits_root(self) -> Path:
+        """Return directory used for prepared split caches."""
+        return self.processed_path.parent / f"{self.processed_path.stem}.splits"
 
     def _processed_lock_timeout_seconds(self) -> float:
         """Return processed-cache lock timeout configured via environment."""
@@ -178,6 +188,187 @@ class DataHandler:
             current
         )
 
+    def _build_prepared_splits_metadata(self) -> dict[str, Any]:
+        """Build metadata that defines whether prepared split caches are reusable."""
+        return {
+            "version": PREPARED_SPLITS_METADATA_VERSION,
+            "processing": self._build_processing_metadata(),
+            "split_config": {
+                "dataset_size": self.cfg.dataset_size,
+                "train_size": self.cfg.train_size,
+                "val_size": self.cfg.val_size,
+                "test_size": self.cfg.test_size,
+                "seed": self.cfg.seed,
+                "data_seed": self.cfg.data_seed,
+                "resolved_data_seed": self.cfg.resolved_data_seed(),
+                "hold_out_dataset": self.cfg.hold_out_dataset,
+                "hold_out_evaluate_per": self.cfg.hold_out_evaluate_per,
+                "hold_out_evaluate_ratio": self.cfg.hold_out_evaluate_ratio,
+                "dataset_text_column": self.cfg.dataset_text_column,
+                "dataset_label_column": self.cfg.dataset_label_column,
+                "max_label_count": self.cfg.max_label_count,
+                "label_separator": self.cfg.label_separator,
+                "text_field_separator": self.cfg.text_field_separator,
+                "training_input": list(self.cfg.training_input),
+                "input_field_prefixes": dict(self.cfg.input_field_prefixes),
+                "multicod_shuffle_labels": self.cfg.multicod_shuffle_labels,
+                "multicod_synthetic_ratio": self.cfg.multicod_synthetic_ratio,
+                "multicod_synthetic_source_scope": (
+                    self.cfg.multicod_synthetic_source_scope
+                ),
+                "multicod_synthetic_text_separator": (
+                    self.cfg.multicod_synthetic_text_separator
+                ),
+                "balance_strategy": self.cfg.balance_strategy,
+                "balance_target_quantile": self.cfg.balance_target_quantile,
+                "balance_perturbations": list(self.cfg.balance_perturbations),
+                "balance_perturbation_mean": self.cfg.balance_perturbation_mean,
+                "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
+                "balance_upsample_labels": list(self.cfg.balance_upsample_labels),
+                "balance_upsample_inverse_power": (
+                    self.cfg.balance_upsample_inverse_power
+                ),
+                "balance_upsample_budget_ratio": self.cfg.balance_upsample_budget_ratio,
+                "balance_sqrt_floor": self.cfg.balance_sqrt_floor,
+                "balance_sqrt_decay": self.cfg.balance_sqrt_decay,
+                "balance_sqrt_power": self.cfg.balance_sqrt_power,
+                "balance_sqrt_budget_scale": self.cfg.balance_sqrt_budget_scale,
+                "balance_base_perturbation_rate": (
+                    self.cfg.balance_base_perturbation_rate
+                ),
+                "masterlist_inject_enabled": self.cfg.masterlist_inject_enabled,
+                "masterlist_inject_target_per_label": (
+                    self.cfg.masterlist_inject_target_per_label
+                ),
+                "masterlist_inject_perturbations": list(
+                    self.cfg.masterlist_inject_perturbations
+                ),
+                "masterlist_inject_perturbations_per_sample": (
+                    self.cfg.masterlist_inject_perturbations_per_sample
+                ),
+                "pretrain_masterlist_path": self.cfg.pretrain_masterlist_path,
+                "pretrain_masterlist_sheet_name": (
+                    self.cfg.pretrain_masterlist_sheet_name
+                ),
+                "masterlist_inject_source": self._source_file_signature(
+                    resolve_source_path(
+                        self.cfg.pretrain_masterlist_path,
+                        self.cfg.data_raw_dir,
+                    )
+                )
+                if self.cfg.masterlist_inject_enabled
+                else None,
+            },
+        }
+
+    def _prepared_splits_cache_key(self, metadata: Mapping[str, Any]) -> str:
+        """Return a stable cache key for prepared split metadata."""
+        payload = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    def _prepared_splits_dir(self, metadata: Mapping[str, Any]) -> Path:
+        """Return cache directory for one prepared split metadata payload."""
+        return self.prepared_splits_root / self._prepared_splits_cache_key(metadata)
+
+    def _prepared_splits_lock_path(self, metadata: Mapping[str, Any]) -> Path:
+        """Return lock path used to serialize prepared split cache access."""
+        return self.prepared_splits_root / (
+            f"{self._prepared_splits_cache_key(metadata)}.lock"
+        )
+
+    def _write_dataframe_atomic(self, dataframe: pd.DataFrame, path: Path) -> None:
+        """Write one cached dataframe atomically."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.parent / f".{path.name}.{uuid4().hex}.tmp.parquet"
+        try:
+            dataframe.to_parquet(temp_path, index=False)
+            temp_path.replace(path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    def _write_prepared_splits_cache(
+        self,
+        splits: DataSplits,
+        metadata: dict[str, Any],
+        cache_dir: Path,
+    ) -> None:
+        """Persist prepared data splits and split-generation side effects."""
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        frames = {
+            "train": splits.train,
+            "val": splits.val,
+            "test": splits.test,
+            "holdout": splits.holdout,
+            "holdout_eval": splits.holdout_eval,
+        }
+        present_frames: dict[str, bool] = {}
+        for name, dataframe in frames.items():
+            present = dataframe is not None
+            present_frames[name] = present
+            if dataframe is not None:
+                self._write_dataframe_atomic(dataframe, cache_dir / f"{name}.parquet")
+
+        payload = {
+            "metadata": metadata,
+            "frames": present_frames,
+            "masterlist_inject_metrics": self._masterlist_inject_metrics,
+        }
+        payload_path = cache_dir / "metadata.json"
+        temp_path = cache_dir / f".{payload_path.name}.{uuid4().hex}.tmp"
+        try:
+            temp_path.write_text(
+                json.dumps(payload, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            temp_path.replace(payload_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    def _load_prepared_splits_cache(
+        self,
+        metadata: Mapping[str, Any],
+        cache_dir: Path,
+    ) -> DataSplits | None:
+        """Load reusable prepared data splits when the cache is complete and current."""
+        payload_path = cache_dir / "metadata.json"
+        if not payload_path.exists():
+            return None
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        if payload.get("metadata") != metadata:
+            return None
+        frame_presence = payload.get("frames")
+        if not isinstance(frame_presence, Mapping):
+            return None
+
+        loaded_frames: dict[str, pd.DataFrame | None] = {}
+        for name in ("train", "val", "test", "holdout", "holdout_eval"):
+            present = bool(frame_presence.get(name, False))
+            if not present:
+                loaded_frames[name] = None
+                continue
+            frame_path = cache_dir / f"{name}.parquet"
+            if not frame_path.exists():
+                return None
+            loaded_frames[name] = pd.read_parquet(frame_path)
+
+        for required_name in ("train", "val", "test"):
+            if loaded_frames[required_name] is None:
+                return None
+        metrics = payload.get("masterlist_inject_metrics")
+        self._masterlist_inject_metrics = metrics if isinstance(metrics, dict) else None
+        return DataSplits(
+            train=loaded_frames["train"],
+            val=loaded_frames["val"],
+            test=loaded_frames["test"],
+            holdout=loaded_frames["holdout"],
+            holdout_eval=loaded_frames["holdout_eval"],
+        )
+
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
         """Load processed data, or build and save it when missing."""
         lock_path = self.processed_lock_path
@@ -204,9 +395,8 @@ class DataHandler:
                 "Set CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS to a larger value."
             ) from exc
 
-    def get_splits(self, force_reprocess: bool = False) -> DataSplits:
-        """Return train/validation/test splits from processed data."""
-        processed_df = self.ensure_processed(force_reprocess=force_reprocess)
+    def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
+        """Build prepared split dataframes from processed rows."""
         training_pool_df, holdout_df = self._partition_hold_out_dataset(processed_df)
         sampled_df = self._apply_dataset_size(training_pool_df)
         splits = self.split_dataframe(sampled_df)
@@ -222,22 +412,63 @@ class DataHandler:
             splits.train = self._inject_masterlist(splits.train)
         return splits
 
+    def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+        """Return train/validation/test splits from processed data."""
+        metadata = self._build_prepared_splits_metadata()
+        cache_dir = self._prepared_splits_dir(metadata)
+        lock_path = self._prepared_splits_lock_path(metadata)
+        self.prepared_splits_root.mkdir(parents=True, exist_ok=True)
+        lock_timeout_seconds = self._processed_lock_timeout_seconds()
+        lock = FileLock(str(lock_path), timeout=lock_timeout_seconds)
+        try:
+            with lock:
+                if not force_reprocess:
+                    cached_splits = self._load_prepared_splits_cache(
+                        metadata, cache_dir
+                    )
+                    if cached_splits is not None:
+                        print(
+                            f"Loaded prepared data splits cache: {cache_dir}",
+                            flush=True,
+                        )
+                        return cached_splits
+
+                processed_df = self.ensure_processed(force_reprocess=force_reprocess)
+                print(f"Building prepared data splits cache: {cache_dir}", flush=True)
+                splits = self._prepare_splits_from_processed(processed_df)
+                self._write_prepared_splits_cache(splits, metadata, cache_dir)
+                print(f"Wrote prepared data splits cache: {cache_dir}", flush=True)
+                return splits
+        except Timeout as exc:
+            raise TimeoutError(
+                f"Timed out waiting for prepared-splits lock '{lock_path}'. "
+                "Set CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS to a larger value."
+            ) from exc
+
     def get_pretraining_train_dataframe(self) -> pd.DataFrame | None:
         """Return optional masterlist dataframe used for pretraining."""
         if not self.cfg.pretrain_enabled:
             self._pretraining_upsampling_metrics = None
+            self._pretraining_multicod_metrics = None
             return None
 
         pretrain_df = self._load_pretraining_source()
         if pretrain_df.empty:
             raise ValueError("Pretraining dataframe is empty.")
-        return self._apply_pretraining_upsample_policy(pretrain_df)
+        upsampled_df = self._apply_pretraining_upsample_policy(pretrain_df)
+        return self._apply_pretraining_multicod_policy(upsampled_df)
 
     def get_pretraining_upsampling_metrics(self) -> dict[str, Any] | None:
         """Return metrics from the latest pretraining upsampling pass."""
         if self._pretraining_upsampling_metrics is None:
             return None
         return dict(self._pretraining_upsampling_metrics)
+
+    def get_pretraining_multicod_metrics(self) -> dict[str, Any] | None:
+        """Return metrics from the latest pretraining multi-COD synthesis pass."""
+        if self._pretraining_multicod_metrics is None:
+            return None
+        return dict(self._pretraining_multicod_metrics)
 
     def get_masterlist_label_vocabulary(self) -> list[str]:
         """Return sorted unique ICD10h label values from the configured masterlist."""
@@ -400,6 +631,66 @@ class DataHandler:
         metrics["labels_below_target_after"] = int((after_counts < target_count).sum())
         metrics["label_count_summary_after"] = self._label_count_summary(after_counts)
         self._pretraining_upsampling_metrics = metrics
+        return result_df.reset_index(drop=True)
+
+    def _apply_pretraining_multicod_policy(
+        self, pretrain_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Create optional synthetic multi-COD rows for pretraining."""
+        ratio = self.cfg.pretrain_multicod_synthetic_ratio
+        if ratio <= 0:
+            self._pretraining_multicod_metrics = None
+            return pretrain_df.reset_index(drop=True)
+        if self.cfg.max_label_count < 2:
+            raise ValueError(
+                "pretrain_multicod_synthetic_ratio requires max_label_count >= 2."
+            )
+        if "cod" not in self.cfg.training_input:
+            raise ValueError(
+                "Synthetic pretraining multi-COD rows require 'cod' in training_input."
+            )
+        if self.cfg.pretrain_multicod_synthetic_text_separator == "":
+            raise ValueError(
+                "pretrain_multicod_synthetic_text_separator must not be empty."
+            )
+
+        rows_before = int(len(pretrain_df))
+        synthetic_rows = build_synthetic_multicod_rows(
+            pretrain_df,
+            self.cfg,
+            synthetic_ratio=ratio,
+            source_scope="any_source",
+            text_separator=self.cfg.pretrain_multicod_synthetic_text_separator,
+            synthetic_source_prefix="synthetic_pretrain_multicod",
+            seed_offset=29,
+        )
+        if synthetic_rows.empty:
+            result_df = pretrain_df
+        else:
+            result_df = pd.concat([pretrain_df, synthetic_rows], ignore_index=True)
+        result_df = shuffle_multicod_label_order(result_df, self.cfg)
+
+        synthetic_count = int(len(synthetic_rows))
+        label_lengths = (
+            result_df["y_codes"]
+            .map(lambda codes: len(codes) if isinstance(codes, list) else 0)
+            .value_counts()
+            .sort_index()
+        )
+        self._pretraining_multicod_metrics = {
+            "enabled": True,
+            "ratio": float(ratio),
+            "text_separator": self.cfg.pretrain_multicod_synthetic_text_separator,
+            "rows_before": rows_before,
+            "rows_after": int(len(result_df)),
+            "rows_added": synthetic_count,
+            "synthetic_rows": synthetic_count,
+            "max_label_count": int(self.cfg.max_label_count),
+            "label_count_distribution": {
+                str(int(label_count)): int(row_count)
+                for label_count, row_count in label_lengths.items()
+            },
+        }
         return result_df.reset_index(drop=True)
 
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
