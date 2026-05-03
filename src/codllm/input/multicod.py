@@ -1,6 +1,7 @@
 import random
 import re
 from collections import defaultdict
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -10,6 +11,12 @@ from codllm.settings.types import MultiCodSyntheticSourceScope
 from codllm.input.transform import _build_label, _coerce_row_codes
 
 ANY_SOURCE_GROUP = "any_source"
+
+
+def _log_multicod_progress(message: str) -> None:
+    """Print a timestamped multi-COD data-preparation progress message."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] Multi-COD: {message}", flush=True)
 
 
 def _split_text_parts(text: Any, field_separator: str) -> list[str]:
@@ -79,19 +86,11 @@ def _cod_segment_values(
     cod_prefix: str,
 ) -> pd.Series:
     """Extract processed COD segment values from a text series."""
-    rendered = texts.fillna("").astype("string")
-    if field_separator == "":
-        stripped = rendered.str.strip()
-        has_prefix = stripped.str.startswith(cod_prefix, na=False)
-        values = stripped.str[len(cod_prefix) :].str.strip()
-        return values.where(has_prefix & values.ne(""), None).astype(object)
-
-    pattern = (
-        rf"(?:^|{re.escape(field_separator)})\s*"
-        rf"{re.escape(cod_prefix)}(.*?)(?={re.escape(field_separator)}|$)"
-    )
-    values = rendered.str.extract(pattern, expand=False).str.strip()
-    return values.where(values.notna() & values.ne(""), None).astype(object)
+    values = [
+        _cod_segment_value(text, field_separator, cod_prefix)
+        for text in texts.fillna("").tolist()
+    ]
+    return pd.Series(values, index=texts.index, dtype=object)
 
 
 def _single_label_values(dataframe: pd.DataFrame, cfg: Config) -> pd.Series:
@@ -190,6 +189,7 @@ def build_synthetic_multicod_rows(
     if resolved_text_separator == "":
         raise ValueError("multicod_synthetic_text_separator must not be empty.")
 
+    _log_multicod_progress(f"extracting candidates from {len(dataframe)} train rows.")
     label_values = _single_label_values(dataframe, cfg)
     cod_values = _cod_segment_values(
         dataframe[cfg.dataset_text_column],
@@ -208,10 +208,13 @@ def build_synthetic_multicod_rows(
         }
     ).loc[candidate_mask]
     if candidates.empty:
+        _log_multicod_progress("found no single-COD rows eligible for synthesis.")
         return dataframe.iloc[0:0].copy()
 
+    _log_multicod_progress(f"grouping {len(candidates)} single-COD candidate rows.")
     groups = _group_candidate_positions(candidates, resolved_source_scope)
     if not groups:
+        _log_multicod_progress("found no source groups with at least two labels.")
         return dataframe.iloc[0:0].copy()
 
     synthetic_count = int(round(len(candidates) * resolved_ratio))
@@ -226,6 +229,9 @@ def build_synthetic_multicod_rows(
     ]
     group_labels = {group_key: list(groups[group_key]) for group_key in group_keys}
     sampled_group_keys = rng.choices(group_keys, weights=group_weights, k=synthetic_count)
+    _log_multicod_progress(
+        f"assembling {synthetic_count} synthetic rows from {len(group_keys)} groups."
+    )
 
     text_values = dataframe[cfg.dataset_text_column].tolist()
     cod_value_list = cod_values.tolist()
@@ -239,8 +245,13 @@ def build_synthetic_multicod_rows(
     synthetic_record_ids: list[str] = []
     synthetic_source_paths: list[str] = []
     synthetic_source_id_sets: list[str] = []
+    progress_interval = max(50_000, synthetic_count // 10)
 
     for idx, group_key in enumerate(sampled_group_keys):
+        if idx > 0 and idx % progress_interval == 0:
+            _log_multicod_progress(
+                f"assembled {idx}/{synthetic_count} requested synthetic rows."
+            )
         labels, sampled_positions = _sample_distinct_label_positions(
             positions_by_label=groups[group_key],
             available_labels=group_labels[group_key],
@@ -280,8 +291,10 @@ def build_synthetic_multicod_rows(
         synthetic_source_id_sets.append(resolved_text_separator.join(source_ids))
 
     if not anchor_positions:
+        _log_multicod_progress("no synthetic rows were assembled.")
         return dataframe.iloc[0:0].copy()
 
+    _log_multicod_progress(f"materializing {len(anchor_positions)} synthetic rows.")
     synthetic_df = dataframe.iloc[anchor_positions].copy().reset_index(drop=True)
     synthetic_df["source_id"] = synthetic_source_ids
     synthetic_df["record_id"] = synthetic_record_ids
@@ -293,6 +306,7 @@ def build_synthetic_multicod_rows(
         for labels in sampled_label_sets
     ]
     synthetic_df["synthetic_source_ids"] = synthetic_source_id_sets
+    _log_multicod_progress(f"built {len(synthetic_df)} synthetic rows.")
     return synthetic_df
 
 
@@ -307,27 +321,36 @@ def shuffle_multicod_label_order(dataframe: pd.DataFrame, cfg: Config) -> pd.Dat
             result[cfg.dataset_label_column].fillna("").astype("string").str.strip()
         )
         multi_label_mask = label_values.str.contains(
-            re.escape(cfg.label_separator),
-            regex=True,
+            cfg.label_separator,
+            regex=False,
             na=False,
         )
         if not bool(multi_label_mask.any()):
             return result
-        row_indices = result.index[multi_label_mask].tolist()
+        row_indices = result.index[multi_label_mask]
     else:
-        row_indices = result.index.tolist()
+        row_indices = result.index
 
+    _log_multicod_progress(
+        f"shuffling label order for {len(row_indices)}/{len(result)} rows."
+    )
     rng = random.Random(cfg.resolved_data_seed())
-    for row_index in row_indices:
-        raw_codes = result.at[row_index, "y_codes"]
+    shuffled_codes: list[list[str]] = []
+    labels: list[str] = []
+    for raw_codes in result.loc[row_indices, "y_codes"].tolist():
         codes = _coerce_row_codes(raw_codes, cfg.label_separator)
         if len(codes) > 1:
             rng.shuffle(codes)
-            result.at[row_index, "y_codes"] = codes
-            result.at[row_index, cfg.dataset_label_column] = _build_label(
-                codes,
-                separator=cfg.label_separator,
-            )
+        shuffled_codes.append(codes)
+        labels.append(_build_label(codes, separator=cfg.label_separator))
+
+    result.loc[row_indices, "y_codes"] = pd.Series(
+        shuffled_codes,
+        index=row_indices,
+        dtype=object,
+    )
+    result.loc[row_indices, cfg.dataset_label_column] = labels
+    _log_multicod_progress(f"shuffled label order for {len(row_indices)} rows.")
     return result
 
 
