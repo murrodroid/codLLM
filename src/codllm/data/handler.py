@@ -49,6 +49,7 @@ from codllm.input import (
     prepare_multicod_training_split,
     shuffle_multicod_label_order,
 )
+from codllm.input.harmonization import resolve_label_harmonization_workbook_path
 from codllm.runtime.paths import resolve_source_path
 
 PREPARED_SPLITS_METADATA_VERSION = 1
@@ -161,6 +162,21 @@ class DataHandler:
             "max_label_count": self.cfg.max_label_count,
             "label_separator": self.cfg.label_separator,
             "text_field_separator": self.cfg.text_field_separator,
+            "label_harmonization": {
+                "enabled": self.cfg.label_harmonization_enabled,
+                "masterlist_path": self.cfg.label_harmonization_masterlist_path,
+                "masterlist_sheet_name": (
+                    self.cfg.label_harmonization_masterlist_sheet_name
+                ),
+                "transfer_sheet_name": (
+                    self.cfg.label_harmonization_transfer_sheet_name
+                ),
+                "reference_file": self._source_file_signature(
+                    resolve_label_harmonization_workbook_path(self.cfg)
+                )
+                if self.cfg.label_harmonization_enabled
+                else None,
+            },
             "sources": source_metadata,
         }
 
@@ -529,7 +545,11 @@ class DataHandler:
 
     def get_masterlist_label_vocabulary(self) -> list[str]:
         """Return sorted unique ICD10h label values from the configured masterlist."""
-        masterlist_df = self._load_pretraining_source()
+        masterlist_df = self._load_masterlist_source(
+            source_id="masterlist_labels",
+            path=self.cfg.label_harmonization_masterlist_path,
+            sheet_name=self.cfg.label_harmonization_masterlist_sheet_name,
+        )
         label_column = self.cfg.dataset_label_column
         if label_column not in masterlist_df.columns:
             raise KeyError(
@@ -541,21 +561,26 @@ class DataHandler:
             raise ValueError("Masterlist label vocabulary is empty.")
         return unique_labels
 
-    def _load_pretraining_source(self) -> pd.DataFrame:
-        """Load pretraining rows from the configured ICD10h masterlist source."""
+    def _load_masterlist_source(
+        self,
+        source_id: str,
+        path: str,
+        sheet_name: int | str,
+    ) -> pd.DataFrame:
+        """Load rows from one configured ICD10h masterlist source."""
         source = DataSourceConfig(
-            source_id="masterlist_pretrain",
-            path=self.cfg.pretrain_masterlist_path,
+            source_id=source_id,
+            path=path,
             mapping_id="masterlist",
-            sheet_name=self.cfg.pretrain_masterlist_sheet_name,
+            sheet_name=sheet_name,
             enabled=True,
         )
         if source.mapping_id not in self.mapping_registry:
             raise KeyError(
-                f"Unknown mapping_id '{source.mapping_id}' for pretraining source."
+                f"Unknown mapping_id '{source.mapping_id}' for masterlist source."
             )
         mapping = self.mapping_registry[source.mapping_id]
-        pretrain_df = load_source_dataset(
+        masterlist_df = load_source_dataset(
             source=source,
             mapping=mapping,
             training_input=self.cfg.training_input,
@@ -567,9 +592,17 @@ class DataHandler:
             text_column=self.cfg.dataset_text_column,
             label_column=self.cfg.dataset_label_column,
         )
-        self._validate_required_columns(pretrain_df)
-        self._validate_label_quality(pretrain_df)
-        return pretrain_df.reset_index(drop=True)
+        self._validate_required_columns(masterlist_df)
+        self._validate_label_quality(masterlist_df)
+        return masterlist_df.reset_index(drop=True)
+
+    def _load_pretraining_source(self) -> pd.DataFrame:
+        """Load pretraining rows from the configured ICD10h masterlist source."""
+        return self._load_masterlist_source(
+            source_id="masterlist_pretrain",
+            path=self.cfg.pretrain_masterlist_path,
+            sheet_name=self.cfg.pretrain_masterlist_sheet_name,
+        )
 
     def _label_count_summary(self, counts: pd.Series) -> dict[str, float]:
         """Summarize label-count distribution for metadata and diagnostics."""

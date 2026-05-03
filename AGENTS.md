@@ -80,6 +80,10 @@ unexpected dependency downloads.
     `Config`; wire code to `Config` so behavior updates dynamically when config changes.
   * When adding runtime options, add them to `Config` and `config_from_env`, and ensure
     all relevant call sites and tests use the config-driven value.
+  * Label harmonization is standard processed-data behavior controlled by `Config.label_harmonization_enabled`,
+    `Config.label_harmonization_masterlist_path`, `Config.label_harmonization_masterlist_sheet_name`,
+    `Config.label_harmonization_transfer_sheet_name`, and the matching `CODLLM_LABEL_HARMONIZATION_*` env vars. Do not
+    use `pretrain_*` settings for processed-data harmonization or classifier label vocabulary.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
   * Synthetic multi-COD rows for masterlist pretraining are controlled independently by

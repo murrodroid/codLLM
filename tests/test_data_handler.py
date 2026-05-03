@@ -347,6 +347,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         assert "copenhagen" in MAPPING_REGISTRY
         assert COPENHAGEN_MAPPING.multi_code_cols == []
@@ -379,6 +380,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_processed_dataset(
@@ -407,6 +409,7 @@ class TestLoaders:
             dataset_label_column="target",
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_processed_dataset(
@@ -432,6 +435,7 @@ class TestLoaders:
                 )
             ],
             training_input=["cod", "city"],
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         with pytest.raises(ValueError):
@@ -460,6 +464,7 @@ class TestLoaders:
             },
             max_label_count=2,
             label_separator=",",
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6])
         raw = pd.DataFrame(
@@ -510,6 +515,7 @@ class TestLoaders:
             val_size=0.0,
             test_size=0.0,
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6, 7])
 
@@ -571,6 +577,7 @@ class TestLoaders:
             val_size=0.0,
             test_size=0.0,
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[])
 
@@ -646,7 +653,8 @@ class TestLoaders:
             [
                 ["text-a", "A09.001", "", "1", "20", "RID-001"],
                 ["text-b", "Q36.9", "", "1", "21", "RID-002"],
-                ["text-c", "X99.999", "", "1", "22", "RID-003"],
+                ["text-c", "Q36.9001", "", "1", "22", "RID-003"],
+                ["text-d", "X99.999", "", "1", "23", "RID-004"],
             ]
         ).to_csv(csv_path, index=False)
 
@@ -668,10 +676,9 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
-            pretrain_masterlist_path=str(masterlist_path),
-            pretrain_masterlist_sheet_name="Masterlist",
-            pretrain_transfer_sheet_name="2020to2024transfer",
-            label_harmonization_enabled=True,
+            label_harmonization_masterlist_path=str(masterlist_path),
+            label_harmonization_masterlist_sheet_name="Masterlist",
+            label_harmonization_transfer_sheet_name="2020to2024transfer",
         )
         mapping = _make_mapping(multi_code_cols=[])
 
@@ -680,9 +687,13 @@ class TestLoaders:
             mapping_registry={"test_mapping": mapping},
         )
 
-        assert result["record_id"].tolist() == ["RID-001", "RID-002"]
-        assert result["label"].tolist() == ["A09.052", "Q36.900"]
-        assert result["y_codes"].tolist() == [["A09.052"], ["Q36.900"]]
+        assert result["record_id"].tolist() == ["RID-001", "RID-002", "RID-003"]
+        assert result["label"].tolist() == ["A09.052", "Q36.900", "Q36.900"]
+        assert result["y_codes"].tolist() == [
+            ["A09.052"],
+            ["Q36.900"],
+            ["Q36.900"],
+        ]
 
     def test_build_and_save_processed_dataset_writes_output_file(
         self, tmp_path: Path
@@ -702,6 +713,7 @@ class TestLoaders:
             ],
             training_input=["cod", "age", "sex"],
             max_label_count=1,
+            label_harmonization_enabled=False,
         )
         mapping = _make_mapping()
         result = build_and_save_processed_dataset(
@@ -849,8 +861,8 @@ class TestDataHandler:
         _write_masterlist(masterlist_path, num_rows=4)
 
         cfg = Config(
-            pretrain_masterlist_path=str(masterlist_path),
-            pretrain_masterlist_sheet_name="Masterlist",
+            label_harmonization_masterlist_path=str(masterlist_path),
+            label_harmonization_masterlist_sheet_name="Masterlist",
             training_input=["cod"],
             data_sources=[],
         )
@@ -1124,6 +1136,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             dataset_size=1.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(cfg, mapping_registry={"test_mapping": _make_mapping()})
         splits = handler.get_splits()
@@ -1335,6 +1348,7 @@ class TestDataHandler:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(
             cfg,
@@ -1373,6 +1387,7 @@ class TestDataHandler:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
+            label_harmonization_enabled=False,
         )
         handler = DataHandler(
             cfg,
@@ -1426,6 +1441,7 @@ class TestDataHandler:
             test_size=0.25,
             balance_strategy="none",
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping()}
 
@@ -1492,6 +1508,7 @@ class TestDataHandler:
             test_size=0.25,
             balance_strategy="none",
             balance_base_perturbation_rate=0.0,
+            label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping(multi_code_cols=[2, 6])}
 

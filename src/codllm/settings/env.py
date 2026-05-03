@@ -452,6 +452,59 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     ):
         cfg.pretrain_transfer_sheet_name = pretrain_transfer_sheet_name.strip()
 
+    label_harmonization_enabled = _parse_env_bool("CODLLM_LABEL_HARMONIZATION_ENABLED")
+    if label_harmonization_enabled is not None:
+        cfg.label_harmonization_enabled = label_harmonization_enabled
+
+    label_harmonization_masterlist_path = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH"
+    )
+    if (
+        label_harmonization_masterlist_path is not None
+        and label_harmonization_masterlist_path.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_path = (
+            label_harmonization_masterlist_path.strip()
+        )
+    elif (
+        pretrain_masterlist_path is not None and pretrain_masterlist_path.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_path = cfg.pretrain_masterlist_path
+
+    label_harmonization_masterlist_sheet_name = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME"
+    )
+    if (
+        label_harmonization_masterlist_sheet_name is not None
+        and label_harmonization_masterlist_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_sheet_name = (
+            label_harmonization_masterlist_sheet_name.strip()
+        )
+    elif (
+        pretrain_masterlist_sheet_name is not None
+        and pretrain_masterlist_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_masterlist_sheet_name = (
+            cfg.pretrain_masterlist_sheet_name
+        )
+
+    label_harmonization_transfer_sheet_name = os.getenv(
+        "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME"
+    )
+    if (
+        label_harmonization_transfer_sheet_name is not None
+        and label_harmonization_transfer_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_transfer_sheet_name = (
+            label_harmonization_transfer_sheet_name.strip()
+        )
+    elif (
+        pretrain_transfer_sheet_name is not None
+        and pretrain_transfer_sheet_name.strip() != ""
+    ):
+        cfg.label_harmonization_transfer_sheet_name = cfg.pretrain_transfer_sheet_name
+
     pretrain_num_train_epochs = _parse_env_int("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS")
     if pretrain_num_train_epochs is not None:
         if pretrain_num_train_epochs < 1:
@@ -594,10 +647,6 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             masterlist_inject_perturbations_per_sample
         )
 
-    label_harmonization_enabled = _parse_env_bool("CODLLM_LABEL_HARMONIZATION_ENABLED")
-    if label_harmonization_enabled is not None:
-        cfg.label_harmonization_enabled = label_harmonization_enabled
-
     inference_validate_registry = _parse_env_bool("CODLLM_INFERENCE_VALIDATE_REGISTRY")
     if inference_validate_registry is not None:
         cfg.inference_validate_registry = inference_validate_registry
@@ -673,14 +722,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             p.strip() for p in balance_perturbations.split(",") if p.strip()
         ]
 
-    balance_perturbation_mean = _parse_env_float(
-        "CODLLM_BALANCE_PERTURBATION_MEAN"
-    )
+    balance_perturbation_mean = _parse_env_float("CODLLM_BALANCE_PERTURBATION_MEAN")
     if balance_perturbation_mean is not None:
         if balance_perturbation_mean < 0:
-            raise ValueError(
-                "CODLLM_BALANCE_PERTURBATION_MEAN must be non-negative."
-            )
+            raise ValueError("CODLLM_BALANCE_PERTURBATION_MEAN must be non-negative.")
         cfg.balance_perturbation_mean = balance_perturbation_mean
 
     balance_perturbation_variance = _parse_env_float(

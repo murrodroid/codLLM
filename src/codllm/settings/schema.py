@@ -114,6 +114,10 @@ class Config:
     data_processed_dir: str = "data/processed"
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
+    label_harmonization_enabled: bool = True
+    label_harmonization_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
+    label_harmonization_masterlist_sheet_name: str = "Masterlist"
+    label_harmonization_transfer_sheet_name: str = "2020to2024transfer"
     hold_out_dataset: Optional[str] = None
     hold_out_evaluate_per: Optional[HoldOutEvaluatePer] = None
     hold_out_evaluate_ratio: float = 0.05
@@ -155,7 +159,6 @@ class Config:
         default_factory=default_masterlist_inject_perturbations
     )
     masterlist_inject_perturbations_per_sample: int = 1
-    label_harmonization_enabled: bool = False
 
     balance_strategy: BalanceStrategy = "none"
     balance_target_quantile: float = 0.5

@@ -85,6 +85,9 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO",
     "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
+    "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
+    "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME",
+    "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME",
     "CODLLM_INFERENCE_VALIDATE_REGISTRY",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
@@ -122,6 +125,12 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     assert cfg.max_grad_norm == 0.5
     assert cfg.warmup_ratio == 0.1
     assert cfg.balance_strategy == "none"
+    assert cfg.label_harmonization_enabled is True
+    assert cfg.label_harmonization_masterlist_path == (
+        "data/raw/ICD10h_Masterlist_2024.xlsx"
+    )
+    assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
+    assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
 
 
 def test_config_from_env_applies_runtime_overrides(
@@ -215,6 +224,14 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
+    monkeypatch.setenv(
+        "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
+        "data/raw/ICD10h_Masterlist_2024.xlsx",
+    )
+    monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME", "Masterlist")
+    monkeypatch.setenv(
+        "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME", "2020to2024transfer"
+    )
     monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
@@ -319,6 +336,11 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_multicod_synthetic_ratio == 0.2
     assert cfg.pretrain_multicod_synthetic_text_separator == " + "
     assert cfg.label_harmonization_enabled is True
+    assert cfg.label_harmonization_masterlist_path == (
+        "data/raw/ICD10h_Masterlist_2024.xlsx"
+    )
+    assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
+    assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
     assert cfg.inference_validate_registry is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
@@ -335,6 +357,22 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.wandb.log_model == "checkpoint"
     assert base.seed == 42
     assert base.output_dir == "./runs"
+
+
+def test_config_from_env_uses_pretrain_masterlist_env_as_harmonization_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy masterlist env names should still configure harmonization when needed."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_PATH", "custom-masterlist.xlsx")
+    monkeypatch.setenv("CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME", "Codes")
+    monkeypatch.setenv("CODLLM_PRETRAIN_TRANSFER_SHEET_NAME", "Transfer")
+
+    cfg = config_from_env()
+
+    assert cfg.label_harmonization_masterlist_path == "custom-masterlist.xlsx"
+    assert cfg.label_harmonization_masterlist_sheet_name == "Codes"
+    assert cfg.label_harmonization_transfer_sheet_name == "Transfer"
 
 
 def test_config_from_env_rejects_invalid_boolean(

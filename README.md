@@ -227,6 +227,13 @@ Each training invocation writes checkpoints under a run-scoped folder:
 
 ## Feature Implementations
 
+### Label Harmonization
+
+Processed training labels are harmonized by default before split preparation, balancing, masterlist injection, or
+training. The processing step reads the configured 2024 ICD10h masterlist and transfer sheet, maps 2020 labels through
+`2020to2024transfer`, normalizes every code to the `A00.000` shape, and removes rows where any label is absent from the
+masterlist. Set `CODLLM_LABEL_HARMONIZATION_ENABLED=0` only for tests or deliberate raw-label inspection.
+
 ### Multi-COD Training Data
 
 Multi-label COD training is controlled through `Config` and matching `CODLLM_*` env vars:
@@ -291,7 +298,8 @@ Pretraining-specific knobs:
 - `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` joins the merged masterlist cause strings. Default: `"; "`.
 - Fine-tuning warmup remains controlled separately by `CODLLM_WARMUP_RATIO`.
 - Fine-tuning starts a new Trainer stage, so LR scheduler steps reset from the configured fine-tuning LR.
-- For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the masterlist `ICD10h` values.
+- For sequence classification, set `CODLLM_MODEL_TASK=sequence_classification`; class ids are built from the
+  label-harmonization masterlist `ICD10h` values.
 - Run metadata includes `pretraining.upsampling` diagnostics such as `rows_added`, `perturbation_rate`, and label-count summaries. When pretraining multi-COD synthesis is enabled, metadata also includes `pretraining.multicod_synthetic`.
 
 ## HPC Usage (LSF, No Docker)
@@ -551,6 +559,10 @@ tail -f logs/<job_id>.out
 - `CODLLM_INPUT_PREFIX_COD` (default: `"cod: "`)
 - `CODLLM_INPUT_PREFIX_AGE` (default: `"age: "`)
 - `CODLLM_INPUT_PREFIX_SEX` (default: `"sex: "`)
+- `CODLLM_LABEL_HARMONIZATION_ENABLED` (`1`/`0`; default: `1`; standardizes processed labels before split preparation)
+- `CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
+- `CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME` (default: `Masterlist`)
+- `CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME` (default: `2020to2024transfer`)
 - `CODLLM_MAX_LABEL_COUNT` (default: `1`; use values greater than `1` for seq2seq multi-COD training)
 - `CODLLM_MULTICOD_SHUFFLE_LABELS` (`1`/`0`; default: `1`)
 - `CODLLM_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
