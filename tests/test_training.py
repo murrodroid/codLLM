@@ -303,6 +303,25 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
     assert scoped["holdout/test/exact_match"] == 0.5
 
 
+def test_metric_artifact_scope_uses_stage_scoped_namespace() -> None:
+    """Metric artifact scopes should match W&B metric namespaces."""
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("eval", "finetune") == "val"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("holdout_val", "finetune")
+        == "holdout/val"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("holdout_test", "finetune")
+        == "holdout/test"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("eval", "pretrain")
+        == "pretraining/val"
+    )
+
+
 def test_should_apply_eval_interval_callback_for_pretraining_stage() -> None:
     """Pretraining stage should honor the configured eval epoch interval."""
     stage = stages_module.TrainingStage(

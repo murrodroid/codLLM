@@ -51,6 +51,11 @@ balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata 
 prepared split content.
 Generated TOML sweep runs export `WANDB_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>` unless those values are explicitly set in `[env]`.
+Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
+`<scope>/errors/*`, where scopes include `val`, `test`, `holdout/val`, `holdout/test`, and pretraining scopes.
+Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.
+Prepared split cache metadata includes training balance diagnostics used by these visualizations; keep those diagnostics
+cache-safe and summary-only rather than adding visualization-only columns to training dataframes.
 H100 profiles request 17 CPU cores so H100 runtime specs can use 16 DataLoader workers plus the main process.
 
 On HPC systems, source `hpc/env.sh` before any `uv` command. This puts `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT`,

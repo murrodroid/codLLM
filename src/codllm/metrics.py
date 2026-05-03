@@ -1,7 +1,29 @@
 from collections.abc import Mapping as MappingABC
+from contextvars import ContextVar, Token
 from typing import Any, Callable, Mapping
 
 import numpy as np
+
+MetricArtifactLogger = Callable[..., None]
+_METRIC_ARTIFACT_SCOPE: ContextVar[str | None] = ContextVar(
+    "codllm_metric_artifact_scope",
+    default=None,
+)
+
+
+def set_metric_artifact_scope(scope: str | None) -> Token[str | None]:
+    """Set the current metric artifact scope for side-channel visualization logs."""
+    return _METRIC_ARTIFACT_SCOPE.set(scope)
+
+
+def reset_metric_artifact_scope(token: Token[str | None]) -> None:
+    """Reset the metric artifact scope to a previous context value."""
+    _METRIC_ARTIFACT_SCOPE.reset(token)
+
+
+def current_metric_artifact_scope() -> str | None:
+    """Return the current metric artifact scope."""
+    return _METRIC_ARTIFACT_SCOPE.get()
 
 
 def _normalize_decoded_text(text: str) -> str:
@@ -488,6 +510,7 @@ def build_exact_match_accuracy_metric(
     max_label_count: int = 1,
     train_classes: set[str] | None = None,
     train_input_strings: set[str] | None = None,
+    artifact_logger: MetricArtifactLogger | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build a compute_metrics callback with exact-match and overlap metrics.
 
@@ -561,17 +584,17 @@ def build_exact_match_accuracy_metric(
             multi_label=multi_label,
             label_universe=train_classes,
         )
-        if train_input_strings is not None:
-            input_strings = (
-                _decode_token_id_strings(
-                    tokenizer,
-                    metric_inputs,
-                    pad_token_id=pad_token_id,
-                    max_token_id=max_token_id,
-                )
-                if metric_inputs is not None
-                else None
+        input_strings = (
+            _decode_token_id_strings(
+                tokenizer,
+                metric_inputs,
+                pad_token_id=pad_token_id,
+                max_token_id=max_token_id,
             )
+            if metric_inputs is not None
+            else None
+        )
+        if train_input_strings is not None:
             result.update(
                 _seen_unseen_string_metrics(
                     predicted_code_sets,
@@ -583,6 +606,13 @@ def build_exact_match_accuracy_metric(
                     label_universe=train_classes,
                 )
             )
+        if artifact_logger is not None:
+            artifact_logger(
+                metric_scope=current_metric_artifact_scope(),
+                input_strings=input_strings,
+                predictions=normalized_predictions,
+                labels=normalized_labels,
+            )
         return result
 
     return compute_metrics
@@ -592,6 +622,7 @@ def build_sequence_classification_metric(
     id2label: Mapping[int, str],
     tokenizer: Any | None = None,
     train_input_strings: set[str] | None = None,
+    artifact_logger: MetricArtifactLogger | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build compute_metrics callback for single-label sequence classification."""
     normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
@@ -637,8 +668,8 @@ def build_sequence_classification_metric(
             matches,
             multi_label=False,
         )
-        if train_input_strings is not None and tokenizer is not None:
-            input_strings = (
+        input_strings = (
+            (
                 _decode_token_id_strings(
                     tokenizer,
                     metric_inputs,
@@ -648,6 +679,10 @@ def build_sequence_classification_metric(
                 if metric_inputs is not None
                 else None
             )
+            if tokenizer is not None
+            else None
+        )
+        if train_input_strings is not None and tokenizer is not None:
             result.update(
                 _seen_unseen_string_metrics(
                     predicted_code_sets,
@@ -657,6 +692,13 @@ def build_sequence_classification_metric(
                     train_input_strings,
                     multi_label=False,
                 )
+            )
+        if artifact_logger is not None:
+            artifact_logger(
+                metric_scope=current_metric_artifact_scope(),
+                input_strings=input_strings,
+                predictions=normalized_predictions,
+                labels=normalized_labels,
             )
         return result
 

@@ -32,6 +32,7 @@ from codllm.training.metadata import (
     print_training_configuration,
 )
 from codllm.training.stages import TrainingStage, should_apply_eval_interval_callback
+from codllm.training.visualizations import MetricArtifactLogger
 
 
 def _log_progress(message: str) -> None:
@@ -148,6 +149,7 @@ def run_training_stage(
         metadata=metadata_payload,
     )
     print_training_configuration(cfg, args, stage_run_data_metadata)
+    metric_artifact_logger = MetricArtifactLogger(cfg)
 
     callbacks: list[TrainerCallback] = []
     eval_strategy_value = (
@@ -186,6 +188,7 @@ def run_training_stage(
                     id2label=id2label,
                     tokenizer=tokenizer,
                     train_input_strings=train_input_strings or None,
+                    artifact_logger=metric_artifact_logger,
                 )
                 if (
                     (
@@ -214,6 +217,7 @@ def run_training_stage(
                     max_label_count=cfg.max_label_count,
                     train_classes=train_classes or None,
                     train_input_strings=train_input_strings or None,
+                    artifact_logger=metric_artifact_logger,
                 )
                 if processed_eval_ds is not None
                 or processed_holdout_eval_ds is not None

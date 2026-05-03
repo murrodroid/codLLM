@@ -9,6 +9,8 @@ from transformers import (
     TrainingArguments,
 )
 
+from codllm.metrics import reset_metric_artifact_scope, set_metric_artifact_scope
+
 
 def _normalize_stage_name(stage_name: str) -> str:
     """Normalize arbitrary stage names to one lowercase token."""
@@ -53,6 +55,27 @@ def scope_metric_logs_for_stage(
     for key, value in logs.items():
         scoped_logs[rewrite_metric_key_for_stage(key, stage_name)] = value
     return scoped_logs
+
+
+def _scope_for_metric_key_prefix(metric_key_prefix: str, stage_name: str) -> str:
+    """Return the scoped W&B namespace for one Trainer metric key prefix."""
+    scoped_metric_key = rewrite_metric_key_for_stage(
+        f"{metric_key_prefix}_metric",
+        stage_name,
+    )
+    return scoped_metric_key.removesuffix("/metric")
+
+
+def _metric_key_prefix_from_evaluate_call(
+    args: tuple[Any, ...],
+    kwargs: Mapping[str, Any],
+) -> str:
+    """Extract Trainer.evaluate metric_key_prefix from positional or keyword args."""
+    if "metric_key_prefix" in kwargs:
+        return str(kwargs["metric_key_prefix"])
+    if len(args) >= 3:
+        return str(args[2])
+    return "eval"
 
 
 class EvaluateEveryNEpochsCallback(TrainerCallback):
@@ -186,6 +209,17 @@ class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
         scoped_logs = scope_metric_logs_for_stage(logs, self.stage_name)
         super().log(scoped_logs, start_time=start_time)
 
+    def evaluate(self, *args: Any, **kwargs: Any) -> dict[str, float]:
+        """Evaluate with a stage-scoped context for metric artifact logging."""
+        metric_key_prefix = _metric_key_prefix_from_evaluate_call(args, kwargs)
+        token = set_metric_artifact_scope(
+            _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
+        )
+        try:
+            return super().evaluate(*args, **kwargs)
+        finally:
+            reset_metric_artifact_scope(token)
+
 
 class StageScopedTrainer(Trainer):
     """Trainer variant that rewrites logged metric keys by stage."""
@@ -203,3 +237,14 @@ class StageScopedTrainer(Trainer):
         """Log stage-scoped metrics to callbacks/reporters."""
         scoped_logs = scope_metric_logs_for_stage(logs, self.stage_name)
         super().log(scoped_logs, start_time=start_time)
+
+    def evaluate(self, *args: Any, **kwargs: Any) -> dict[str, float]:
+        """Evaluate with a stage-scoped context for metric artifact logging."""
+        metric_key_prefix = _metric_key_prefix_from_evaluate_call(args, kwargs)
+        token = set_metric_artifact_scope(
+            _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
+        )
+        try:
+            return super().evaluate(*args, **kwargs)
+        finally:
+            reset_metric_artifact_scope(token)

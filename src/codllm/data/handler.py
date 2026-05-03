@@ -75,6 +75,7 @@ class DataHandler:
         self._pretraining_upsampling_metrics: dict[str, Any] | None = None
         self._pretraining_multicod_metrics: dict[str, Any] | None = None
         self._masterlist_inject_metrics: dict[str, Any] | None = None
+        self._training_balance_metrics: dict[str, Any] | None = None
 
     @property
     def processed_path(self) -> Path:
@@ -320,6 +321,7 @@ class DataHandler:
             "metadata": metadata,
             "frames": present_frames,
             "masterlist_inject_metrics": self._masterlist_inject_metrics,
+            "training_balance_metrics": self._training_balance_metrics,
         }
         payload_path = cache_dir / "metadata.json"
         temp_path = cache_dir / f".{payload_path.name}.{uuid4().hex}.tmp"
@@ -368,6 +370,10 @@ class DataHandler:
                 return None
         metrics = payload.get("masterlist_inject_metrics")
         self._masterlist_inject_metrics = metrics if isinstance(metrics, dict) else None
+        balance_metrics = payload.get("training_balance_metrics")
+        self._training_balance_metrics = (
+            balance_metrics if isinstance(balance_metrics, dict) else None
+        )
         return DataSplits(
             train=loaded_frames["train"],
             val=loaded_frames["val"],
@@ -433,9 +439,8 @@ class DataHandler:
             "Initial split sizes: "
             f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
         )
-        if (
-            self.cfg.max_label_count >= 2
-            and (self.cfg.multicod_synthetic_ratio > 0 or self.cfg.multicod_shuffle_labels)
+        if self.cfg.max_label_count >= 2 and (
+            self.cfg.multicod_synthetic_ratio > 0 or self.cfg.multicod_shuffle_labels
         ):
             _log_data_progress("Applying multi-COD split preparation.")
         splits.train = prepare_multicod_training_split(splits.train, self.cfg)
@@ -459,7 +464,9 @@ class DataHandler:
         if self.cfg.masterlist_inject_enabled and not splits.train.empty:
             _log_data_progress("Injecting masterlist rows into training split.")
             splits.train = self._inject_masterlist(splits.train)
-            _log_data_progress(f"After masterlist injection: train={len(splits.train)}.")
+            _log_data_progress(
+                f"After masterlist injection: train={len(splits.train)}."
+            )
         return splits
 
     def get_splits(self, force_reprocess: bool = False) -> DataSplits:
@@ -574,6 +581,28 @@ class DataHandler:
             "median": float(counts.median()),
             "mean": float(counts.mean()),
         }
+
+    def _chapter_block_distribution(self, dataframe: pd.DataFrame) -> dict[str, int]:
+        """Return label counts grouped by the first three characters of each code."""
+        label_column = self.cfg.dataset_label_column
+        if dataframe.empty or label_column not in dataframe.columns:
+            return {}
+
+        counts: dict[str, int] = {}
+        labels = dataframe[label_column].fillna("").astype(str)
+        for value in labels.tolist():
+            tokens = (
+                value.split(self.cfg.label_separator)
+                if self.cfg.label_separator
+                else [value]
+            )
+            for token in tokens:
+                normalized = token.strip()
+                if not normalized:
+                    continue
+                block = normalized[:3]
+                counts[block] = counts.get(block, 0) + 1
+        return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
     def _apply_pretraining_upsample_policy(
         self, pretrain_df: pd.DataFrame
@@ -746,12 +775,29 @@ class DataHandler:
     def _apply_balance_policy(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Apply optional upsampling and manipulation rules to the training split."""
         balanced_train_df = train_df
+        text_column = self.cfg.dataset_text_column
+        label_column = self.cfg.dataset_label_column
+        metrics: dict[str, Any] = {
+            "enabled": bool(
+                self.cfg.balance_strategy != "none"
+                or self.cfg.balance_base_perturbation_rate > 0
+            ),
+            "strategy": self.cfg.balance_strategy,
+            "base_perturbation_rate": float(self.cfg.balance_base_perturbation_rate),
+            "rows_before": int(len(train_df)),
+            "rows_after_upsample": int(len(train_df)),
+            "rows_after": int(len(train_df)),
+            "rows_added": 0,
+            "base_perturbed_rows": 0,
+            "label_distribution_before": self._chapter_block_distribution(train_df),
+            "label_distribution_after": self._chapter_block_distribution(train_df),
+        }
 
         if self.cfg.balance_strategy == "upsample":
             upsample_candidates = self.cfg.balance_upsample_labels or None
             target_counts = select_upsample_targets(
                 df=train_df,
-                label_column=self.cfg.dataset_label_column,
+                label_column=label_column,
                 target_quantile=self.cfg.balance_target_quantile,
                 candidate_labels=upsample_candidates,
                 inverse_power=self.cfg.balance_upsample_inverse_power,
@@ -766,7 +812,7 @@ class DataHandler:
         elif self.cfg.balance_strategy == "sqrt":
             target_counts = select_floor_upsample_targets(
                 df=train_df,
-                label_column=self.cfg.dataset_label_column,
+                label_column=label_column,
                 floor=self.cfg.balance_sqrt_floor,
                 decay=self.cfg.balance_sqrt_decay,
             )
@@ -779,19 +825,26 @@ class DataHandler:
                 target_counts=target_counts,
                 seed=self.cfg.resolved_data_seed(),
                 cfg=self.cfg,
-                text_column=self.cfg.dataset_text_column,
+                text_column=text_column,
                 perturbation_fns=perturbation_fns,
                 perturbation_mean=self.cfg.balance_perturbation_mean,
                 perturbation_variance=self.cfg.balance_perturbation_variance,
                 text_field_separator=self.cfg.text_field_separator,
             )
 
+        metrics["rows_after_upsample"] = int(len(balanced_train_df))
+        metrics["rows_added"] = int(len(balanced_train_df) - len(train_df))
         if self.cfg.balance_base_perturbation_rate > 0:
+            before_perturbation_texts = (
+                balanced_train_df[text_column].fillna("").astype(str).tolist()
+                if text_column in balanced_train_df.columns
+                else []
+            )
             balanced_train_df = manipulate_classes(
                 cfg=self.cfg,
-                label_column=self.cfg.dataset_label_column,
+                label_column=label_column,
                 df=balanced_train_df,
-                text_column=self.cfg.dataset_text_column,
+                text_column=text_column,
                 target_labels=None,
                 perturbation_names=self.cfg.balance_perturbations,
                 perturbation_mean=self.cfg.balance_perturbation_mean,
@@ -799,8 +852,32 @@ class DataHandler:
                 sample_fraction=self.cfg.balance_base_perturbation_rate,
                 seed=self.cfg.resolved_data_seed() + 1,
             )
+            after_perturbation_texts = (
+                balanced_train_df[text_column].fillna("").astype(str).tolist()
+                if text_column in balanced_train_df.columns
+                else []
+            )
+            metrics["base_perturbed_rows"] = sum(
+                1
+                for before_text, after_text in zip(
+                    before_perturbation_texts,
+                    after_perturbation_texts,
+                )
+                if before_text != after_text
+            )
 
+        metrics["rows_after"] = int(len(balanced_train_df))
+        metrics["label_distribution_after"] = self._chapter_block_distribution(
+            balanced_train_df
+        )
+        self._training_balance_metrics = metrics
         return balanced_train_df
+
+    def get_training_balance_metrics(self) -> dict[str, Any] | None:
+        """Return metrics from the latest training balance and perturbation pass."""
+        if self._training_balance_metrics is None:
+            return None
+        return dict(self._training_balance_metrics)
 
     def _inject_masterlist(self, train_df: pd.DataFrame) -> pd.DataFrame:
         """Load the masterlist, upsample with perturbations, and inject into training split."""

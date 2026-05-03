@@ -27,6 +27,7 @@ from codllm.training.stages import (
     release_stage_trainer_memory,
 )
 from codllm.training.trainer_factory import run_training_stage
+from codllm.training.visualizations import log_data_visualizations
 
 
 def _log_progress(message: str) -> None:
@@ -228,6 +229,18 @@ def train(
     )
     if masterlist_inject_metrics is not None:
         run_data_metadata["masterlist_injection"] = masterlist_inject_metrics
+    training_balance_metrics_loader = getattr(
+        handler,
+        "get_training_balance_metrics",
+        None,
+    )
+    training_balance_metrics = (
+        training_balance_metrics_loader()
+        if callable(training_balance_metrics_loader)
+        else None
+    )
+    if training_balance_metrics is not None:
+        run_data_metadata["training_balance"] = training_balance_metrics
 
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
     if callable(pretrain_loader):
@@ -254,6 +267,14 @@ def train(
         pretrain_multicod_metrics_loader()
         if callable(pretrain_multicod_metrics_loader)
         else None
+    )
+    log_data_visualizations(
+        cfg=cfg,
+        splits=splits,
+        balance_metrics=training_balance_metrics,
+        masterlist_inject_metrics=masterlist_inject_metrics,
+        pretraining_upsampling_metrics=pretrain_upsampling_metrics,
+        pretraining_multicod_metrics=pretrain_multicod_metrics,
     )
     if cfg.pretrain_enabled and pretrain_loader is None:
         raise AttributeError(

@@ -994,6 +994,35 @@ class TestDataHandler:
         assert manipulated.iloc[0]["text"].startswith("cause=")
         assert "years=1 | gender=male" in manipulated.iloc[0]["text"]
 
+    def test_apply_balance_policy_tracks_visualization_metrics(self) -> None:
+        """Balance policy should expose summary metrics for W&B visualizations."""
+        cfg = Config(
+            text_field_separator=" | ",
+            balance_strategy="upsample",
+            balance_target_quantile=1.0,
+            balance_upsample_inverse_power=1.0,
+            balance_upsample_budget_ratio=1.0,
+            balance_base_perturbation_rate=1.0,
+            balance_perturbations=["delete_random_char"],
+            balance_perturbation_mean=0.1,
+            balance_perturbation_variance=0.0,
+        )
+        handler = DataHandler(cfg)
+        source = _balance_df()
+        balanced = handler._apply_balance_policy(source)
+        metrics = handler.get_training_balance_metrics()
+
+        assert metrics is not None
+        assert len(balanced) > len(source)
+        assert metrics["enabled"] is True
+        assert metrics["strategy"] == "upsample"
+        assert metrics["rows_before"] == len(source)
+        assert metrics["rows_after"] == len(balanced)
+        assert metrics["rows_added"] == len(balanced) - len(source)
+        assert metrics["base_perturbed_rows"] > 0
+        assert metrics["label_distribution_before"]["A00"] == 2
+        assert metrics["label_distribution_after"]["B00"] >= 1
+
     def test_manipulate_classes_scales_perturbation_count_by_cod_length(
         self,
     ) -> None:
@@ -1186,7 +1215,9 @@ class TestDataHandler:
             data_sources=[],
         )
         base_handler = DataHandler(base_cfg)
-        base_handler._write_processing_metadata(base_handler._build_processing_metadata())
+        base_handler._write_processing_metadata(
+            base_handler._build_processing_metadata()
+        )
         base_splits = base_handler.get_splits()
 
         changed_cfg = Config(
