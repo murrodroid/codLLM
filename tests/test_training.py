@@ -257,6 +257,9 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "test_f1": 0.8,
         "holdout_val_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
+        "epoch": 3.0,
+        "step": 42,
+        "global_step": 42,
     }
     rewritten = wandb_utils_module.rewrite_logs_preserving_scoped_metric_keys(logs)
 
@@ -265,6 +268,12 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
     assert rewritten["test/f1"] == 0.8
     assert rewritten["holdout/val/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
+    assert rewritten["epoch"] == 3.0
+    assert rewritten["step"] == 42
+    assert rewritten["global_step"] == 42
+    assert "train/epoch" not in rewritten
+    assert "train/step" not in rewritten
+    assert "train/global_step" not in rewritten
     assert "train/pretraining/val/loss" not in rewritten
 
 

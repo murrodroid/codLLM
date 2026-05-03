@@ -261,15 +261,26 @@ unrealistic examples because datasets differ in language, time period, field cov
 Balancing is controlled through `Config` (or matching `CODLLM_*` env vars):
 
 - `balance_strategy`: `"none"` disables upsampling, `"upsample"` enables class-count upsampling,
-  `"sqrt"` enables square-root class balancing. Default: `"none"`.
+  `"sqrt"` enables square-root class balancing. Env: `CODLLM_BALANCE_STRATEGY`. Default: `"none"`.
 - `balance_target_quantile`: quantile used to compute the target class count for upsampling.
+  Env: `CODLLM_BALANCE_TARGET_QUANTILE`.
 - `balance_upsample_labels`: optional allow-list of labels that may be upsampled (empty = all eligible minority labels).
-- `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority classes more.
-- `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale upsampling dynamically.
+  Env: `CODLLM_BALANCE_UPSAMPLE_LABELS`.
+- `balance_upsample_inverse_power`: inverse-frequency scaling exponent in `(0, 1]`; higher values boost smaller minority
+  classes more. Env: `CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER`.
+- `balance_upsample_budget_ratio`: synthetic-row budget as a ratio of training-set size (`0..1`), used to scale
+  upsampling dynamically. Env: `CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO`.
 - `balance_perturbations`: augmentation functions applied to the `cod:` text segment.
+  Env: `CODLLM_BALANCE_PERTURBATIONS`.
 - `balance_perturbation_mean`: expected perturbation applications per character in the `cod:` text segment.
+  Env: `CODLLM_BALANCE_PERTURBATION_MEAN`.
 - `balance_perturbation_variance`: perturbation-count variance per character in the `cod:` text segment.
+  Env: `CODLLM_BALANCE_PERTURBATION_VARIANCE`.
 - `balance_base_perturbation_rate`: chance/rate (`0..1`) to perturb all training rows after upsampling.
+  Env: `CODLLM_BALANCE_BASE_PERTURBATION_RATE`.
+
+For train-time upsampling, use `CODLLM_BALANCE_STRATEGY=upsample`. These knobs are separate from the
+`CODLLM_PRETRAIN_UPSAMPLE_*` variables, which only affect masterlist pretraining.
 
 Typical setups:
 
@@ -568,6 +579,19 @@ tail -f logs/<job_id>.out
 - `CODLLM_MULTICOD_SYNTHETIC_RATIO` (default: `0.0`)
 - `CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE` (`within_source`, `any_source`; default: `within_source`)
 - `CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR` (default: `"; "`)
+- `CODLLM_BALANCE_STRATEGY` (`none`, `upsample`, `sqrt`; default: `none`; controls train-time balancing only)
+- `CODLLM_BALANCE_TARGET_QUANTILE` (default: `0.5`; target class-count quantile for `upsample`)
+- `CODLLM_BALANCE_UPSAMPLE_LABELS` (comma-separated label allow-list; empty = all eligible minority labels)
+- `CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER` (default: `0.5`; inverse-frequency exponent in `(0, 1]`)
+- `CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO` (default: `0.4`; synthetic-row budget as a ratio of train rows)
+- `CODLLM_BALANCE_PERTURBATIONS` (comma-separated perturbations; default: `swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell`)
+- `CODLLM_BALANCE_PERTURBATION_MEAN` (default: `0.05`; expected perturbation applications per `cod:` character)
+- `CODLLM_BALANCE_PERTURBATION_VARIANCE` (default: `0.0`; perturbation-count variance per `cod:` character)
+- `CODLLM_BALANCE_BASE_PERTURBATION_RATE` (default: `0.05`; fraction/chance of train rows perturbed after balancing)
+- `CODLLM_BALANCE_SQRT_FLOOR` (default: `0`; minimum target count for `sqrt` balancing)
+- `CODLLM_BALANCE_SQRT_DECAY` (default: `0.0`; decay factor for `sqrt` balancing)
+- `CODLLM_BALANCE_SQRT_POWER` (default: `0.5`; square-root balancing power)
+- `CODLLM_BALANCE_SQRT_BUDGET_SCALE` (default: `1.05`; budget multiplier for `sqrt` balancing)
 - `CODLLM_PRETRAIN_ENABLED` (`1`/`0`; when enabled, runs masterlist pretraining before normal training)
 - `CODLLM_PRETRAIN_MASTERLIST_PATH` (default: `data/raw/ICD10h_Masterlist_2024.xlsx`)
 - `CODLLM_PRETRAIN_MASTERLIST_SHEET_NAME` (default: `Masterlist`)

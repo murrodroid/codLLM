@@ -101,6 +101,9 @@ def rewrite_logs_preserving_scoped_metric_keys(
     """Rewrite W&B logs while preserving already-scoped metric keys."""
     rewritten_logs: dict[str, Any] = {}
     for key, value in logs.items():
+        if key in {"epoch", "step", "global_step"}:
+            rewritten_logs[key] = value
+            continue
         if "/" in key:
             rewritten_logs[key] = value
             continue
