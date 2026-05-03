@@ -21,6 +21,28 @@ cause-of-death records with ICD10h classifications.
 > **Important:** The datasets used in this project are not included in this repository and
 > are subject to separate data-sharing agreements with the respective institutions.
 
+## One-Time Environment Setup
+
+Add your Hugging Face and W&B credentials to your shell startup file so local runs and HPC submissions can read them.
+Replace the placeholder values before running:
+
+```bash
+SHELL_RC="$HOME/.profile"
+case "$(basename "${SHELL:-}")" in
+  zsh) SHELL_RC="${ZDOTDIR:-$HOME}/.zshrc" ;;
+  bash) SHELL_RC="$HOME/.bashrc" ;;
+esac
+
+cat <<'EOF' >> "$SHELL_RC"
+
+# codLLM environment
+export HF_TOKEN="$HUGGINGFACE_HUB_TOKEN"
+export WANDB_API_KEY="PASTE_WANDB_API_KEY_HERE"
+EOF
+
+source "$SHELL_RC"
+```
+
 ## Method Overview
 
 The pipeline consists of:
