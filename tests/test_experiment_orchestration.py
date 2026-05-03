@@ -281,6 +281,14 @@ CODLLM_PRETRAIN_ENABLED = true
     spec = load_experiment_spec(spec_path)
     run = spec.expanded_runs()[0]
     calls = []
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
 
     class DummyHandler:
         """Test double for DataHandler."""
@@ -296,6 +304,8 @@ CODLLM_PRETRAIN_ENABLED = true
                     "run_name": tasks_module.os.environ.get(
                         "CODLLM_EXPERIMENT_RUN_NAME"
                     ),
+                    "processed_dir": self.cfg.data_processed_dir,
+                    "output_dir": self.cfg.output_dir,
                 }
             )
             frame = pd.DataFrame({"text": ["cod: alpha"], "label": ["A00"]})
@@ -307,13 +317,67 @@ CODLLM_PRETRAIN_ENABLED = true
 
     monkeypatch.setattr(tasks_module, "DataHandler", DummyHandler)
     monkeypatch.delenv("CODLLM_EXPERIMENT_RUN_NAME", raising=False)
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_OUTPUT_DIR", raising=False)
 
-    _build_run_dependencies(spec, run, run_number=1, total_runs=1)
+    _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
 
     assert calls[0] == {
         "force_reprocess": True,
         "hf_model": "google/flan-t5-small",
         "run_name": "run",
+        "processed_dir": str(tmp_path / "storage" / "codllm" / "data/processed"),
+        "output_dir": str(tmp_path / "storage" / "codllm" / "runs"),
     }
     assert calls[1] == {"pretraining": True}
     assert tasks_module.os.environ.get("CODLLM_EXPERIMENT_RUN_NAME") is None
+
+
+def test_build_run_dependencies_preserves_explicit_processed_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Explicit CODLLM_DATA_PROCESSED_DIR should override hpc.build defaults."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[env]
+CODLLM_DATA_PROCESSED_DIR = "/explicit/processed"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    run = spec.expanded_runs()[0]
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
+    seen = {}
+
+    class DummyHandler:
+        """Test double for DataHandler."""
+
+        def __init__(self, cfg) -> None:
+            seen["processed_dir"] = cfg.data_processed_dir
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            del force_reprocess
+            frame = pd.DataFrame({"text": ["cod: alpha"], "label": ["A00"]})
+            return DataSplits(train=frame, val=frame.iloc[0:0], test=frame.iloc[0:0])
+
+    monkeypatch.setattr(tasks_module, "DataHandler", DummyHandler)
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
+
+    _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
+
+    assert seen["processed_dir"] == "/explicit/processed"

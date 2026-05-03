@@ -154,6 +154,8 @@ def hpc_storage(ctx: Context) -> None:
 def hpc_build(
     ctx: Context,
     config: str,
+    profile: str = "h100-10h",
+    profiles: str = str(DEFAULT_PROFILE_PATH),
     sweep_index: int = 0,
     force_reprocess: bool | None = None,
     dry_run: bool = False,
@@ -166,13 +168,18 @@ def hpc_build(
             f"Task 'hpc.build' only supports command='train' specs, got {spec.command!r}.",
             code=2,
         )
+    lsf_profile = load_lsf_profile(profile, profiles)
 
     runs = _select_runs(spec, sweep_index)
-    print(f"Building data dependencies for {len(runs)} run(s) from {spec.path}.")
+    print(
+        f"Building data dependencies for {len(runs)} run(s) from {spec.path} "
+        f"with profile {lsf_profile.name}."
+    )
     for run_number, run in enumerate(runs, start=1):
         _build_run_dependencies(
             spec=spec,
             run=run,
+            profile=lsf_profile,
             run_number=run_number,
             total_runs=len(runs),
             force_reprocess=force_reprocess,
@@ -227,6 +234,7 @@ def _select_runs(spec: ExperimentSpec, sweep_index: int) -> list[ExperimentRun]:
 def _build_run_dependencies(
     spec: ExperimentSpec,
     run: ExperimentRun,
+    profile: LsfProfile,
     run_number: int,
     total_runs: int,
     force_reprocess: bool | None = None,
@@ -250,9 +258,13 @@ def _build_run_dependencies(
         )
         return
 
-    run_env = run.env_with_runtime_metadata(spec)
+    runtime_defaults = _hpc_runtime_env_defaults(profile)
+    run_env = runtime_defaults | run.env_with_runtime_metadata(spec)
     with _temporary_environ(run_env):
         cfg = config_from_env()
+        print(f"  CODLLM_DATA_RAW_DIR={cfg.data_raw_dir}")
+        print(f"  CODLLM_DATA_PROCESSED_DIR={cfg.data_processed_dir}")
+        print(f"  CODLLM_OUTPUT_DIR={cfg.output_dir}")
         handler = DataHandler(cfg)
         splits = handler.get_splits(force_reprocess=effective_force_reprocess)
         print(
@@ -271,6 +283,28 @@ def _build_run_dependencies(
         if cfg.model_task == "sequence_classification":
             labels = handler.get_masterlist_label_vocabulary()
             print(f"  classifier label vocabulary: {len(labels)} labels")
+
+
+def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
+    """Return login-node defaults that mirror the generated LSF script."""
+    storage_folder = os.environ.get("STORAGE_FOLDER") or os.path.expandvars(
+        profile.storage_folder
+    )
+    if profile.run_storage_dir:
+        profile_run_storage_dir = os.path.expandvars(profile.run_storage_dir)
+    else:
+        profile_run_storage_dir = str(Path(storage_folder) / "codllm")
+    run_storage_dir = os.environ.get("RUN_STORAGE_DIR") or profile_run_storage_dir
+    project_dir = Path.cwd()
+
+    defaults = {
+        "STORAGE_FOLDER": storage_folder,
+        "RUN_STORAGE_DIR": run_storage_dir,
+        "CODLLM_OUTPUT_DIR": str(Path(run_storage_dir) / "runs"),
+        "CODLLM_DATA_RAW_DIR": str(project_dir / "data/raw"),
+        "CODLLM_DATA_PROCESSED_DIR": str(Path(run_storage_dir) / "data/processed"),
+    }
+    return {key: os.environ.get(key, value) for key, value in defaults.items()}
 
 
 @contextmanager
