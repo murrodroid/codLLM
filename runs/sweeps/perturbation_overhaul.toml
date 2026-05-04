@@ -1,0 +1,62 @@
+base = "../base/h100-small.toml"
+name = "perturbation-overhaul"
+description = """
+2x2 ablation establishing whether full-distribution perturbation helps on top of
+floor-based minority upsampling.
+
+Platform: flan-t5-small + 100% data + 32 epochs + single CoD. This is a fresh
+baseline — different platform than the prior flan-t5-large + 25% experiments,
+so the previous 88->89% reference number does NOT apply to this run.
+
+Sweep cells:
+  (none, 0.0):  no upsample, no perturb-all                 — baseline
+  (floor, 0.0): floor=50 upsample, no perturb-all           — upsample-only
+  (none, 1.0):  no upsample, perturb every training row     — perturb-only
+  (floor, 1.0): floor=50 upsample, perturb every row        — combined
+
+Read macro_f1 as the headline metric; per-class F1 by class-size decile is the
+follow-up analysis to detect macro-gaming.
+
+Original 2026-04-29 run results (flan-t5-small, full data, 32 epochs):
+  cell        val/accuracy  val/macro_f1
+  (none, 0)   0.97708       0.78262
+  (floor, 0)  0.97806       0.78277       upsample-only ≈ baseline
+  (none, 1)   0.96837       0.72549       perturb hurts
+  (floor, 1)  0.96804       0.71409       combined hurts most (negative interaction)
+"""
+force_reprocess = false
+
+[env]
+# Task / data
+CODLLM_TRAINING_INPUT = "cod"
+CODLLM_MAX_LABEL_COUNT = 1
+CODLLM_DATASET_SIZE = 1.0
+CODLLM_TRAIN_SIZE = 0.98
+CODLLM_VAL_SIZE = 0.01
+CODLLM_TEST_SIZE = 0.01
+
+# Training schedule
+CODLLM_NUM_TRAIN_EPOCHS = 32
+CODLLM_LR = 2.5e-5
+CODLLM_WEIGHT_DECAY = 0.0
+CODLLM_WARMUP_STEPS = 500
+CODLLM_EVAL_STRATEGY = "epoch"
+CODLLM_SAVE_STRATEGY = "best"
+CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
+
+# Balance held knobs (only used when CODLLM_BALANCE_STRATEGY = "floor")
+CODLLM_BALANCE_FLOOR = 50
+CODLLM_BALANCE_FLOOR_DECAY = 0.0
+
+# Perturbation set (used when synthesizing upsample copies AND when
+# base-rate perturbation is enabled on existing rows)
+CODLLM_BALANCE_PERTURBATIONS = [
+  "swap_adjacent_chars",
+  "delete_random_char",
+  "accent_random_vowel",
+  "qwerty_misspell",
+]
+
+[sweep]
+CODLLM_BALANCE_STRATEGY = ["none", "floor"]
+CODLLM_BALANCE_BASE_PERTURBATION_RATE = [0.0, 1.0]
