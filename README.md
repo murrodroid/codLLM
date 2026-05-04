@@ -33,11 +33,22 @@ cd codllm
 uv sync
 ```
 
-Set credentials in your shell environment:
+Set credentials permanently in your shell environment:
 
-```bash
-export HUGGINGFACE_HUB_TOKEN="..."
+```zsh
+SHELL_RC="$HOME/.profile"
+case "$(basename "${SHELL:-}")" in
+  zsh) SHELL_RC="${ZDOTDIR:-$HOME}/.zshrc" ;;
+  bash) SHELL_RC="$HOME/.bashrc" ;;
+esac
+
+cat <<'EOF' >> "$SHELL_RC"
+
+export HF_TOKEN="..."
 export WANDB_API_KEY="..."
+EOF
+
+source "$SHELL_RC"
 ```
 
 Run tests:
