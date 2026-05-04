@@ -21,6 +21,6 @@ runs/
 experiments/model_from_wandb/
 
 # Agentic baseline run state (pickled checkpoints, log files)
-experiments/agentic_baseline_claudecode/results/checkpoint.pkl
-experiments/agentic_baseline_claudecode/results/checkpoint.pkl.tmp
+experiments/agentic_baseline_claudecode/results/*.pkl
+experiments/agentic_baseline_claudecode/results/*.pkl.tmp
 experiments/agentic_baseline_claudecode/results/*.log
