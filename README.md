@@ -357,9 +357,9 @@ Synthetic multi-COD rows are added only after train/validation/test splitting, a
 
 Balancing is a training-split transformation. It never changes validation, test, or final hold-out rows.
 
-The pipeline has two independent stages, both controlled by the `CODLLM_BALANCE_*` environment variables. Either or
-both may be active in a single run; setting `CODLLM_BALANCE_STRATEGY=none` and `CODLLM_BALANCE_BASE_PERTURBATION_RATE=0`
-disables both.
+The pipeline has two independent stages. Floor upsampling uses `CODLLM_BALANCE_*`; whole-training-set base
+perturbation uses `CODLLM_BASE_PERTURBATION_*`. Either or both may be active in a single run; setting
+`CODLLM_BALANCE_STRATEGY=none` and `CODLLM_BASE_PERTURBATION_RATE=0` disables both.
 
 #### Stage 1 — Floor upsampling (`CODLLM_BALANCE_STRATEGY=floor`)
 
@@ -380,7 +380,7 @@ Worked example with `FLOOR=50, DECAY=0`:
 | 50 | 50 (unchanged) |
 | 200 | 200 (unchanged) |
 
-#### Stage 2 — Base-rate perturbation (`CODLLM_BALANCE_BASE_PERTURBATION_RATE > 0`)
+#### Stage 2 — Base-rate perturbation (`CODLLM_BASE_PERTURBATION_RATE > 0`)
 
 After upsampling, a configurable fraction of the *entire training set* (synthetic + original) is perturbed in place.
 This is regularization, not balance correction — `RATE=0.0` is the safe default, `RATE=1.0` perturbs every row. The
@@ -394,8 +394,10 @@ Perturbations are applied only to the configured `cod` segment of the training t
 metadata fields, so structural metadata stays intact across synthetic copies.
 
 - `CODLLM_BALANCE_PERTURBATIONS` — comma-separated names from {`swap_adjacent_chars`, `delete_random_char`,
-  `insert_random_whitespace`, `accent_random_vowel`, `qwerty_misspell`}. Applies to both stages.
-- `CODLLM_BALANCE_PERTURBATION_MEAN` and `_VARIANCE` — control how many edits each perturbed COD string receives.
+  `insert_random_whitespace`, `accent_random_vowel`, `qwerty_misspell`}. Applies to floor-upsampled copies.
+- `CODLLM_BALANCE_PERTURBATION_MEAN` and `_VARIANCE` — control edits for floor-upsampled copies.
+- `CODLLM_BASE_PERTURBATIONS`, `CODLLM_BASE_PERTURBATION_MEAN`, and `_VARIANCE` — equivalent controls for the
+  whole-training-set regularization pass.
   Counts scale with COD text length, so longer cause strings receive more edits on average.
 
 ### Hold-Out Evaluation
@@ -437,12 +439,15 @@ Each training run writes checkpoints under a run-scoped output directory. Locall
 
 When W&B credentials are available, training logs:
 
-- resolved config and runtime metadata
+- compact run-page config selected by `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full`
+- full resolved config, runtime metadata, source metadata, and training args as run metadata artifacts
 - source file metadata and processed-cache fingerprints
 - split sizes, source distributions, and label summaries
 - compact data visualizations under `data/*`
-- validation, test, hold-out, and pretraining metrics under scoped namespaces
-- error tables under scopes such as `val/errors/*`, `test/errors/*`, and `holdout/test/errors/*`
+- validation, test, hold-out, and pretraining metrics under scoped namespaces, filtered by
+  `CODLLM_WANDB_METRIC_MODE=core|standard|all`
+- full evaluation metrics and row-level predictions as artifacts, plus compact error tables under scopes such as
+  `val/errors/*`, `test/errors/*`, and `holdout/test/errors/*`
 
 Multi-COD runs emit exact-match, micro, sample, Jaccard, Hamming, and label-count diagnostics. Single-label runs emit
 accuracy and macro precision/recall/F1.

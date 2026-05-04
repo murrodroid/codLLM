@@ -4,6 +4,7 @@ from typing import Optional
 import torch
 
 from codllm.settings.factories import (
+    default_base_perturbations,
     default_balance_perturbations,
     default_data_sources,
     default_device,
@@ -25,7 +26,9 @@ from codllm.settings.types import (
     TorchDType,
     TrainingInput,
     WandbLogModel,
+    WandbMetricMode,
     WandbMode,
+    WandbRunConfigMode,
 )
 
 
@@ -55,6 +58,8 @@ class WandbConfig:
     run_name: Optional[str] = None
     mode: WandbMode = "auto"
     log_model: WandbLogModel = "end"
+    run_config_mode: WandbRunConfigMode = "standard"
+    metric_mode: WandbMetricMode = "standard"
 
 
 @dataclass
@@ -168,7 +173,10 @@ class Config:
     balance_perturbation_variance: float = 0.0
     balance_floor: int = 0
     balance_floor_decay: float = 0.0
-    balance_base_perturbation_rate: float = 0.5
+    base_perturbations: list[str] = field(default_factory=default_base_perturbations)
+    base_perturbation_mean: float = 0.05
+    base_perturbation_variance: float = 0.0
+    base_perturbation_rate: float = 0.05
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
 

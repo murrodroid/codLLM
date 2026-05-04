@@ -1709,6 +1709,17 @@ def test_build_experiment_metadata_includes_wandb_sweep_env(
     assert payload["runtime"]["hpc_env"]["WANDB_RUN_GROUP"] == "sweep"
 
 
+def test_trim_wandb_artifact_metadata_caps_top_level_keys() -> None:
+    """Model artifact metadata should stay within W&B's top-level key limit."""
+    metadata = {f"metric_{index}": index for index in range(150)}
+    metadata["final_model"] = True
+
+    trimmed = wandb_utils_module._trim_wandb_artifact_metadata(metadata)
+
+    assert len(trimmed) <= 100
+    assert trimmed["final_model"] is True
+
+
 def test_log_wandb_run_metadata_initializes_and_updates_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1739,16 +1750,15 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
     assert fake_wandb.init_calls[0]["project"] == "test-project"
     assert fake_wandb.init_calls[0]["entity"] == "cfg-entity"
     assert fake_wandb.init_calls[0]["name"] == "explicit-run"
-    assert (
-        fake_wandb.config.updates[0]["payload"]["dataset"]["split_rows"]["train"] == 3
-    )
+    assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.train"] == 3
+    assert "dataset" not in fake_wandb.config.updates[0]["payload"]
     assert fake_wandb.config.updates[0]["allow_val_change"] is True
 
 
-def test_log_wandb_run_metadata_writes_flattened_keys(
+def test_log_wandb_run_metadata_full_mode_writes_flattened_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Metadata logger should publish flattened dot-notation keys for filtering."""
+    """Full metadata mode should publish legacy nested and flattened config keys."""
     fake_wandb = _FakeWandbModule()
     monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
     monkeypatch.setenv("WANDB_PROJECT", "test-project")
@@ -1761,6 +1771,7 @@ def test_log_wandb_run_metadata_writes_flattened_keys(
             entity="cfg-entity",
             run_name="cfg-run",
             mode="offline",
+            run_config_mode="full",
         )
     )
     metadata = {

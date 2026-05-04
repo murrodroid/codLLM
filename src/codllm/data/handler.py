@@ -51,7 +51,7 @@ from codllm.input import (
 from codllm.input.harmonization import resolve_label_harmonization_workbook_path
 from codllm.runtime.paths import resolve_source_path
 
-PREPARED_SPLITS_METADATA_VERSION = 1
+PREPARED_SPLITS_METADATA_VERSION = 2
 
 
 def _log_data_progress(message: str) -> None:
@@ -248,9 +248,10 @@ class DataHandler:
                 "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
                 "balance_floor": self.cfg.balance_floor,
                 "balance_floor_decay": self.cfg.balance_floor_decay,
-                "balance_base_perturbation_rate": (
-                    self.cfg.balance_base_perturbation_rate
-                ),
+                "base_perturbations": list(self.cfg.base_perturbations),
+                "base_perturbation_mean": self.cfg.base_perturbation_mean,
+                "base_perturbation_variance": self.cfg.base_perturbation_variance,
+                "base_perturbation_rate": self.cfg.base_perturbation_rate,
                 "masterlist_inject_enabled": self.cfg.masterlist_inject_enabled,
                 "masterlist_inject_target_per_label": (
                     self.cfg.masterlist_inject_target_per_label
@@ -463,7 +464,7 @@ class DataHandler:
         if not splits.train.empty:
             if (
                 self.cfg.balance_strategy != "none"
-                or self.cfg.balance_base_perturbation_rate > 0
+                or self.cfg.base_perturbation_rate > 0
             ):
                 _log_data_progress("Applying training balance/perturbation policy.")
             splits.train = self._apply_balance_policy(splits.train)
@@ -804,10 +805,10 @@ class DataHandler:
         metrics: dict[str, Any] = {
             "enabled": bool(
                 self.cfg.balance_strategy != "none"
-                or self.cfg.balance_base_perturbation_rate > 0
+                or self.cfg.base_perturbation_rate > 0
             ),
             "strategy": self.cfg.balance_strategy,
-            "base_perturbation_rate": float(self.cfg.balance_base_perturbation_rate),
+            "base_perturbation_rate": float(self.cfg.base_perturbation_rate),
             "rows_before": int(len(train_df)),
             "rows_after_upsample": int(len(train_df)),
             "rows_after": int(len(train_df)),
@@ -842,7 +843,7 @@ class DataHandler:
 
         metrics["rows_after_upsample"] = int(len(balanced_train_df))
         metrics["rows_added"] = int(len(balanced_train_df) - len(train_df))
-        if self.cfg.balance_base_perturbation_rate > 0:
+        if self.cfg.base_perturbation_rate > 0:
             before_perturbation_texts = (
                 balanced_train_df[text_column].fillna("").astype(str).tolist()
                 if text_column in balanced_train_df.columns
@@ -854,10 +855,10 @@ class DataHandler:
                 df=balanced_train_df,
                 text_column=text_column,
                 target_labels=None,
-                perturbation_names=self.cfg.balance_perturbations,
-                perturbation_mean=self.cfg.balance_perturbation_mean,
-                perturbation_variance=self.cfg.balance_perturbation_variance,
-                sample_fraction=self.cfg.balance_base_perturbation_rate,
+                perturbation_names=self.cfg.base_perturbations,
+                perturbation_mean=self.cfg.base_perturbation_mean,
+                perturbation_variance=self.cfg.base_perturbation_variance,
+                sample_fraction=self.cfg.base_perturbation_rate,
                 seed=self.cfg.resolved_data_seed() + 1,
             )
             after_perturbation_texts = (

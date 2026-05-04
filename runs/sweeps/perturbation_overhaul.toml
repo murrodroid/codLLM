@@ -48,9 +48,14 @@ CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
 CODLLM_BALANCE_FLOOR = 50
 CODLLM_BALANCE_FLOOR_DECAY = 0.0
 
-# Perturbation set (used when synthesizing upsample copies AND when
-# base-rate perturbation is enabled on existing rows)
+# Perturbation sets for floor-upsampled copies and whole-training-set regularization.
 CODLLM_BALANCE_PERTURBATIONS = [
+  "swap_adjacent_chars",
+  "delete_random_char",
+  "accent_random_vowel",
+  "qwerty_misspell",
+]
+CODLLM_BASE_PERTURBATIONS = [
   "swap_adjacent_chars",
   "delete_random_char",
   "accent_random_vowel",
@@ -59,4 +64,4 @@ CODLLM_BALANCE_PERTURBATIONS = [
 
 [sweep]
 CODLLM_BALANCE_STRATEGY = ["none", "floor"]
-CODLLM_BALANCE_BASE_PERTURBATION_RATE = [0.0, 1.0]
+CODLLM_BASE_PERTURBATION_RATE = [0.0, 1.0]

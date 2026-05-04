@@ -513,7 +513,7 @@ class TestLoaders:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6, 7])
@@ -575,7 +575,7 @@ class TestLoaders:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[])
@@ -982,10 +982,13 @@ class TestDataHandler:
             balance_strategy="floor",
             balance_floor=4,
             balance_floor_decay=0.0,
-            balance_base_perturbation_rate=1.0,
             balance_perturbations=["delete_random_char"],
             balance_perturbation_mean=0.1,
             balance_perturbation_variance=0.0,
+            base_perturbation_rate=1.0,
+            base_perturbations=["delete_random_char"],
+            base_perturbation_mean=0.1,
+            base_perturbation_variance=0.0,
         )
         handler = DataHandler(cfg)
         source = _balance_df()
@@ -1238,7 +1241,7 @@ class TestDataHandler:
             balance_strategy="floor",
             balance_floor=10,
             balance_floor_decay=0.25,
-            balance_base_perturbation_rate=0.2,
+            base_perturbation_rate=0.2,
         )
         handler_base = DataHandler(cfg_base)
         prior_metadata = handler_base._build_processing_metadata()
@@ -1267,7 +1270,7 @@ class TestDataHandler:
             balance_strategy="none",
             balance_floor=0,
             balance_floor_decay=0.0,
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
         )
         handler_changed = DataHandler(cfg_changed)
         splits = handler_changed.get_splits()
@@ -1408,7 +1411,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             balance_strategy="none",
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping()}
@@ -1475,7 +1478,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             balance_strategy="none",
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping(multi_code_cols=[2, 6])}
@@ -1658,8 +1661,8 @@ class TestDataHandler:
             dataset_size=1.0,
             data_sources=[],
             balance_strategy="none",
-            balance_perturbations=["delete_random_char"],
-            balance_base_perturbation_rate=1.0,
+            base_perturbations=["delete_random_char"],
+            base_perturbation_rate=1.0,
         )
         handler = DataHandler(cfg)
         handler._write_processing_metadata(handler._build_processing_metadata())

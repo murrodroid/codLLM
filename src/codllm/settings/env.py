@@ -1,4 +1,5 @@
 import os
+import warnings
 from copy import deepcopy
 from typing import Optional, cast
 
@@ -26,7 +27,9 @@ from codllm.settings.types import (
     TorchDType,
     TrainingInput,
     WandbLogModel,
+    WandbMetricMode,
     WandbMode,
+    WandbRunConfigMode,
 )
 
 
@@ -732,6 +735,24 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.balance_perturbation_variance = balance_perturbation_variance
 
+    base_perturbations = os.getenv("CODLLM_BASE_PERTURBATIONS")
+    if base_perturbations is not None and base_perturbations.strip() != "":
+        cfg.base_perturbations = [
+            p.strip() for p in base_perturbations.split(",") if p.strip()
+        ]
+
+    base_perturbation_mean = _parse_env_float("CODLLM_BASE_PERTURBATION_MEAN")
+    if base_perturbation_mean is not None:
+        if base_perturbation_mean < 0:
+            raise ValueError("CODLLM_BASE_PERTURBATION_MEAN must be non-negative.")
+        cfg.base_perturbation_mean = base_perturbation_mean
+
+    base_perturbation_variance = _parse_env_float("CODLLM_BASE_PERTURBATION_VARIANCE")
+    if base_perturbation_variance is not None:
+        if base_perturbation_variance < 0:
+            raise ValueError("CODLLM_BASE_PERTURBATION_VARIANCE must be non-negative.")
+        cfg.base_perturbation_variance = base_perturbation_variance
+
     balance_floor = _parse_env_int("CODLLM_BALANCE_FLOOR")
     if balance_floor is not None:
         if balance_floor < 0:
@@ -744,15 +765,48 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_BALANCE_FLOOR_DECAY must be between 0 and 1.")
         cfg.balance_floor_decay = balance_floor_decay
 
-    balance_base_perturbation_rate = _parse_env_float(
-        "CODLLM_BALANCE_BASE_PERTURBATION_RATE"
+    base_perturbation_rate = _parse_env_float("CODLLM_BASE_PERTURBATION_RATE")
+    legacy_balance_base_perturbation_rate = (
+        _parse_env_float("CODLLM_BALANCE_BASE_PERTURBATION_RATE")
+        if base_perturbation_rate is None
+        else None
     )
-    if balance_base_perturbation_rate is not None:
-        if balance_base_perturbation_rate < 0 or balance_base_perturbation_rate > 1:
-            raise ValueError(
-                "CODLLM_BALANCE_BASE_PERTURBATION_RATE must be between 0 and 1."
+    if (
+        base_perturbation_rate is None
+        and legacy_balance_base_perturbation_rate is not None
+    ):
+        warnings.warn(
+            (
+                "CODLLM_BALANCE_BASE_PERTURBATION_RATE is deprecated; use "
+                "CODLLM_BASE_PERTURBATION_RATE for whole-training-set perturbation."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        base_perturbation_rate = legacy_balance_base_perturbation_rate
+        if base_perturbations is None and balance_perturbations is not None:
+            warnings.warn(
+                (
+                    "CODLLM_BALANCE_PERTURBATIONS now controls only floor-upsampled "
+                    "copies; set CODLLM_BASE_PERTURBATIONS for whole-training-set "
+                    "perturbation. Reusing the balance perturbation list for this "
+                    "legacy configuration."
+                ),
+                DeprecationWarning,
+                stacklevel=2,
             )
-        cfg.balance_base_perturbation_rate = balance_base_perturbation_rate
+            cfg.base_perturbations = list(cfg.balance_perturbations)
+        if base_perturbation_mean is None and balance_perturbation_mean is not None:
+            cfg.base_perturbation_mean = cfg.balance_perturbation_mean
+        if (
+            base_perturbation_variance is None
+            and balance_perturbation_variance is not None
+        ):
+            cfg.base_perturbation_variance = cfg.balance_perturbation_variance
+    if base_perturbation_rate is not None:
+        if base_perturbation_rate < 0 or base_perturbation_rate > 1:
+            raise ValueError("CODLLM_BASE_PERTURBATION_RATE must be between 0 and 1.")
+        cfg.base_perturbation_rate = base_perturbation_rate
 
     wandb_log_model = os.getenv("CODLLM_WANDB_LOG_MODEL")
     if wandb_log_model is not None and wandb_log_model.strip() != "":
@@ -775,6 +829,24 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             allowed = ", ".join(sorted(allowed_wandb_modes))
             raise ValueError(f"CODLLM_WANDB_MODE must be one of: {allowed}.")
         cfg.wandb.mode = cast(WandbMode, normalized_wandb_mode)
+
+    wandb_run_config_mode = os.getenv("CODLLM_WANDB_RUN_CONFIG_MODE")
+    if wandb_run_config_mode is not None and wandb_run_config_mode.strip() != "":
+        normalized_run_config_mode = wandb_run_config_mode.strip().lower()
+        allowed_run_config_modes = {"minimal", "standard", "full"}
+        if normalized_run_config_mode not in allowed_run_config_modes:
+            allowed = ", ".join(sorted(allowed_run_config_modes))
+            raise ValueError(f"CODLLM_WANDB_RUN_CONFIG_MODE must be one of: {allowed}.")
+        cfg.wandb.run_config_mode = cast(WandbRunConfigMode, normalized_run_config_mode)
+
+    wandb_metric_mode = os.getenv("CODLLM_WANDB_METRIC_MODE")
+    if wandb_metric_mode is not None and wandb_metric_mode.strip() != "":
+        normalized_metric_mode = wandb_metric_mode.strip().lower()
+        allowed_metric_modes = {"core", "standard", "all"}
+        if normalized_metric_mode not in allowed_metric_modes:
+            allowed = ", ".join(sorted(allowed_metric_modes))
+            raise ValueError(f"CODLLM_WANDB_METRIC_MODE must be one of: {allowed}.")
+        cfg.wandb.metric_mode = cast(WandbMetricMode, normalized_metric_mode)
 
     wandb_project = os.getenv("CODLLM_WANDB_PROJECT")
     if wandb_project is not None and wandb_project.strip() != "":

@@ -135,7 +135,7 @@ def run_training_stage(
             processed_eval_ds is not None or processed_holdout_eval_ds is not None
         ),
     )
-    wandb_utils.patch_transformers_wandb_log_rewrite(report_to=args.report_to)
+    wandb_utils.patch_transformers_wandb_log_rewrite(report_to=args.report_to, cfg=cfg)
     training_args_payload = args.to_dict() if hasattr(args, "to_dict") else None
     metadata_payload = wandb_utils.build_experiment_metadata(
         cfg=cfg,
@@ -189,6 +189,8 @@ def run_training_stage(
                     tokenizer=tokenizer,
                     train_input_strings=train_input_strings or None,
                     artifact_logger=metric_artifact_logger,
+                    metric_mode=cfg.wandb.metric_mode,
+                    save_metric=cfg.save_strategy_best_metric,
                 )
                 if (
                     (
@@ -218,6 +220,8 @@ def run_training_stage(
                     train_classes=train_classes or None,
                     train_input_strings=train_input_strings or None,
                     artifact_logger=metric_artifact_logger,
+                    metric_mode=cfg.wandb.metric_mode,
+                    save_metric=cfg.save_strategy_best_metric,
                 )
                 if processed_eval_ds is not None
                 or processed_holdout_eval_ds is not None
