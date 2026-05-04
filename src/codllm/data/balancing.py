@@ -8,6 +8,15 @@ from codllm.config import Config
 from codllm.input import PERTURBATION_REGISTRY
 
 PerturbationFn = Callable[[str], str]
+RNG_AWARE_PERTURBATION_NAMES = frozenset(
+    {
+        "swap_adjacent_chars",
+        "delete_random_char",
+        "insert_random_whitespace",
+        "accent_random_vowel",
+        "qwerty_misspell",
+    }
+)
 
 
 def _resolve_perturbation_functions(
@@ -42,15 +51,35 @@ def _apply_perturbation_with_seed(
         random.setstate(previous_state)
 
 
+def _apply_perturbation_with_rng(
+    perturbation_fn: PerturbationFn,
+    text: str,
+    rng: random.Random,
+) -> str:
+    """Apply one perturbation using the local RNG when the function supports it."""
+    if (
+        getattr(perturbation_fn, "__module__", "") == "codllm.data.augmentation"
+        and getattr(perturbation_fn, "__name__", "") in RNG_AWARE_PERTURBATION_NAMES
+    ):
+        return perturbation_fn(text, rng=rng)
+    return _apply_perturbation_with_seed(
+        perturbation_fn,
+        text,
+        seed=rng.randint(0, 2_147_483_647),
+    )
+
+
 def _perturb_cod_segment(
     cfg: Config,
     text: str,
     perturbation_fns: Sequence[PerturbationFn],
-    perturbations_per_sample: int,
     rng: random.Random,
+    perturbations_per_sample: int | None = None,
+    perturbation_mean: float | None = None,
+    perturbation_variance: float = 0.0,
 ) -> str:
     """Perturb only the configured COD segment inside a training text."""
-    if perturbations_per_sample < 1 or not perturbation_fns:
+    if not perturbation_fns:
         return text
 
     cod_prefix = cfg.input_field_prefix("cod")
@@ -63,18 +92,55 @@ def _perturb_cod_segment(
         return text
 
     cod_value = parts[cod_idx].strip()[len(cod_prefix) :]
-    for _ in range(perturbations_per_sample):
+    if perturbations_per_sample is not None:
+        perturbation_count = perturbations_per_sample
+    else:
+        perturbation_count = _sample_perturbation_count(
+            text=cod_value,
+            perturbation_mean=0.0 if perturbation_mean is None else perturbation_mean,
+            perturbation_variance=perturbation_variance,
+            rng=rng,
+        )
+    if perturbation_count < 1:
+        return text
+
+    for _ in range(perturbation_count):
         perturbation_fn = rng.choice(perturbation_fns)
-        cod_value = _apply_perturbation_with_seed(
+        cod_value = _apply_perturbation_with_rng(
             perturbation_fn,
             cod_value,
-            seed=rng.randint(0, 2_147_483_647),
+            rng=rng,
         )
 
     parts[cod_idx] = f"{cod_prefix}{cod_value}"
     return (
         cfg.text_field_separator.join(parts) if cfg.text_field_separator else parts[0]
     )
+
+
+def _sample_perturbation_count(
+    text: str,
+    perturbation_mean: float,
+    perturbation_variance: float,
+    rng: random.Random,
+) -> int:
+    """Sample a length-scaled perturbation count for one text segment."""
+    if perturbation_mean < 0:
+        raise ValueError("perturbation_mean must be non-negative.")
+    if perturbation_variance < 0:
+        raise ValueError("perturbation_variance must be non-negative.")
+    if perturbation_mean == 0 and perturbation_variance == 0:
+        return 0
+
+    text_length = max(1, len(text))
+    expected_count = perturbation_mean * text_length
+    if perturbation_variance == 0:
+        sampled_count = int(round(expected_count))
+    else:
+        standard_deviation = math.sqrt(perturbation_variance * text_length)
+        sampled_count = int(round(rng.gauss(expected_count, standard_deviation)))
+    sampled_count = max(1, sampled_count)
+    return min(sampled_count, text_length)
 
 
 def _contains_cod_segment(cfg: Config, text: str) -> bool:
@@ -210,9 +276,11 @@ def upsample(
     label_column: str,
     target_counts: Mapping[Any, int],
     seed: int = 42,
+    cfg: Config | None = None,
     text_column: str | None = None,
     perturbation_fns: Sequence[Any] | None = None,
-    perturbations_per_sample: int = 1,
+    perturbation_mean: float = 0.05,
+    perturbation_variance: float = 0.0,
     text_field_separator: str = " | ",
 ) -> pd.DataFrame:
     """Upsample classes to target counts, perturbing synthetic rows proportionally."""
@@ -241,13 +309,29 @@ def upsample(
             for row in new_rows:
                 if rng.random() < perturb_rate:
                     text = str(row[text_column])
-                    for _ in range(perturbations_per_sample):
-                        fn = rng.choice(perturbation_fns)
-                        text = _apply_perturbation_with_seed(
-                            fn,
-                            text,
-                            seed=rng.randint(0, 2_147_483_647),
+                    if cfg is not None:
+                        text = _perturb_cod_segment(
+                            cfg=cfg,
+                            text=text,
+                            perturbation_fns=perturbation_fns,
+                            perturbation_mean=perturbation_mean,
+                            perturbation_variance=perturbation_variance,
+                            rng=rng,
                         )
+                    else:
+                        perturbation_count = _sample_perturbation_count(
+                            text=text,
+                            perturbation_mean=perturbation_mean,
+                            perturbation_variance=perturbation_variance,
+                            rng=rng,
+                        )
+                        for _ in range(perturbation_count):
+                            fn = rng.choice(perturbation_fns)
+                            text = _apply_perturbation_with_rng(
+                                fn,
+                                text,
+                                rng=rng,
+                            )
                     row[text_column] = text
 
         synthetic_rows.extend(new_rows)
@@ -290,7 +374,8 @@ def manipulate_classes(
     label_column: str,
     target_labels: Sequence[str] | None = None,
     perturbation_names: Sequence[str] | None = None,
-    perturbations_per_sample: int = 1,
+    perturbation_mean: float = 0.05,
+    perturbation_variance: float = 0.0,
     sample_fraction: float = 1.0,
     seed: int = 42,
 ) -> pd.DataFrame:
@@ -301,6 +386,8 @@ def manipulate_classes(
         return df
 
     perturbation_fns = _resolve_perturbation_functions(perturbation_names)
+    if not perturbation_fns:
+        return df
     if target_labels is None:
         selected_indices = df.index.tolist()
     else:
@@ -315,13 +402,16 @@ def manipulate_classes(
     indices_to_perturb = rng.sample(selected_indices, sample_size)
 
     manipulated_df = df.copy()
-    for index in indices_to_perturb:
-        text = str(manipulated_df.at[index, text_column])
-        manipulated_df.at[index, text_column] = _perturb_cod_segment(
+    perturbed_texts = [
+        _perturb_cod_segment(
             cfg=cfg,
-            text=text,
+            text=str(text),
             perturbation_fns=perturbation_fns,
-            perturbations_per_sample=perturbations_per_sample,
+            perturbation_mean=perturbation_mean,
+            perturbation_variance=perturbation_variance,
             rng=rng,
         )
+        for text in manipulated_df.loc[indices_to_perturb, text_column].tolist()
+    ]
+    manipulated_df.loc[indices_to_perturb, text_column] = perturbed_texts
     return manipulated_df

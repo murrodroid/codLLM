@@ -1,8 +1,10 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from transformers import Trainer
 
+import codllm.wandb_utils as wandb_utils
 from codllm.config import Config
 from codllm.data import (
     DataHandler,
@@ -25,6 +27,29 @@ from codllm.training.stages import (
     release_stage_trainer_memory,
 )
 from codllm.training.trainer_factory import run_training_stage
+from codllm.training.visualizations import log_data_visualizations
+
+
+def _log_progress(message: str) -> None:
+    """Print a timestamped training progress message."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}", flush=True)
+
+
+def _initialize_wandb_for_data_prep(cfg: Config) -> None:
+    """Initialize W&B before expensive local data preparation starts."""
+    report_to, run_name = wandb_utils.resolve_wandb_reporting(cfg)
+    wandb_utils.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=report_to,
+        run_name=run_name,
+        metadata={
+            "run": {
+                "phase": "data_preparation",
+                "status": "started",
+            }
+        },
+    )
 
 
 def _train_from_datasets(
@@ -32,11 +57,13 @@ def _train_from_datasets(
     stage: TrainingStage,
     train_ds: Any,
     eval_ds: Any | None = None,
+    holdout_eval_ds: Any | None = None,
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
 ) -> tuple[Trainer, Any]:
     """Run one fine-tuning job from prepared datasets."""
+    _log_progress(f"Initializing model and tokenizer for stage '{stage.name}'.")
     model, tokenizer, disable_fp16 = initialize_training_components(
         cfg=cfg,
         label2id=label2id,
@@ -50,6 +77,7 @@ def _train_from_datasets(
         disable_fp16=disable_fp16,
         train_ds=train_ds,
         eval_ds=eval_ds,
+        holdout_eval_ds=holdout_eval_ds,
         run_data_metadata=run_data_metadata,
         label2id=label2id,
         id2label=id2label,
@@ -64,11 +92,13 @@ def _train_with_pretraining(
     pretrain_ds: Any,
     train_ds: Any,
     eval_ds: Any | None = None,
+    holdout_eval_ds: Any | None = None,
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
 ) -> tuple[Trainer, Any]:
     """Run optional pretraining first, then continue with regular fine-tuning."""
+    _log_progress("Initializing model and tokenizer for pretraining flow.")
     model, tokenizer, disable_fp16 = initialize_training_components(
         cfg=cfg,
         label2id=label2id,
@@ -82,6 +112,7 @@ def _train_with_pretraining(
         disable_fp16=disable_fp16,
         train_ds=pretrain_ds,
         eval_ds=eval_ds,
+        holdout_eval_ds=None,
         run_data_metadata=run_data_metadata,
         label2id=label2id,
         id2label=id2label,
@@ -95,6 +126,7 @@ def _train_with_pretraining(
         disable_fp16=disable_fp16,
         train_ds=train_ds,
         eval_ds=eval_ds,
+        holdout_eval_ds=holdout_eval_ds,
         run_data_metadata=run_data_metadata,
         label2id=label2id,
         id2label=id2label,
@@ -108,8 +140,9 @@ def evaluate_test_split(
     tokenizer: Any,
     test_ds: Any,
     label2id: dict[str, int] | None = None,
+    metric_key_prefix: str = "test",
 ) -> dict[str, float] | None:
-    """Run final evaluation on the test split and emit test-prefixed metrics."""
+    """Run final evaluation on one split and emit metrics with the requested prefix."""
     if dataset_row_count(test_ds) in (None, 0):
         return None
     if not hasattr(trainer, "evaluate"):
@@ -136,7 +169,7 @@ def evaluate_test_split(
         )
     raw_metrics = trainer.evaluate(
         eval_dataset=processed_test_ds,
-        metric_key_prefix="test",
+        metric_key_prefix=metric_key_prefix,
     )
     return {key: float(value) for key, value in raw_metrics.items()}
 
@@ -148,8 +181,16 @@ def train(
 ) -> tuple[Trainer, Any, DataSplits]:
     """Build or load data splits and launch training."""
     prepare_run_output_dir(cfg)
+    _initialize_wandb_for_data_prep(cfg)
     handler = data_handler or DataHandler(cfg)
+    _log_progress("Preparing data splits.")
     splits = handler.get_splits(force_reprocess=force_reprocess)
+    _log_progress(
+        "Prepared data splits: "
+        f"train={dataset_row_count(splits.train)}, "
+        f"val={dataset_row_count(splits.val)}, "
+        f"test={dataset_row_count(splits.test)}."
+    )
     train_ds, eval_ds = resolve_training_frames(splits)
     run_data_metadata = build_data_metadata(
         cfg=cfg,
@@ -188,9 +229,25 @@ def train(
     )
     if masterlist_inject_metrics is not None:
         run_data_metadata["masterlist_injection"] = masterlist_inject_metrics
+    training_balance_metrics_loader = getattr(
+        handler,
+        "get_training_balance_metrics",
+        None,
+    )
+    training_balance_metrics = (
+        training_balance_metrics_loader()
+        if callable(training_balance_metrics_loader)
+        else None
+    )
+    if training_balance_metrics is not None:
+        run_data_metadata["training_balance"] = training_balance_metrics
 
     pretrain_loader = getattr(handler, "get_pretraining_train_dataframe", None)
+    if callable(pretrain_loader):
+        _log_progress("Preparing optional pretraining dataset.")
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    if pretrain_ds is not None:
+        _log_progress(f"Prepared pretraining dataset: train={int(len(pretrain_ds))}.")
     pretrain_upsampling_metrics_loader = getattr(
         handler,
         "get_pretraining_upsampling_metrics",
@@ -200,6 +257,24 @@ def train(
         pretrain_upsampling_metrics_loader()
         if callable(pretrain_upsampling_metrics_loader)
         else None
+    )
+    pretrain_multicod_metrics_loader = getattr(
+        handler,
+        "get_pretraining_multicod_metrics",
+        None,
+    )
+    pretrain_multicod_metrics = (
+        pretrain_multicod_metrics_loader()
+        if callable(pretrain_multicod_metrics_loader)
+        else None
+    )
+    log_data_visualizations(
+        cfg=cfg,
+        splits=splits,
+        balance_metrics=training_balance_metrics,
+        masterlist_inject_metrics=masterlist_inject_metrics,
+        pretraining_upsampling_metrics=pretrain_upsampling_metrics,
+        pretraining_multicod_metrics=pretrain_multicod_metrics,
     )
     if cfg.pretrain_enabled and pretrain_loader is None:
         raise AttributeError(
@@ -229,6 +304,10 @@ def train(
         }
         if pretrain_upsampling_metrics is not None:
             run_data_metadata["pretraining"]["upsampling"] = pretrain_upsampling_metrics
+        if pretrain_multicod_metrics is not None:
+            run_data_metadata["pretraining"]["multicod_synthetic"] = (
+                pretrain_multicod_metrics
+            )
         trainer, tokenizer = _train_with_pretraining(
             cfg=cfg,
             pretrain_stage=pretrain_stage,
@@ -236,6 +315,7 @@ def train(
             pretrain_ds=pretrain_ds,
             train_ds=train_ds,
             eval_ds=eval_ds,
+            holdout_eval_ds=splits.holdout_eval,
             run_data_metadata=run_data_metadata,
             label2id=classifier_label2id,
             id2label=classifier_id2label,
@@ -246,6 +326,7 @@ def train(
             stage=build_train_stage(cfg),
             train_ds=train_ds,
             eval_ds=eval_ds,
+            holdout_eval_ds=splits.holdout_eval,
             run_data_metadata=run_data_metadata,
             label2id=classifier_label2id,
             id2label=classifier_id2label,
@@ -257,4 +338,13 @@ def train(
         test_ds=splits.test,
         label2id=classifier_label2id,
     )
+    if dataset_row_count(splits.holdout) not in (None, 0):
+        evaluate_test_split(
+            cfg=cfg,
+            trainer=trainer,
+            tokenizer=tokenizer,
+            test_ds=splits.holdout,
+            label2id=classifier_label2id,
+            metric_key_prefix="holdout_test",
+        )
     return trainer, tokenizer, splits

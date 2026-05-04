@@ -207,6 +207,20 @@ class _StrictDecodeTokenizer:
         return decoded
 
 
+class _EvalPrediction:
+    """Minimal EvalPrediction stub with optional metric inputs."""
+
+    def __init__(
+        self,
+        predictions: np.ndarray,
+        label_ids: np.ndarray,
+        inputs: np.ndarray,
+    ) -> None:
+        self.predictions = predictions
+        self.label_ids = label_ids
+        self.inputs = inputs
+
+
 def test_build_exact_match_accuracy_metric_sanitizes_invalid_prediction_ids() -> None:
     """Metric callback should sanitize invalid prediction ids before decoding."""
     metric_fn = build_exact_match_accuracy_metric(_StrictDecodeTokenizer())
@@ -245,6 +259,26 @@ def test_multilabel_accuracy_ignores_code_order() -> None:
     metrics = metric_fn((predictions, labels))
 
     assert metrics["accuracy"] == 1.0
+
+
+def test_seen_unseen_metrics_use_input_strings_not_label_classes() -> None:
+    """Seen/unseen buckets should be based on source strings from train."""
+    metric_fn = build_exact_match_accuracy_metric(
+        _StrictDecodeTokenizer(),
+        train_classes={"1", "2"},
+        train_input_strings={"10"},
+    )
+    predictions = np.array([[1, 0], [1, 0]], dtype=np.int64)
+    labels = np.array([[1, -100], [2, -100]], dtype=np.int64)
+    inputs = np.array([[10, 0], [30, 0]], dtype=np.int64)
+
+    metrics = metric_fn(_EvalPrediction(predictions, labels, inputs))
+
+    assert metrics["seen_string_count"] == 1.0
+    assert metrics["unseen_string_count"] == 1.0
+    assert metrics["seen_accuracy"] == 1.0
+    assert metrics["unseen_accuracy"] == 0.0
+    assert "seen_class_count" not in metrics
 
 
 def test_multilabel_metric_callback_reports_sample_and_hamming_metrics() -> None:

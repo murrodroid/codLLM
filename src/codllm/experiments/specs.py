@@ -47,6 +47,8 @@ class ExperimentRun:
                 ensure_ascii=True,
                 sort_keys=True,
             )
+            env.setdefault("WANDB_SWEEP_ID", _wandb_sweep_id(spec))
+            env.setdefault("WANDB_RUN_GROUP", spec.name)
         env.setdefault("CODLLM_WANDB_RUN_NAME", self.name)
         return env
 
@@ -294,6 +296,11 @@ def _env_key_slug(value: str) -> str:
             lowered = lowered[len(prefix) :]
             break
     return _slugify(lowered)
+
+
+def _wandb_sweep_id(spec: ExperimentSpec) -> str:
+    """Return the stable W&B sweep id used for generated TOML sweep runs."""
+    return f"codllm-{_slugify(spec.name)}"
 
 
 def _slugify(value: str) -> str:

@@ -1,6 +1,6 @@
 base = "../base/h100-small.toml"
-name = "agro_pretraining"
-description = "Sweep masterlist pretraining duration while holding the fine-tuning setup fixed."
+name = "multicod_pretraining"
+description = "Sweep synthetic multi-COD masterlist pretraining for multi-COD fine-tuning."
 force_reprocess = false
 
 [env]
@@ -8,7 +8,9 @@ CODLLM_TRAINING_INPUT = "cod"
 CODLLM_LR = 2.5e-5
 CODLLM_DATASET_SIZE = 0.5
 CODLLM_NUM_TRAIN_EPOCHS = 32
+CODLLM_MAX_LABEL_COUNT = 3
 CODLLM_SAVE_STRATEGY = "no"
+CODLLM_MULTICOD_SHUFFLE_LABELS = true
 
 CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
 CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
@@ -24,6 +26,8 @@ CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
   "qwerty_misspell",
 ]
 CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 6
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR = ", "
 
 [sweep]
-CODLLM_PRETRAIN_ENABLED = [true,false]
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = [0, 0.1]

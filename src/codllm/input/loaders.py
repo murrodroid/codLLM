@@ -10,10 +10,8 @@ from codllm.settings.types import TrainingInput
 from codllm.input.harmonization import _harmonize_processed_labels
 from codllm.input.mappings import DatasetMapping, MAPPING_REGISTRY
 from codllm.input.transform import (
-    _build_label,
-    _build_text,
-    _build_y,
-    _get,
+    MISSING_VALUE_MARKERS,
+    UNKNOWN_VALUE,
     _normalize_training_input,
     _processed_columns,
 )
@@ -50,6 +48,142 @@ def _read_raw_dataframe(path: Path, source: DataSourceConfig) -> pd.DataFrame:
     )
 
 
+def _empty_raw_series(raw_df: pd.DataFrame) -> pd.Series:
+    """Return a null object series aligned to a raw dataframe."""
+    return pd.Series([None] * len(raw_df), index=raw_df.index, dtype=object)
+
+
+def _raw_column(raw_df: pd.DataFrame, col: int | None) -> pd.Series:
+    """Return a raw dataframe column by position, or nulls when unavailable."""
+    if col is None or col < 0 or col >= len(raw_df.columns):
+        return _empty_raw_series(raw_df)
+    return raw_df.iloc[:, col]
+
+
+def _normalize_raw_values(values: pd.Series) -> pd.Series:
+    """Normalize source values using the same missing-value rules as row access."""
+    missing_mask = values.isna()
+    normalized = values.astype("string").str.strip()
+    invalid_mask = (
+        missing_mask
+        | normalized.isna()
+        | normalized.eq("")
+        | normalized.str.lower().isin(MISSING_VALUE_MARKERS)
+    )
+    return normalized.astype(object).mask(invalid_mask, None)
+
+
+def _format_age_values(values: pd.Series) -> pd.Series:
+    """Normalize raw age values into compact numeric strings."""
+    normalized = _normalize_raw_values(values)
+    numeric = pd.to_numeric(normalized, errors="coerce").round(2)
+    formatted: list[str] = []
+    for value in numeric.tolist():
+        if pd.isna(value):
+            formatted.append(UNKNOWN_VALUE)
+        elif float(value).is_integer():
+            formatted.append(str(int(value)))
+        else:
+            formatted.append(f"{float(value):.2f}".rstrip("0").rstrip("."))
+    return pd.Series(formatted, index=values.index, dtype=object)
+
+
+def _format_sex_values(values: pd.Series, sex_map: Mapping[str, str]) -> pd.Series:
+    """Map raw sex values into canonical values."""
+    normalized = _normalize_raw_values(values)
+    result = normalized.map(sex_map)
+    missing_mask = result.isna()
+    if missing_mask.any():
+        lowered = normalized[missing_mask].astype("string").str.lower()
+        result.loc[missing_mask] = lowered.map(sex_map)
+    return result.fillna(UNKNOWN_VALUE).astype(object)
+
+
+def _normalize_code_columns(raw_df: pd.DataFrame, columns: Sequence[int]) -> pd.DataFrame:
+    """Return normalized code columns selected by source positions."""
+    selected = {
+        col: _normalize_raw_values(_raw_column(raw_df, col))
+        for col in columns
+        if col >= 0 and col < len(raw_df.columns)
+    }
+    if not selected:
+        return pd.DataFrame(index=raw_df.index)
+    return pd.DataFrame(selected, index=raw_df.index)
+
+
+def _unique_codes_from_row(values: tuple[object, ...]) -> list[str]:
+    """Collect unique non-empty code strings from tuple values in order."""
+    codes: list[str] = []
+    seen_codes: set[str] = set()
+    for value in values:
+        if value is None or pd.isna(value):
+            continue
+        code = str(value)
+        if code not in seen_codes:
+            codes.append(code)
+            seen_codes.add(code)
+    return codes
+
+
+def _build_y_codes(raw_df: pd.DataFrame, mapping: DatasetMapping, max_labels: int) -> pd.Series:
+    """Build target code lists without constructing pandas row Series objects."""
+    single_codes = _normalize_raw_values(_raw_column(raw_df, mapping.single_code_col))
+    if max_labels == 1:
+        return single_codes.map(lambda code: [] if code is None else [str(code)])
+
+    multi_codes = _normalize_code_columns(raw_df, mapping.multi_code_cols or [])
+    y_codes: list[list[str]] = []
+    if multi_codes.empty:
+        for code in single_codes.tolist():
+            y_codes.append([] if code is None else [str(code)])
+        return pd.Series(y_codes, index=raw_df.index, dtype=object)
+
+    for row_codes, single_code in zip(
+        multi_codes.itertuples(index=False, name=None),
+        single_codes.tolist(),
+        strict=True,
+    ):
+        codes = _unique_codes_from_row(row_codes)
+        if not codes and single_code is not None:
+            codes = [str(single_code)]
+        y_codes.append(codes)
+    return pd.Series(y_codes, index=raw_df.index, dtype=object)
+
+
+def _build_text_values(
+    raw_df: pd.DataFrame,
+    mapping: DatasetMapping,
+    training_input: Sequence[TrainingInput],
+    field_separator: str,
+    input_field_prefixes: Mapping[TrainingInput, str],
+) -> pd.Series:
+    """Build model input text with column-wise source extraction."""
+    parts: list[pd.Series] = []
+    for feature in training_input:
+        prefix = input_field_prefixes[feature]
+        if feature == "cod":
+            cod_values = _normalize_raw_values(_raw_column(raw_df, mapping.text_col))
+            cod_values = cod_values.fillna(UNKNOWN_VALUE)
+            cod_values = cod_values.str.replace(r"(?<=\w)\.(?=\w)", " ", regex=True)
+            parts.append(prefix + cod_values)
+        elif feature == "age":
+            age_values = _format_age_values(_raw_column(raw_df, mapping.age_col))
+            parts.append(prefix + age_values)
+        else:
+            sex_values = _format_sex_values(
+                _raw_column(raw_df, mapping.sex_col),
+                mapping.sex_map,
+            )
+            parts.append(prefix + sex_values)
+
+    if not parts:
+        return pd.Series([""] * len(raw_df), index=raw_df.index, dtype=object)
+    text = parts[0]
+    for part in parts[1:]:
+        text = text.str.cat(part, sep=field_separator)
+    return text.astype(object)
+
+
 def _select_rows_with_valid_labels(
     raw_df: pd.DataFrame,
     mapping: DatasetMapping,
@@ -57,10 +191,8 @@ def _select_rows_with_valid_labels(
     drop_missing_label: bool,
 ) -> tuple[pd.DataFrame, pd.Series, list[int]]:
     """Filter raw rows before dataset assembly based on resolved label availability."""
-    y_codes = raw_df.apply(
-        lambda row: _build_y(row, mapping, max_labels=max_labels), axis=1
-    )
-    label_counts = y_codes.apply(len)
+    y_codes = _build_y_codes(raw_df, mapping=mapping, max_labels=max_labels)
+    label_counts = y_codes.str.len()
     keep_mask = label_counts <= max_labels
     if drop_missing_label:
         keep_mask = keep_mask & (label_counts > 0)
@@ -135,9 +267,8 @@ def load_source_dataset(
             f"{source.source_id}:{source_idx}" for source_idx in source_row_indices
         ]
     else:
-        extracted_ids = filtered_raw_df.apply(
-            lambda row: _get(row, mapping.record_id_col),
-            axis=1,
+        extracted_ids = _normalize_raw_values(
+            _raw_column(filtered_raw_df, mapping.record_id_col)
         )
         result["record_id"] = [
             record_id if record_id is not None else f"{source.source_id}:{source_idx}"
@@ -148,19 +279,16 @@ def load_source_dataset(
             )
         ]
     result["source_path"] = [str(source_path)] * len(filtered_raw_df)
-    result[effective_text_column] = filtered_raw_df.apply(
-        lambda row: _build_text(
-            row,
-            mapping,
-            normalized_training_input,
-            field_separator=effective_text_field_separator,
-            input_field_prefixes=effective_input_field_prefixes,
-        ),
-        axis=1,
+    result[effective_text_column] = _build_text_values(
+        raw_df=filtered_raw_df,
+        mapping=mapping,
+        training_input=normalized_training_input,
+        field_separator=effective_text_field_separator,
+        input_field_prefixes=effective_input_field_prefixes,
     )
     result["y_codes"] = filtered_y_codes
-    result[effective_label_column] = result["y_codes"].apply(
-        lambda codes: _build_label(codes, separator=effective_label_separator)
+    result[effective_label_column] = result["y_codes"].map(
+        effective_label_separator.join
     )
     return result
 

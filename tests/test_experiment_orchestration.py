@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pandas as pd
+
+import tasks as tasks_module
+from codllm.data import DataSplits
 from codllm.experiments import (
     LsfProfile,
     format_env_file,
@@ -7,7 +11,7 @@ from codllm.experiments import (
     load_lsf_profiles,
     prepare_lsf_submission,
 )
-from tasks import _profile_for_lsf_user
+from tasks import _build_run_dependencies, _profile_for_lsf_user, _select_runs
 
 
 def test_experiment_spec_inherits_env_and_expands_cartesian_sweep(
@@ -78,6 +82,49 @@ CODLLM_HF_MODEL = "google/flan-t5-small"
     assert "export CODLLM_WANDB_RUN_NAME=run" in content
 
 
+def test_sweep_env_file_sets_wandb_sweep_metadata(tmp_path: Path) -> None:
+    """Generated TOML sweep runs should populate W&B native sweep fields."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[sweep]
+CODLLM_LR = [1e-5, 2e-5]
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    content = format_env_file(spec.expanded_runs()[0], spec)
+
+    assert "export WANDB_SWEEP_ID=codllm-run" in content
+    assert "export WANDB_RUN_GROUP=run" in content
+    assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=1" in content
+
+
+def test_sweep_env_file_preserves_explicit_wandb_sweep_id(tmp_path: Path) -> None:
+    """Explicit W&B sweep env values should override generated defaults."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[env]
+WANDB_SWEEP_ID = "external-sweep"
+WANDB_RUN_GROUP = "external-group"
+
+[sweep]
+CODLLM_LR = [1e-5]
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    content = format_env_file(spec.expanded_runs()[0], spec)
+
+    assert "export WANDB_SWEEP_ID=external-sweep" in content
+    assert "export WANDB_RUN_GROUP=external-group" in content
+
+
 def test_prepare_lsf_submission_writes_script_env_files_and_manifest(
     tmp_path: Path,
 ) -> None:
@@ -125,9 +172,49 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
 
     assert '#BSUB -J "codllm-sweep[1-2]"' in script
     assert "module load cuda/12.2" in script
-    assert "uv run python -m codllm.training" in script
+    assert 'unset VIRTUAL_ENV' in script
+    assert "uv run --no-dev python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest
+
+
+def test_prepare_lsf_submission_normalizes_single_job_index_zero(
+    tmp_path: Path,
+) -> None:
+    """Single non-array LSF jobs should load the one generated env file."""
+    spec_path = tmp_path / "single.toml"
+    spec_path.write_text(
+        """
+name = "single"
+
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        sync_env=False,
+    )
+
+    submission = prepare_lsf_submission(
+        spec,
+        profile,
+        project_dir=tmp_path,
+        output_root="jobs/generated",
+    )
+
+    script = submission.script_path.read_text(encoding="utf-8")
+
+    assert (submission.env_dir / "run-1.env").exists()
+    assert (submission.env_dir / "run-0.env").exists() is False
+    assert 'if [ "1" = "1" ] && [ "$RUN_INDEX" = "0" ]; then' in script
+    assert 'RUN_INDEX="1"' in script
 
 
 def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
@@ -197,3 +284,143 @@ def test_profile_for_lsf_user_sets_notification_email() -> None:
 
     assert updated.email == "s234854@dtu.dk"
     assert profile.email == "old@example.com"
+
+
+def test_select_runs_zero_selects_all_sweep_runs(tmp_path: Path) -> None:
+    """sweep_index=0 should select every expanded run for build tasks."""
+    spec_path = tmp_path / "sweep.toml"
+    spec_path.write_text(
+        """
+name = "sweep"
+
+[sweep]
+CODLLM_LR = [1e-5, 2e-5]
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+
+    assert len(_select_runs(spec, 0)) == 2
+    assert _select_runs(spec, 2)[0].sweep_index == 2
+
+
+def test_build_run_dependencies_applies_run_env_and_builds_data(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """hpc.build should apply the expanded run env and build cached data only."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+force_reprocess = true
+
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
+CODLLM_PRETRAIN_ENABLED = true
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    run = spec.expanded_runs()[0]
+    calls = []
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
+
+    class DummyHandler:
+        """Test double for DataHandler."""
+
+        def __init__(self, cfg) -> None:
+            self.cfg = cfg
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            calls.append(
+                {
+                    "force_reprocess": force_reprocess,
+                    "hf_model": self.cfg.hf_model,
+                    "run_name": tasks_module.os.environ.get(
+                        "CODLLM_EXPERIMENT_RUN_NAME"
+                    ),
+                    "processed_dir": self.cfg.data_processed_dir,
+                    "output_dir": self.cfg.output_dir,
+                }
+            )
+            frame = pd.DataFrame({"text": ["cod: alpha"], "label": ["A00"]})
+            return DataSplits(train=frame, val=frame.iloc[0:0], test=frame.iloc[0:0])
+
+        def get_pretraining_train_dataframe(self) -> pd.DataFrame:
+            calls.append({"pretraining": True})
+            return pd.DataFrame({"text": ["cod: beta"], "label": ["B00"]})
+
+    monkeypatch.setattr(tasks_module, "DataHandler", DummyHandler)
+    monkeypatch.delenv("CODLLM_EXPERIMENT_RUN_NAME", raising=False)
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_OUTPUT_DIR", raising=False)
+
+    _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
+
+    assert calls[0] == {
+        "force_reprocess": True,
+        "hf_model": "google/flan-t5-small",
+        "run_name": "run",
+        "processed_dir": str(tmp_path / "storage" / "codllm" / "data/processed"),
+        "output_dir": str(tmp_path / "storage" / "codllm" / "runs"),
+    }
+    assert calls[1] == {"pretraining": True}
+    assert tasks_module.os.environ.get("CODLLM_EXPERIMENT_RUN_NAME") is None
+
+
+def test_build_run_dependencies_preserves_explicit_processed_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Explicit CODLLM_DATA_PROCESSED_DIR should override hpc.build defaults."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[env]
+CODLLM_DATA_PROCESSED_DIR = "/explicit/processed"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    run = spec.expanded_runs()[0]
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
+    seen = {}
+
+    class DummyHandler:
+        """Test double for DataHandler."""
+
+        def __init__(self, cfg) -> None:
+            seen["processed_dir"] = cfg.data_processed_dir
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            del force_reprocess
+            frame = pd.DataFrame({"text": ["cod: alpha"], "label": ["A00"]})
+            return DataSplits(train=frame, val=frame.iloc[0:0], test=frame.iloc[0:0])
+
+    monkeypatch.setattr(tasks_module, "DataHandler", DummyHandler)
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
+
+    _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
+
+    assert seen["processed_dir"] == "/explicit/processed"

@@ -16,6 +16,7 @@ from codllm.settings.factories import (
 from codllm.settings.types import (
     BalanceStrategy,
     EvalStrategy,
+    HoldOutEvaluatePer,
     LRSchedulerType,
     ModelTask,
     MultiCodSyntheticSourceScope,
@@ -113,6 +114,13 @@ class Config:
     data_processed_dir: str = "data/processed"
     processed_filename: str = "data.parquet"
     data_sources: list[DataSourceConfig] = field(default_factory=default_data_sources)
+    label_harmonization_enabled: bool = True
+    label_harmonization_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
+    label_harmonization_masterlist_sheet_name: str = "Masterlist"
+    label_harmonization_transfer_sheet_name: str = "2020to2024transfer"
+    hold_out_dataset: Optional[str] = None
+    hold_out_evaluate_per: Optional[HoldOutEvaluatePer] = None
+    hold_out_evaluate_ratio: float = 0.05
     training_input: list[TrainingInput] = field(default_factory=default_training_input)
     input_field_prefixes: dict[TrainingInput, str] = field(
         default_factory=default_input_field_prefixes
@@ -143,20 +151,22 @@ class Config:
         default_factory=default_pretrain_perturbations
     )
     pretrain_upsample_perturbations_per_sample: int = 1
+    pretrain_multicod_synthetic_ratio: float = 0.0
+    pretrain_multicod_synthetic_text_separator: str = "; "
     masterlist_inject_enabled: bool = False
     masterlist_inject_target_per_label: int = 10
     masterlist_inject_perturbations: list[str] = field(
         default_factory=default_masterlist_inject_perturbations
     )
     masterlist_inject_perturbations_per_sample: int = 1
-    label_harmonization_enabled: bool = False
 
     balance_strategy: BalanceStrategy = "none"
     balance_target_quantile: float = 0.5
     balance_perturbations: list[str] = field(
         default_factory=default_balance_perturbations
     )
-    balance_perturbations_per_sample: int = 1
+    balance_perturbation_mean: float = 0.05
+    balance_perturbation_variance: float = 0.0
     balance_upsample_labels: list[str] = field(default_factory=list)
     balance_upsample_inverse_power: float = 0.5
     balance_upsample_budget_ratio: float = 0.4

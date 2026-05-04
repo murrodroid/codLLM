@@ -101,14 +101,26 @@ def rewrite_logs_preserving_scoped_metric_keys(
     """Rewrite W&B logs while preserving already-scoped metric keys."""
     rewritten_logs: dict[str, Any] = {}
     for key, value in logs.items():
+        if key in {"epoch", "step", "global_step"}:
+            rewritten_logs[key] = value
+            continue
         if "/" in key:
             rewritten_logs[key] = value
             continue
         if key.startswith("eval_"):
-            rewritten_logs[f"eval/{key.removeprefix('eval_')}"] = value
+            rewritten_logs[f"val/{key.removeprefix('eval_')}"] = value
             continue
         if key.startswith("test_"):
             rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
+            continue
+        if key.startswith("holdout_val_"):
+            rewritten_logs[f"holdout/val/{key.removeprefix('holdout_val_')}"] = value
+            continue
+        if key.startswith("holdout_test_"):
+            rewritten_logs[f"holdout/test/{key.removeprefix('holdout_test_')}"] = value
+            continue
+        if key.startswith("holdout_"):
+            rewritten_logs[f"holdout/{key.removeprefix('holdout_')}"] = value
             continue
         rewritten_logs[f"train/{key}"] = value
     return rewritten_logs
@@ -197,6 +209,8 @@ def _runtime_metadata() -> dict[str, Any]:
         "LSB_QUEUE",
         "LSB_HOSTS",
         "CUDA_VISIBLE_DEVICES",
+        "WANDB_SWEEP_ID",
+        "WANDB_RUN_GROUP",
         "HF_HOME",
         "HF_HUB_CACHE",
         "TRANSFORMERS_CACHE",
@@ -312,28 +326,40 @@ def log_wandb_run_metadata(
 
     # Define epoch as a step metric so eval metrics can be plotted against it
     wandb.define_metric("epoch")
+    wandb.define_metric("train/*", step_metric="epoch")
     wandb.define_metric("eval/*", step_metric="epoch")
+    wandb.define_metric("val/*", step_metric="epoch")
     wandb.define_metric("test/*", step_metric="epoch")
+    wandb.define_metric("holdout/val/*", step_metric="epoch")
+    wandb.define_metric("holdout/test/*", step_metric="epoch")
+    wandb.define_metric("pretraining/*", step_metric="epoch")
+    wandb.define_metric("pretraining/val/*", step_metric="epoch")
+    wandb.define_metric("pretraining/test/*", step_metric="epoch")
     # Pin key metrics to summary for easy comparison across runs
-    for key in [
-        "eval/accuracy",
-        "eval/exact_match",
-        "eval/macro_f1",
-        "eval/macro_precision",
-        "eval/macro_recall",
-        "eval/micro_jaccard",
-        "eval/sample_f1",
-        "eval/sample_jaccard",
-        "eval/hamming_score",
-        "eval/seen_macro_f1",
-        "eval/unseen_macro_f1",
-    ]:
-        wandb.define_metric(key, summary="max")
-    for key in [
-        "eval/hamming_loss",
-        "eval/label_count_mae",
-    ]:
-        wandb.define_metric(key, summary="min")
+    for prefix in ("val", "test", "holdout/val", "holdout/test"):
+        for metric_name in [
+            "accuracy",
+            "exact_match",
+            "macro_f1",
+            "macro_precision",
+            "macro_recall",
+            "micro_jaccard",
+            "sample_f1",
+            "sample_jaccard",
+            "hamming_score",
+            "seen_macro_f1",
+            "unseen_macro_f1",
+            "seen_accuracy",
+            "unseen_accuracy",
+        ]:
+            wandb.define_metric(f"{prefix}/{metric_name}", summary="max")
+        for metric_name in [
+            "hamming_loss",
+            "label_count_mae",
+            "seen_hamming_loss",
+            "unseen_hamming_loss",
+        ]:
+            wandb.define_metric(f"{prefix}/{metric_name}", summary="min")
 
     sanitized_metadata = _sanitize_for_wandb(dict(metadata))
     wandb.config.update(sanitized_metadata, allow_val_change=True)
