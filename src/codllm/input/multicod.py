@@ -36,6 +36,11 @@ def _cod_segment_value(text: Any, field_separator: str, cod_prefix: str) -> str 
     return None
 
 
+def _uses_bare_cod_input(cfg: Config) -> bool:
+    """Return whether processed text consists only of the COD value."""
+    return list(cfg.training_input) == ["cod"]
+
+
 def _merge_cod_texts(
     anchor_text: Any,
     source_texts: list[Any],
@@ -46,7 +51,9 @@ def _merge_cod_texts(
     cod_values = [
         value
         for value in (
-            _cod_segment_value(
+            str(text).strip()
+            if _uses_bare_cod_input(cfg)
+            else _cod_segment_value(
                 text, cfg.text_field_separator, cfg.input_field_prefix("cod")
             )
             for text in source_texts
@@ -71,6 +78,9 @@ def _merge_cod_values(
     if len(cod_values) < 2:
         return None
 
+    if _uses_bare_cod_input(cfg):
+        return text_separator.join(str(value) for value in cod_values)
+
     parts = _split_text_parts(anchor_text, cfg.text_field_separator)
     cod_prefix = cfg.input_field_prefix("cod")
     for idx, part in enumerate(parts):
@@ -84,12 +94,16 @@ def _cod_segment_values(
     texts: pd.Series,
     field_separator: str,
     cod_prefix: str,
+    bare_cod_input: bool = False,
 ) -> pd.Series:
     """Extract processed COD segment values from a text series."""
-    values = [
-        _cod_segment_value(text, field_separator, cod_prefix)
-        for text in texts.fillna("").tolist()
-    ]
+    if bare_cod_input:
+        values = [str(text).strip() for text in texts.fillna("").tolist()]
+    else:
+        values = [
+            _cod_segment_value(text, field_separator, cod_prefix)
+            for text in texts.fillna("").tolist()
+        ]
     return pd.Series(values, index=texts.index, dtype=object)
 
 
@@ -195,6 +209,7 @@ def build_synthetic_multicod_rows(
         dataframe[cfg.dataset_text_column],
         cfg.text_field_separator,
         cfg.input_field_prefix("cod"),
+        bare_cod_input=_uses_bare_cod_input(cfg),
     )
     source_ids = _candidate_source_values(dataframe, "source_id", "unknown")
     source_paths = _candidate_source_values(dataframe, "source_path", "")

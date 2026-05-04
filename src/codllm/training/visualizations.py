@@ -187,6 +187,8 @@ def _cod_segment_value(text: Any, cfg: Config) -> str:
     """Extract the configured COD segment from processed text when present."""
     cod_prefix = cfg.input_field_prefix("cod")
     rendered = "" if text is None else str(text)
+    if list(cfg.training_input) == ["cod"]:
+        return rendered.strip()
     parts = (
         rendered.split(cfg.text_field_separator)
         if cfg.text_field_separator

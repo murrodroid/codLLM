@@ -215,6 +215,15 @@ class TestBuildText:
 
         assert result == "cause=cholera | years=2.4 | gender=male"
 
+    def test_build_text_omits_cod_prefix_for_cod_only_input(self) -> None:
+        """COD-only text should contain only the normalized COD value."""
+        mapping = _make_mapping()
+        row = _row("cholera", "A00", "", "1", "2.4", "RID-001")
+
+        result = _build_text(row, mapping, ["cod"])
+
+        assert result == "cholera"
+
 
 class TestBuildY:
     def test_build_y_collects_all_available_labels(self) -> None:
@@ -268,6 +277,27 @@ class TestLoaders:
         assert result.iloc[0]["source_id"] == "test_source"
         assert result.iloc[0]["record_id"] == "RID-001"
         assert result.iloc[0]["label"] == "A00"
+
+    def test_load_source_dataset_omits_cod_prefix_for_cod_only_input(
+        self, tmp_path: Path
+    ) -> None:
+        """Source loader should emit bare COD text when COD is the only input field."""
+        csv_path = tmp_path / "sample.csv"
+        _sample_df().to_csv(csv_path, index=False)
+        source = DataSourceConfig(
+            source_id="test_source", path=str(csv_path), mapping_id="test_mapping"
+        )
+        mapping = _make_mapping()
+
+        result = load_source_dataset(
+            source=source,
+            mapping=mapping,
+            training_input=["cod"],
+            max_labels=1,
+            data_raw_dir="",
+        )
+
+        assert result.iloc[0]["text"] == "cholera"
 
     def test_load_source_dataset_drops_nan_like_codes_before_dataset_assembly(
         self, tmp_path: Path
@@ -747,7 +777,7 @@ class TestDataHandler:
 
         assert pretrain_df is not None
         assert len(pretrain_df) == 3
-        assert pretrain_df.iloc[0]["text"] == "cod: description-0"
+        assert pretrain_df.iloc[0]["text"] == "description-0"
         assert pretrain_df.iloc[0]["label"] == "A00.000"
         assert upsampling_metrics is not None
         assert upsampling_metrics["enabled"] is False
@@ -832,7 +862,7 @@ class TestDataHandler:
         ]
         assert len(pretrain_df) == 6
         assert len(synthetic) == 2
-        assert synthetic["text"].str.contains(r"cod: .* \+ ").all()
+        assert synthetic["text"].str.contains(r".+ \+ .+").all()
         assert synthetic["y_codes"].map(len).between(2, 3).all()
         assert synthetic["label"].str.contains(",").all()
         assert multicod_metrics is not None

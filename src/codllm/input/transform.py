@@ -106,6 +106,11 @@ def _input_field_prefix(
     return prefix
 
 
+def _omit_cod_prefix_for_input(training_input: Sequence[TrainingInput]) -> bool:
+    """Return whether COD text should be emitted without a field prefix."""
+    return list(training_input) == ["cod"]
+
+
 def _build_text(
     row: pd.Series,
     mapping: DatasetMapping,
@@ -119,12 +124,13 @@ def _build_text(
         Config().text_field_separator if field_separator is None else field_separator
     )
     parts: list[str] = []
+    omit_cod_prefix = _omit_cod_prefix_for_input(normalized_training_input)
     for feature in normalized_training_input:
         prefix = _input_field_prefix(feature, input_field_prefixes)
         if feature == "cod":
             cod_text = _get(row, mapping.text_col) or UNKNOWN_VALUE
             cod_text = re.sub(r"(?<=\w)\.(?=\w)", " ", cod_text)
-            parts.append(f"{prefix}{cod_text}")
+            parts.append(cod_text if omit_cod_prefix else f"{prefix}{cod_text}")
         elif feature == "age":
             raw_age = (
                 _get(row, mapping.age_col) if mapping.age_col is not None else None

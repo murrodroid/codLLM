@@ -82,6 +82,30 @@ def _perturb_cod_segment(
     if not perturbation_fns:
         return text
 
+    if list(cfg.training_input) == ["cod"]:
+        cod_value = text
+        if perturbations_per_sample is not None:
+            perturbation_count = perturbations_per_sample
+        else:
+            perturbation_count = _sample_perturbation_count(
+                text=cod_value,
+                perturbation_mean=0.0
+                if perturbation_mean is None
+                else perturbation_mean,
+                perturbation_variance=perturbation_variance,
+                rng=rng,
+            )
+        if perturbation_count < 1:
+            return text
+        for _ in range(perturbation_count):
+            perturbation_fn = rng.choice(perturbation_fns)
+            cod_value = _apply_perturbation_with_rng(
+                perturbation_fn,
+                cod_value,
+                rng=rng,
+            )
+        return cod_value
+
     cod_prefix = cfg.input_field_prefix("cod")
     parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
     cod_idx = next(
@@ -145,6 +169,8 @@ def _sample_perturbation_count(
 
 def _contains_cod_segment(cfg: Config, text: str) -> bool:
     """Return whether a training text contains the configured COD segment."""
+    if list(cfg.training_input) == ["cod"]:
+        return text.strip() != ""
     cod_prefix = cfg.input_field_prefix("cod")
     parts = text.split(cfg.text_field_separator) if cfg.text_field_separator else [text]
     return any(part.strip().startswith(cod_prefix) for part in parts)

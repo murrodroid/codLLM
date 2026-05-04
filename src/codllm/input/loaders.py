@@ -13,6 +13,7 @@ from codllm.input.transform import (
     MISSING_VALUE_MARKERS,
     UNKNOWN_VALUE,
     _normalize_training_input,
+    _omit_cod_prefix_for_input,
     _processed_columns,
 )
 
@@ -159,13 +160,14 @@ def _build_text_values(
 ) -> pd.Series:
     """Build model input text with column-wise source extraction."""
     parts: list[pd.Series] = []
+    omit_cod_prefix = _omit_cod_prefix_for_input(training_input)
     for feature in training_input:
         prefix = input_field_prefixes[feature]
         if feature == "cod":
             cod_values = _normalize_raw_values(_raw_column(raw_df, mapping.text_col))
             cod_values = cod_values.fillna(UNKNOWN_VALUE)
             cod_values = cod_values.str.replace(r"(?<=\w)\.(?=\w)", " ", regex=True)
-            parts.append(prefix + cod_values)
+            parts.append(cod_values if omit_cod_prefix else prefix + cod_values)
         elif feature == "age":
             age_values = _format_age_values(_raw_column(raw_df, mapping.age_col))
             parts.append(prefix + age_values)
