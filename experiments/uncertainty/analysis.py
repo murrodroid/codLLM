@@ -154,7 +154,8 @@ def _risk_coverage(
 
 def _aurc(curve: pd.DataFrame) -> float:
     """Area under the risk-coverage curve (trapezoidal). Lower is better."""
-    return float(np.trapz(curve["risk"].to_numpy(), curve["coverage"].to_numpy()))
+    trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+    return float(trapezoid(curve["risk"].to_numpy(), curve["coverage"].to_numpy()))
 
 
 def _coverage_at_target_accuracy(curve: pd.DataFrame, target: float) -> float:
