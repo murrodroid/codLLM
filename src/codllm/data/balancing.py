@@ -150,80 +150,6 @@ def _contains_cod_segment(cfg: Config, text: str) -> bool:
     return any(part.strip().startswith(cod_prefix) for part in parts)
 
 
-def _quantile_target_count(class_counts: pd.Series, target_quantile: float) -> int:
-    """Compute the class-count target used for quantile-based balancing."""
-    if target_quantile < 0 or target_quantile > 1:
-        raise ValueError("target_quantile must be between 0 and 1.")
-    if class_counts.empty:
-        return 0
-    return int(class_counts.quantile(target_quantile))
-
-
-def select_upsample_targets(
-    df: pd.DataFrame,
-    label_column: str,
-    target_quantile: float = 0.5,
-    candidate_labels: Sequence[str] | None = None,
-    inverse_power: float = 0.5,
-    budget_ratio: float = 0.1,
-) -> dict[Any, int]:
-    """Select per-class target counts for upsampling."""
-    if inverse_power <= 0 or inverse_power > 1:
-        raise ValueError("inverse_power must be in the interval (0, 1].")
-    if budget_ratio < 0 or budget_ratio > 1:
-        raise ValueError("budget_ratio must be between 0 and 1.")
-
-    class_counts = df[label_column].value_counts()
-    q_count = _quantile_target_count(class_counts, target_quantile)
-    if q_count <= 0 or budget_ratio == 0:
-        return {}
-
-    selected_labels: list[Any] = []
-    if candidate_labels is None:
-        for label, count in class_counts.items():
-            if count < q_count:
-                selected_labels.append(label)
-    else:
-        available_labels = set(class_counts.index.tolist())
-        for label in candidate_labels:
-            if label not in available_labels:
-                continue
-            if int(class_counts[label]) < q_count:
-                selected_labels.append(label)
-
-    if not selected_labels:
-        return {}
-
-    total_rows = int(len(df))
-    budget = int(round(budget_ratio * total_rows))
-    if budget <= 0:
-        return {}
-
-    per_label_pressure: dict[Any, float] = {}
-    pressure_denominator = 0.0
-    for label in selected_labels:
-        current_count = int(class_counts[label])
-        pressure = (q_count / current_count) ** inverse_power - 1.0
-        per_label_pressure[label] = pressure
-        pressure_denominator += current_count * pressure
-
-    if pressure_denominator <= 0:
-        return {}
-
-    lambda_scale = min(1.0, budget / pressure_denominator)
-    selected_targets: dict[Any, int] = {}
-    for label in selected_labels:
-        current_count = int(class_counts[label])
-        pressure = per_label_pressure[label]
-        target_float = current_count * (1.0 + lambda_scale * pressure)
-        target_count = int(round(target_float))
-        target_count = min(target_count, q_count)
-        target_count = max(current_count, target_count)
-        if target_count > current_count:
-            selected_targets[label] = target_count
-    return selected_targets
-
-
 def select_floor_upsample_targets(
     df: pd.DataFrame,
     label_column: str,
@@ -341,30 +267,6 @@ def upsample(
 
     synthetic_df = pd.DataFrame(synthetic_rows, columns=df.columns)
     return pd.concat([df, synthetic_df], ignore_index=True)
-
-
-def upsample_minority_classes(
-    df: pd.DataFrame,
-    label_column: str,
-    target_quantile: float = 0.5,
-    inverse_power: float = 0.5,
-    budget_ratio: float = 0.1,
-    seed: int = 42,
-) -> pd.DataFrame:
-    """Upsample classes selected from quantile-based minority detection."""
-    target_counts = select_upsample_targets(
-        df=df,
-        label_column=label_column,
-        target_quantile=target_quantile,
-        inverse_power=inverse_power,
-        budget_ratio=budget_ratio,
-    )
-    return upsample(
-        df=df,
-        label_column=label_column,
-        target_counts=target_counts,
-        seed=seed,
-    )
 
 
 def manipulate_classes(
