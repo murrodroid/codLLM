@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Who We Are — codLLM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:        #FAF7F2;
+      --ink:          #1B2546;
+      --ink-soft:     #4A5168;
+      --ink-faint:    #8A8B95;
+      --rule:         #E5DEC8;
+      --accent:       #A87C4F;
+
+      --tint-1: #DCE3EA;
+      --tint-2: #E8DDD0;
+      --tint-3: #DEE5DA;
+
+      --c-1: #3A6B8A;
+      --c-2: #A87C4F;
+      --c-3: #6F8E5A;
+
+      --max-w: 1200px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+      line-height: 1.55;
+      background-image:
+        radial-gradient(1300px 700px at 80% -200px, #F1EBDF 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 90%, #F1EBDF 0%, transparent 55%);
+      background-attachment: fixed;
+    }
+    main { max-width: var(--max-w); margin: 0 auto; padding: 64px 56px 72px; }
+
+    /* ───── Title ───── */
+    .title-row {
+      display: flex; align-items: baseline; gap: 18px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 700;
+      font-size: 56px;
+      letter-spacing: -0.012em;
+      color: var(--ink);
+    }
+    .title-rule {
+      flex: 1;
+      height: 2px;
+      background: var(--rule);
+      margin-top: 14px;
+    }
+    .lede {
+      margin: 0 0 56px;
+      max-width: 720px;
+      font-size: 16px;
+      color: var(--ink-soft);
+    }
+
+    /* ───── Card grid ───── */
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+    @media (max-width: 980px) { .pillars { grid-template-columns: 1fr; } }
+
+    .pillar {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 16px;
+      padding: 36px 32px 32px;
+      text-align: center;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.20);
+    }
+    .icon-circle {
+      width: 96px; height: 96px;
+      margin: 0 auto 22px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+    }
+    .pillar.p1 .icon-circle { background: var(--tint-1); }
+    .pillar.p2 .icon-circle { background: var(--tint-2); }
+    .pillar.p3 .icon-circle { background: var(--tint-3); }
+
+    .pillar h2 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 700;
+      font-size: 26px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+    }
+    .pillar .divider {
+      width: 32px; height: 2px;
+      margin: 14px auto 22px;
+      opacity: 0.55;
+    }
+    .pillar.p1 .divider { background: var(--c-1); }
+    .pillar.p2 .divider { background: var(--c-2); }
+    .pillar.p3 .divider { background: var(--c-3); }
+
+    .pillar ul {
+      list-style: none;
+      padding: 0; margin: 0;
+      text-align: left;
+    }
+    .pillar ul li {
+      position: relative;
+      padding-left: 22px;
+      margin-bottom: 10px;
+      font-size: 14.5px;
+      color: var(--ink-soft);
+      line-height: 1.55;
+    }
+    .pillar ul li::before {
+      content: "";
+      position: absolute;
+      left: 4px; top: 9px;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+    }
+    .pillar.p1 ul li::before { background: var(--c-1); }
+    .pillar.p2 ul li::before { background: var(--c-2); }
+    .pillar.p3 ul li::before { background: var(--c-3); }
+
+    .pillar ul li b {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    @media print {
+      body { background: white; }
+      main { padding: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="title-row">
+      <h1>Who We Are</h1>
+      <div class="title-rule"></div>
+    </div>
+    <p class="lede">
+      A bachelor-thesis project at the Technical University of Denmark, built in collaboration with practising historical demographers.
+    </p>
+
+    <section class="pillars">
+
+      <article class="pillar p1">
+        <div class="icon-circle">
+          <!-- Graduation cap -->
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" stroke="#3A6B8A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- mortar board -->
+            <path d="M 4 22 L 28 12 L 52 22 L 28 32 Z" fill="#3A6B8A" stroke="#3A6B8A"/>
+            <!-- band of cap (under board) -->
+            <path d="M 14 28 L 14 38 C 14 42, 20 46, 28 46 C 36 46, 42 42, 42 38 L 42 28"/>
+            <!-- tassel -->
+            <line x1="48" y1="22" x2="48" y2="36" stroke="#3A6B8A"/>
+            <circle cx="48" cy="38" r="2.2" fill="#3A6B8A"/>
+          </svg>
+        </div>
+        <h2>The team</h2>
+        <div class="divider"></div>
+        <ul>
+          <li><b>Bachelor students</b> at the Technical University of Denmark (DTU)</li>
+          <li>Working on this as our <b>thesis project</b></li>
+          <li>Spring cohort, 2026</li>
+        </ul>
+      </article>
+
+      <article class="pillar p2">
+        <div class="icon-circle">
+          <!-- Lightbulb (origin / inspiration) -->
+          <svg width="48" height="56" viewBox="0 0 48 56" fill="none" stroke="#A87C4F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- bulb -->
+            <path d="M 24 6 C 14 6, 8 14, 8 22 C 8 28, 12 32, 16 36 L 16 42 L 32 42 L 32 36 C 36 32, 40 28, 40 22 C 40 14, 34 6, 24 6 Z"
+                  fill="#F5EAD0" stroke="#A87C4F"/>
+            <!-- base lines -->
+            <line x1="17" y1="46" x2="31" y2="46"/>
+            <line x1="19" y1="50" x2="29" y2="50"/>
+            <!-- filament -->
+            <path d="M 18 22 Q 24 14, 30 22" stroke="#A87C4F" stroke-width="1.8" fill="none"/>
+          </svg>
+        </div>
+        <h2>The origin</h2>
+        <div class="divider"></div>
+        <ul>
+          <li>Project initiated thanks to <b>Mads Perner</b> &amp; <b>Tim Riswick</b></li>
+          <li>Built around a real research need in historical demography</li>
+          <li>In dialogue with practising coders along the way</li>
+        </ul>
+      </article>
+
+      <article class="pillar p3">
+        <div class="icon-circle">
+          <!-- Open book / paper -->
+          <svg width="56" height="48" viewBox="0 0 56 48" fill="none" stroke="#6F8E5A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- left page -->
+            <path d="M 4 8 L 4 40 L 26 38 L 28 14 L 26 10 Z" fill="#FAF7F2" stroke="#6F8E5A"/>
+            <!-- right page -->
+            <path d="M 52 8 L 52 40 L 30 38 L 28 14 L 30 10 Z" fill="#FAF7F2" stroke="#6F8E5A"/>
+            <!-- spine -->
+            <line x1="28" y1="14" x2="28" y2="38" stroke="#6F8E5A"/>
+            <!-- text lines on both pages -->
+            <line x1="9"  y1="18" x2="22" y2="18" stroke-width="1.2"/>
+            <line x1="9"  y1="23" x2="22" y2="23" stroke-width="1.2"/>
+            <line x1="9"  y1="28" x2="20" y2="28" stroke-width="1.2"/>
+            <line x1="34" y1="18" x2="47" y2="18" stroke-width="1.2"/>
+            <line x1="34" y1="23" x2="47" y2="23" stroke-width="1.2"/>
+            <line x1="34" y1="28" x2="45" y2="28" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <h2>The output</h2>
+        <div class="divider"></div>
+        <ul>
+          <li>Our <b>bachelor thesis</b>, defended at DTU spring 2026</li>
+          <li>A separate <b>research paper</b> for the demography community</li>
+          <li>Open code &amp; reproducibility for the experiments</li>
+        </ul>
+      </article>
+
+    </section>
+  </main>
+</body>
+</html>

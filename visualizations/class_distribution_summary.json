@@ -1,0 +1,57 @@
+{
+  "total_code_occurrences": 1382822,
+  "n_unique_codes": 3234,
+  "max_class_size": 59668,
+  "min_class_size": 1,
+  "median_class_size": 4.0,
+  "mean_class_size": 427.5887445887446,
+  "n_singletons": 898,
+  "n_classes_below_10": 2019,
+  "n_classes_below_50": 2534,
+  "coverage_top10_pct": 30.29435458793684,
+  "coverage_top100_pct": 80.6789304769522,
+  "coverage_top1000_pct": 99.41207183570988,
+  "gini": 0.9518915303513754,
+  "top_classes": [
+    {
+      "code": "J18.900",
+      "count": 59668
+    },
+    {
+      "code": "J18.000",
+      "count": 52948
+    },
+    {
+      "code": "A16.904",
+      "count": 47444
+    },
+    {
+      "code": "P95.000",
+      "count": 45673
+    },
+    {
+      "code": "I51.900",
+      "count": 45510
+    },
+    {
+      "code": "R99.001",
+      "count": 44444
+    },
+    {
+      "code": "G03.900",
+      "count": 34997
+    },
+    {
+      "code": "I64.001",
+      "count": 31838
+    },
+    {
+      "code": "J40.009",
+      "count": 28780
+    },
+    {
+      "code": "R56.800",
+      "count": 27615
+    }
+  ]
+}

@@ -6,3 +6,21 @@ api_keys.py
 data/cache/
 jobs/generated/
 .claude/
+
+# Secrets
+.env
+
+# Local notes / scratch (never commit)
+Logbog og links.pdf
+experiments/notebooks/data/
+
+# Local training output
+runs/
+
+# Downloaded model checkpoints (large binaries — fetch from W&B instead)
+experiments/model_from_wandb/
+
+# Agentic baseline run state (pickled checkpoints, log files)
+experiments/agentic_baseline_claudecode/results/checkpoint.pkl
+experiments/agentic_baseline_claudecode/results/checkpoint.pkl.tmp
+experiments/agentic_baseline_claudecode/results/*.log

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Our Mission — codLLM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:        #FAF7F2;
+      --ink:          #1B2546;
+      --ink-soft:     #4A5168;
+      --ink-faint:    #8A8B95;
+      --rule:         #E5DEC8;
+      --accent:       #A87C4F;
+      --crimson:      #B14A3C;
+      --gold:         #C5A572;
+      --steel:        #6F7889;
+
+      --tint-1: #FBE7DD;
+      --tint-2: #F5EAD0;
+      --tint-3: #DCE3EA;
+
+      --max-w: 1200px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+      line-height: 1.55;
+      background-image:
+        radial-gradient(1300px 700px at 80% -200px, #F1EBDF 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 90%, #F1EBDF 0%, transparent 55%);
+      background-attachment: fixed;
+    }
+    main { max-width: var(--max-w); margin: 0 auto; padding: 64px 56px 72px; }
+
+    /* ───── Title ───── */
+    .title-row {
+      display: flex; align-items: baseline; gap: 18px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 700;
+      font-size: 56px;
+      letter-spacing: -0.012em;
+      color: var(--ink);
+    }
+    .title-rule {
+      flex: 1;
+      height: 2px;
+      background: var(--rule);
+      margin-top: 14px;
+    }
+    .lede {
+      margin: 0 0 56px;
+      max-width: 720px;
+      font-size: 16px;
+      color: var(--ink-soft);
+      line-height: 1.55;
+    }
+
+    /* ───── Card grid ───── */
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+    @media (max-width: 980px) { .pillars { grid-template-columns: 1fr; } }
+
+    .pillar {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 16px;
+      padding: 36px 32px 32px;
+      text-align: center;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.20);
+    }
+
+    .icon-circle {
+      width: 96px; height: 96px;
+      margin: 0 auto 22px;
+      border-radius: 50%;
+      background: var(--icon-bg, var(--rule));
+      display: grid; place-items: center;
+    }
+    .pillar.p1 .icon-circle { background: var(--tint-1); }
+    .pillar.p2 .icon-circle { background: var(--tint-2); }
+    .pillar.p3 .icon-circle { background: var(--tint-3); }
+
+    .pillar h2 {
+      margin: 0 0 4px;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 700;
+      font-size: 26px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+    }
+    .pillar .divider {
+      width: 32px; height: 2px;
+      margin: 14px auto 22px;
+      background: var(--accent);
+      opacity: 0.5;
+    }
+    .pillar.p1 .divider { background: var(--crimson); }
+    .pillar.p3 .divider { background: var(--steel); }
+
+    .pillar ul {
+      list-style: none;
+      padding: 0; margin: 0;
+      text-align: left;
+    }
+    .pillar ul li {
+      position: relative;
+      padding-left: 22px;
+      margin-bottom: 10px;
+      font-size: 14.5px;
+      color: var(--ink-soft);
+      line-height: 1.55;
+    }
+    .pillar ul li::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 9px;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .pillar.p1 ul li::before { background: var(--crimson); }
+    .pillar.p3 ul li::before { background: var(--steel); }
+
+    @media print {
+      body { background: white; }
+      main { padding: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="title-row">
+      <h1>Our Mission</h1>
+      <div class="title-rule"></div>
+    </div>
+    <p class="lede">
+      Automatically classify ICD-10h codes from causes-of-death — independent of language, period, or archive.
+    </p>
+
+    <section class="pillars">
+
+      <article class="pillar p1">
+        <div class="icon-circle">
+          <!-- Crosshair / target -->
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#B14A3C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="24" cy="24" r="19"/>
+            <circle cx="24" cy="24" r="11"/>
+            <circle cx="24" cy="24" r="3.5" fill="#B14A3C"/>
+            <line x1="24" y1="2" x2="24" y2="9"/>
+            <line x1="24" y1="39" x2="24" y2="46"/>
+            <line x1="2" y1="24" x2="9" y2="24"/>
+            <line x1="39" y1="24" x2="46" y2="24"/>
+          </svg>
+        </div>
+        <h2>Accurate</h2>
+        <div class="divider"></div>
+        <ul>
+          <li>Right leaf, not just the chapter</li>
+          <li>Validated on held-out records</li>
+          <li>Granularity matters in mortality</li>
+        </ul>
+      </article>
+
+      <article class="pillar p2">
+        <div class="icon-circle">
+          <!-- Cursor pointer -->
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#A87C4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M 10 6 L 10 36 L 17 29 L 22 41 L 26 39 L 21 27 L 31 27 Z" fill="#A87C4F" stroke="#A87C4F"/>
+          </svg>
+        </div>
+        <h2>Easy to use</h2>
+        <div class="divider"></div>
+        <ul>
+          <li>One CSV in, one coded CSV out</li>
+          <li>No Python or fine-tuning required</li>
+          <li>Fits the workflow you already have</li>
+        </ul>
+      </article>
+
+      <article class="pillar p3">
+        <div class="icon-circle">
+          <!-- Two interlocking rings -->
+          <svg width="56" height="48" viewBox="0 0 56 48" fill="none" stroke="#6F7889" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="20" cy="24" r="14"/>
+            <circle cx="36" cy="24" r="14"/>
+            <path d="M 28 14.6 A 14 14 0 0 1 34.4 24" stroke="#6F7889"/>
+          </svg>
+        </div>
+        <h2>Reliable</h2>
+        <div class="divider"></div>
+        <ul>
+          <li>The model knows when it's unsure</li>
+          <li>Confident cases code themselves</li>
+          <li>Ambiguous cases surface to a coder</li>
+        </ul>
+      </article>
+
+    </section>
+  </main>
+</body>
+</html>
