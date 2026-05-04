@@ -168,7 +168,7 @@ class Config:
     balance_perturbation_variance: float = 0.0
     balance_floor: int = 0
     balance_floor_decay: float = 0.0
-    balance_base_perturbation_rate: float = 0.05
+    balance_base_perturbation_rate: float = 0.5
 
     wandb: WandbConfig = field(default_factory=WandbConfig)
 
