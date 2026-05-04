@@ -39,12 +39,10 @@ def _auto_run_name(cfg: Config) -> str:
     parts = [model_short]
     if cfg.balance_strategy == "none":
         parts.append("no-upsample")
-    elif cfg.balance_strategy == "sqrt":
-        parts.append(f"floor{cfg.balance_sqrt_floor}")
-        if cfg.balance_sqrt_decay > 0:
-            parts.append(f"decay{cfg.balance_sqrt_decay}")
-    elif cfg.balance_strategy == "upsample":
-        parts.append("upsample-legacy")
+    elif cfg.balance_strategy == "floor":
+        parts.append(f"floor{cfg.balance_floor}")
+        if cfg.balance_floor_decay > 0:
+            parts.append(f"decay{cfg.balance_floor_decay}")
     parts.append(f"{cfg.num_train_epochs}ep")
     inputs = ",".join(cfg.training_input)
     parts.append(inputs)

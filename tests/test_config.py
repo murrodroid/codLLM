@@ -44,13 +44,11 @@ ENV_KEYS = [
     "CODLLM_TEXT_FIELD_SEPARATOR",
     "CODLLM_TRAINING_INPUT",
     "CODLLM_BALANCE_STRATEGY",
-    "CODLLM_BALANCE_TARGET_QUANTILE",
     "CODLLM_BALANCE_PERTURBATIONS",
     "CODLLM_BALANCE_PERTURBATION_MEAN",
     "CODLLM_BALANCE_PERTURBATION_VARIANCE",
-    "CODLLM_BALANCE_UPSAMPLE_LABELS",
-    "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER",
-    "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO",
+    "CODLLM_BALANCE_FLOOR",
+    "CODLLM_BALANCE_FLOOR_DECAY",
     "CODLLM_BALANCE_BASE_PERTURBATION_RATE",
     "CODLLM_DETERMINISTIC_ALGORITHMS",
     "CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY",
@@ -177,14 +175,12 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_LABEL_SEPARATOR", ",")
     monkeypatch.setenv("CODLLM_TEXT_FIELD_SEPARATOR", " || ")
     monkeypatch.setenv("CODLLM_TRAINING_INPUT", "cod,age")
-    monkeypatch.setenv("CODLLM_BALANCE_STRATEGY", "upsample")
-    monkeypatch.setenv("CODLLM_BALANCE_TARGET_QUANTILE", "0.6")
+    monkeypatch.setenv("CODLLM_BALANCE_STRATEGY", "floor")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS", "delete_random_char")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_MEAN", "0.08")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_VARIANCE", "0.02")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_LABELS", "A00,A01")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0.6")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "0.25")
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR", "50")
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR_DECAY", "0.25")
     monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "0.5")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS", "true")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY", "false")
@@ -291,14 +287,12 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.label_separator == ","
     assert cfg.text_field_separator == " || "
     assert cfg.training_input == ["cod", "age"]
-    assert cfg.balance_strategy == "upsample"
-    assert cfg.balance_target_quantile == 0.6
+    assert cfg.balance_strategy == "floor"
     assert cfg.balance_perturbations == ["delete_random_char"]
     assert cfg.balance_perturbation_mean == 0.08
     assert cfg.balance_perturbation_variance == 0.02
-    assert cfg.balance_upsample_labels == ["A00", "A01"]
-    assert cfg.balance_upsample_inverse_power == 0.6
-    assert cfg.balance_upsample_budget_ratio == 0.25
+    assert cfg.balance_floor == 50
+    assert cfg.balance_floor_decay == 0.25
     assert cfg.balance_base_perturbation_rate == 0.5
     assert cfg.deterministic_algorithms is True
     assert cfg.deterministic_algorithms_warn_only is False
@@ -637,22 +631,12 @@ def test_config_from_env_rejects_negative_balance_perturbation_variance(
         config_from_env()
 
 
-def test_config_from_env_rejects_invalid_upsample_inverse_power(
+def test_config_from_env_rejects_invalid_floor_decay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Inverse power should stay inside (0, 1]."""
+    """Floor decay should stay inside [0, 1]."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0")
-    with pytest.raises(ValueError):
-        config_from_env()
-
-
-def test_config_from_env_rejects_invalid_upsample_budget_ratio(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Upsample budget ratio should stay inside [0, 1]."""
-    _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "1.2")
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR_DECAY", "1.2")
     with pytest.raises(ValueError):
         config_from_env()
 

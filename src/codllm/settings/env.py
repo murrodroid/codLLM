@@ -704,17 +704,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     balance_strategy = os.getenv("CODLLM_BALANCE_STRATEGY")
     if balance_strategy is not None and balance_strategy.strip() != "":
         normalized_balance = balance_strategy.strip().lower()
-        allowed_balance = {"none", "upsample", "sqrt"}
+        allowed_balance = {"none", "floor"}
         if normalized_balance not in allowed_balance:
             allowed = ", ".join(sorted(allowed_balance))
             raise ValueError(f"CODLLM_BALANCE_STRATEGY must be one of: {allowed}.")
         cfg.balance_strategy = cast(BalanceStrategy, normalized_balance)
-
-    balance_target_quantile = _parse_env_float("CODLLM_BALANCE_TARGET_QUANTILE")
-    if balance_target_quantile is not None:
-        if balance_target_quantile < 0 or balance_target_quantile > 1:
-            raise ValueError("CODLLM_BALANCE_TARGET_QUANTILE must be between 0 and 1.")
-        cfg.balance_target_quantile = balance_target_quantile
 
     balance_perturbations = os.getenv("CODLLM_BALANCE_PERTURBATIONS")
     if balance_perturbations is not None and balance_perturbations.strip() != "":
@@ -738,57 +732,17 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.balance_perturbation_variance = balance_perturbation_variance
 
-    balance_upsample_labels = os.getenv("CODLLM_BALANCE_UPSAMPLE_LABELS")
-    if balance_upsample_labels is not None and balance_upsample_labels.strip() != "":
-        cfg.balance_upsample_labels = [
-            label.strip()
-            for label in balance_upsample_labels.split(",")
-            if label.strip()
-        ]
+    balance_floor = _parse_env_int("CODLLM_BALANCE_FLOOR")
+    if balance_floor is not None:
+        if balance_floor < 0:
+            raise ValueError("CODLLM_BALANCE_FLOOR must be non-negative.")
+        cfg.balance_floor = balance_floor
 
-    balance_upsample_inverse_power = _parse_env_float(
-        "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER"
-    )
-    if balance_upsample_inverse_power is not None:
-        if balance_upsample_inverse_power <= 0 or balance_upsample_inverse_power > 1:
-            raise ValueError(
-                "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER must be in the interval (0, 1]."
-            )
-        cfg.balance_upsample_inverse_power = balance_upsample_inverse_power
-
-    balance_upsample_budget_ratio = _parse_env_float(
-        "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO"
-    )
-    if balance_upsample_budget_ratio is not None:
-        if balance_upsample_budget_ratio < 0 or balance_upsample_budget_ratio > 1:
-            raise ValueError(
-                "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO must be between 0 and 1."
-            )
-        cfg.balance_upsample_budget_ratio = balance_upsample_budget_ratio
-
-    balance_sqrt_floor = _parse_env_int("CODLLM_BALANCE_SQRT_FLOOR")
-    if balance_sqrt_floor is not None:
-        if balance_sqrt_floor < 0:
-            raise ValueError("CODLLM_BALANCE_SQRT_FLOOR must be non-negative.")
-        cfg.balance_sqrt_floor = balance_sqrt_floor
-
-    balance_sqrt_decay = _parse_env_float("CODLLM_BALANCE_SQRT_DECAY")
-    if balance_sqrt_decay is not None:
-        if balance_sqrt_decay < 0 or balance_sqrt_decay > 1:
-            raise ValueError("CODLLM_BALANCE_SQRT_DECAY must be between 0 and 1.")
-        cfg.balance_sqrt_decay = balance_sqrt_decay
-
-    balance_sqrt_power = _parse_env_float("CODLLM_BALANCE_SQRT_POWER")
-    if balance_sqrt_power is not None:
-        if balance_sqrt_power < 0 or balance_sqrt_power > 1:
-            raise ValueError("CODLLM_BALANCE_SQRT_POWER must be between 0 and 1.")
-        cfg.balance_sqrt_power = balance_sqrt_power
-
-    balance_sqrt_budget_scale = _parse_env_float("CODLLM_BALANCE_SQRT_BUDGET_SCALE")
-    if balance_sqrt_budget_scale is not None:
-        if balance_sqrt_budget_scale < 1:
-            raise ValueError("CODLLM_BALANCE_SQRT_BUDGET_SCALE must be at least 1.")
-        cfg.balance_sqrt_budget_scale = balance_sqrt_budget_scale
+    balance_floor_decay = _parse_env_float("CODLLM_BALANCE_FLOOR_DECAY")
+    if balance_floor_decay is not None:
+        if balance_floor_decay < 0 or balance_floor_decay > 1:
+            raise ValueError("CODLLM_BALANCE_FLOOR_DECAY must be between 0 and 1.")
+        cfg.balance_floor_decay = balance_floor_decay
 
     balance_base_perturbation_rate = _parse_env_float(
         "CODLLM_BALANCE_BASE_PERTURBATION_RATE"

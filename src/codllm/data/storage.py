@@ -12,15 +12,11 @@ DEFAULT_PROCESSED_LOCK_TIMEOUT_SECONDS = 900.0
 NON_PROCESSING_METADATA_KEYS: frozenset[str] = frozenset(
     {
         "balance_strategy",
-        "balance_target_quantile",
         "balance_perturbations",
-        "balance_perturbations_per_sample",
         "balance_perturbation_mean",
         "balance_perturbation_variance",
-        "balance_upsample_labels",
-        "balance_upsample_perturbation_rate",
-        "balance_upsample_inverse_power",
-        "balance_upsample_budget_ratio",
+        "balance_floor",
+        "balance_floor_decay",
         "balance_base_perturbation_rate",
         "masterlist_inject_enabled",
         "masterlist_inject_target_per_label",
