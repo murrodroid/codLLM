@@ -21,7 +21,6 @@ from codllm.data.handler import (
     load_dataset,
     load_source_dataset,
     manipulate_classes,
-    select_upsample_targets,
     upsample,
 )
 
@@ -544,7 +543,7 @@ class TestLoaders:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[2, 6, 7])
@@ -606,7 +605,7 @@ class TestLoaders:
             train_size=1.0,
             val_size=0.0,
             test_size=0.0,
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping = _make_mapping(multi_code_cols=[])
@@ -901,17 +900,6 @@ class TestDataHandler:
 
         assert labels == ["A00.000", "A01.000", "A02.000", "A03.000"]
 
-    def test_select_upsample_targets_returns_quantile_minority_targets(self) -> None:
-        """Minority selector should return per-label target counts."""
-        targets = select_upsample_targets(
-            _balance_df(),
-            label_column="label",
-            target_quantile=1.0,
-            inverse_power=1.0,
-            budget_ratio=1.0,
-        )
-        assert targets == {"B00": 2, "C00": 2}
-
     def test_upsample_adds_rows_for_targeted_class(self) -> None:
         """Upsample should append synthetic rows until target count is reached."""
         balanced = upsample(
@@ -950,25 +938,6 @@ class TestDataHandler:
             "cod: minor-a | age: 3 | sex: female",
             "cod: minor-b | age: 4 | sex: female",
         }
-
-    def test_select_upsample_targets_supports_dynamic_inverse_scaling(self) -> None:
-        """Dynamic upsampling should preserve minority class ordering and cap at q."""
-        df = pd.DataFrame(
-            {
-                "text": ["cod: t | age: 1 | sex: male"] * 1101,
-                "label": ["major"] * 1000 + ["mid"] * 100 + ["rare"],
-            }
-        )
-        targets = select_upsample_targets(
-            df,
-            label_column="label",
-            target_quantile=1.0,
-            inverse_power=1.0,
-            budget_ratio=1.0,
-        )
-        assert targets["mid"] > targets["rare"]
-        assert targets["mid"] <= 1000
-        assert targets["rare"] <= 1000
 
     def test_manipulate_classes_perturbs_targets_without_changing_row_count(
         self,
@@ -1040,14 +1009,16 @@ class TestDataHandler:
         """Balance policy should expose summary metrics for W&B visualizations."""
         cfg = Config(
             text_field_separator=" | ",
-            balance_strategy="upsample",
-            balance_target_quantile=1.0,
-            balance_upsample_inverse_power=1.0,
-            balance_upsample_budget_ratio=1.0,
-            balance_base_perturbation_rate=1.0,
+            balance_strategy="floor",
+            balance_floor=4,
+            balance_floor_decay=0.0,
             balance_perturbations=["delete_random_char"],
             balance_perturbation_mean=0.1,
             balance_perturbation_variance=0.0,
+            base_perturbation_rate=1.0,
+            base_perturbations=["delete_random_char"],
+            base_perturbation_mean=0.1,
+            base_perturbation_variance=0.0,
         )
         handler = DataHandler(cfg)
         source = _balance_df()
@@ -1057,7 +1028,7 @@ class TestDataHandler:
         assert metrics is not None
         assert len(balanced) > len(source)
         assert metrics["enabled"] is True
-        assert metrics["strategy"] == "upsample"
+        assert metrics["strategy"] == "floor"
         assert metrics["rows_before"] == len(source)
         assert metrics["rows_after"] == len(balanced)
         assert metrics["rows_added"] == len(balanced) - len(source)
@@ -1297,18 +1268,18 @@ class TestDataHandler:
             test_size=0.1,
             dataset_size=1.0,
             data_sources=[],
-            balance_strategy="upsample",
-            balance_target_quantile=0.6,
-            balance_upsample_budget_ratio=0.25,
-            balance_base_perturbation_rate=0.2,
+            balance_strategy="floor",
+            balance_floor=10,
+            balance_floor_decay=0.25,
+            base_perturbation_rate=0.2,
         )
         handler_base = DataHandler(cfg_base)
-        legacy_like_metadata = handler_base._build_processing_metadata()
-        legacy_like_metadata["balance_strategy"] = "upsample"
-        legacy_like_metadata["balance_target_quantile"] = 0.6
-        legacy_like_metadata["balance_upsample_budget_ratio"] = 0.25
-        legacy_like_metadata["balance_base_perturbation_rate"] = 0.2
-        handler_base._write_processing_metadata(legacy_like_metadata)
+        prior_metadata = handler_base._build_processing_metadata()
+        prior_metadata["balance_strategy"] = "floor"
+        prior_metadata["balance_floor"] = 10
+        prior_metadata["balance_floor_decay"] = 0.25
+        prior_metadata["balance_base_perturbation_rate"] = 0.2
+        handler_base._write_processing_metadata(prior_metadata)
 
         monkeypatch.setattr(
             data_handler_module,
@@ -1327,9 +1298,9 @@ class TestDataHandler:
             dataset_size=1.0,
             data_sources=[],
             balance_strategy="none",
-            balance_target_quantile=0.9,
-            balance_upsample_budget_ratio=0.0,
-            balance_base_perturbation_rate=0.0,
+            balance_floor=0,
+            balance_floor_decay=0.0,
+            base_perturbation_rate=0.0,
         )
         handler_changed = DataHandler(cfg_changed)
         splits = handler_changed.get_splits()
@@ -1470,7 +1441,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             balance_strategy="none",
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping()}
@@ -1537,7 +1508,7 @@ class TestDataHandler:
             val_size=0.25,
             test_size=0.25,
             balance_strategy="none",
-            balance_base_perturbation_rate=0.0,
+            base_perturbation_rate=0.0,
             label_harmonization_enabled=False,
         )
         mapping_registry = {"test_mapping": _make_mapping(multi_code_cols=[2, 6])}
@@ -1720,9 +1691,8 @@ class TestDataHandler:
             dataset_size=1.0,
             data_sources=[],
             balance_strategy="none",
-            balance_target_quantile=1.0,
-            balance_perturbations=["delete_random_char"],
-            balance_base_perturbation_rate=1.0,
+            base_perturbations=["delete_random_char"],
+            base_perturbation_rate=1.0,
         )
         handler = DataHandler(cfg)
         handler._write_processing_metadata(handler._build_processing_metadata())

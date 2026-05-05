@@ -9,6 +9,28 @@ _METRIC_ARTIFACT_SCOPE: ContextVar[str | None] = ContextVar(
     "codllm_metric_artifact_scope",
     default=None,
 )
+_CORE_LOGGED_METRICS = frozenset(
+    {
+        "accuracy",
+        "exact_match",
+        "macro_f1",
+        "sample_f1",
+        "sample_jaccard",
+        "micro_jaccard",
+        "hamming_loss",
+    }
+)
+_STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
+    {
+        "macro_precision",
+        "macro_recall",
+        "micro_precision",
+        "micro_recall",
+        "micro_f1",
+        "hamming_score",
+        "label_count_mae",
+    }
+)
 
 
 def set_metric_artifact_scope(scope: str | None) -> Token[str | None]:
@@ -24,6 +46,27 @@ def reset_metric_artifact_scope(token: Token[str | None]) -> None:
 def current_metric_artifact_scope() -> str | None:
     """Return the current metric artifact scope."""
     return _METRIC_ARTIFACT_SCOPE.get()
+
+
+def filter_metrics_for_logging(
+    metrics: Mapping[str, float],
+    *,
+    mode: str,
+    save_metric: str | None = None,
+) -> dict[str, float]:
+    """Return the scalar metrics selected for Trainer and W&B run-page logging."""
+    normalized_mode = mode.strip().lower()
+    if normalized_mode == "all":
+        return dict(metrics)
+    if normalized_mode == "core":
+        allowed = set(_CORE_LOGGED_METRICS)
+    elif normalized_mode == "standard":
+        allowed = set(_STANDARD_LOGGED_METRICS)
+    else:
+        raise ValueError("metric logging mode must be one of: all, core, standard.")
+    if save_metric:
+        allowed.add(save_metric.strip().lower())
+    return {key: value for key, value in metrics.items() if key in allowed}
 
 
 def _normalize_decoded_text(text: str) -> str:
@@ -511,6 +554,8 @@ def build_exact_match_accuracy_metric(
     train_classes: set[str] | None = None,
     train_input_strings: set[str] | None = None,
     artifact_logger: MetricArtifactLogger | None = None,
+    metric_mode: str = "all",
+    save_metric: str | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build a compute_metrics callback with exact-match and overlap metrics.
 
@@ -612,8 +657,13 @@ def build_exact_match_accuracy_metric(
                 input_strings=input_strings,
                 predictions=normalized_predictions,
                 labels=normalized_labels,
+                metrics=result,
             )
-        return result
+        return filter_metrics_for_logging(
+            result,
+            mode=metric_mode,
+            save_metric=save_metric,
+        )
 
     return compute_metrics
 
@@ -623,6 +673,8 @@ def build_sequence_classification_metric(
     tokenizer: Any | None = None,
     train_input_strings: set[str] | None = None,
     artifact_logger: MetricArtifactLogger | None = None,
+    metric_mode: str = "all",
+    save_metric: str | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build compute_metrics callback for single-label sequence classification."""
     normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
@@ -699,7 +751,12 @@ def build_sequence_classification_metric(
                 input_strings=input_strings,
                 predictions=normalized_predictions,
                 labels=normalized_labels,
+                metrics=result,
             )
-        return result
+        return filter_metrics_for_logging(
+            result,
+            mode=metric_mode,
+            save_metric=save_metric,
+        )
 
     return compute_metrics

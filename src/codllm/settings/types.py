@@ -2,9 +2,11 @@ from typing import Literal
 
 TrainingInput = Literal["cod", "age", "sex"]
 MultiCodSyntheticSourceScope = Literal["within_source", "any_source"]
-BalanceStrategy = Literal["none", "upsample", "sqrt"]
+BalanceStrategy = Literal["none", "floor"]
 WandbMode = Literal["auto", "online", "offline", "disabled"]
 WandbLogModel = Literal["false", "end", "checkpoint"]
+WandbRunConfigMode = Literal["minimal", "standard", "full"]
+WandbMetricMode = Literal["core", "standard", "all"]
 TorchDType = Literal["auto", "float16", "bfloat16", "float32"]
 EvalStrategy = Literal["no", "steps", "epoch"]
 HoldOutEvaluatePer = Literal["steps", "epoch"]

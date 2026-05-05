@@ -13,7 +13,9 @@ from codllm.settings.types import (
     TorchDType,
     TrainingInput,
     WandbLogModel,
+    WandbMetricMode,
     WandbMode,
+    WandbRunConfigMode,
 )
 from codllm.settings.schema import (
     Config,
@@ -38,7 +40,9 @@ __all__ = [
     "TrainingInput",
     "WandbConfig",
     "WandbLogModel",
+    "WandbMetricMode",
     "WandbMode",
+    "WandbRunConfigMode",
     "config",
     "config_from_env",
 ]

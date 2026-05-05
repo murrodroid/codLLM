@@ -1,4 +1,6 @@
+import json
 import os
+import re
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -42,6 +44,81 @@ def _wandb_table(rows: Sequence[Sequence[Any]], columns: Sequence[str]) -> Any |
     if wandb is None:
         return None
     return wandb.Table(columns=list(columns), data=[list(row) for row in rows])
+
+
+def _safe_artifact_component(value: str) -> str:
+    """Return a W&B-artifact-safe name component."""
+    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
+    normalized = normalized.strip(".-")
+    return normalized or "evaluation"
+
+
+def _json_safe_value(value: Any) -> Any:
+    """Return a JSON-serializable representation for metric artifacts."""
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if hasattr(value, "item"):
+        return _json_safe_value(value.item())
+    return str(value)
+
+
+def _log_evaluation_artifact(
+    *,
+    wandb: Any,
+    cfg: Config,
+    metric_scope: str,
+    input_strings: Sequence[str],
+    predictions: Sequence[str],
+    labels: Sequence[str],
+    metrics: Mapping[str, float] | None,
+) -> None:
+    """Log full evaluation predictions and metrics to a W&B artifact."""
+    run = getattr(wandb, "run", None)
+    log_artifact = getattr(run, "log_artifact", None)
+    artifact_factory = getattr(wandb, "Artifact", None)
+    if not callable(log_artifact) or not callable(artifact_factory):
+        return
+
+    safe_scope = _safe_artifact_component(metric_scope)
+    run_id = str(getattr(run, "id", "") or getattr(run, "name", "") or "run")
+    step = getattr(run, "step", None)
+    step_suffix = f"-step-{step}" if step is not None else ""
+    artifact = artifact_factory(
+        name=_safe_artifact_component(
+            f"{run_id}-codllm-evaluation-{safe_scope}{step_suffix}"
+        ),
+        type="evaluation",
+        metadata={"scope": metric_scope, "rows": len(labels)},
+    )
+    if metrics is not None:
+        with artifact.new_file("metrics.json", mode="w") as metrics_file:
+            metrics_file.write(
+                json.dumps(
+                    {
+                        str(key): _json_safe_value(value)
+                        for key, value in metrics.items()
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+    with artifact.new_file("predictions.jsonl", mode="w") as predictions_file:
+        for index, (label, prediction) in enumerate(zip(labels, predictions)):
+            input_text = input_strings[index] if index < len(input_strings) else ""
+            predictions_file.write(
+                json.dumps(
+                    {
+                        "index": index,
+                        "input": input_text,
+                        "label": str(label),
+                        "prediction": str(prediction),
+                        "label_separator": cfg.label_separator,
+                    },
+                    sort_keys=True,
+                )
+            )
+            predictions_file.write("\n")
+    log_artifact(artifact, aliases=[safe_scope, "latest"])
 
 
 def _log_table_with_optional_bar(
@@ -623,9 +700,11 @@ class MetricArtifactLogger:
         input_strings: Sequence[str] | None,
         predictions: Sequence[str],
         labels: Sequence[str],
+        metrics: Mapping[str, float] | None = None,
     ) -> None:
-        """Log top chapter-block error tables for one evaluation scope."""
-        if _active_wandb() is None:
+        """Log full artifacts and top chapter-block error tables for one scope."""
+        wandb = _active_wandb()
+        if wandb is None:
             return
         if metric_scope is None:
             metric_scope = "eval"
@@ -647,6 +726,15 @@ class MetricArtifactLogger:
             for prediction in predictions
         ]
         input_values = list(input_strings or [""] * len(labels))
+        _log_evaluation_artifact(
+            wandb=wandb,
+            cfg=self.cfg,
+            metric_scope=metric_scope,
+            input_strings=input_values,
+            predictions=predictions,
+            labels=labels,
+            metrics=metrics,
+        )
 
         pair_counts: Counter[tuple[tuple[str, ...], tuple[str, ...]]] = Counter()
         pair_examples: dict[

@@ -357,24 +357,48 @@ Synthetic multi-COD rows are added only after train/validation/test splitting, a
 
 Balancing is a training-split transformation. It never changes validation, test, or final hold-out rows.
 
-Controls:
+The pipeline has two independent stages. Floor upsampling uses `CODLLM_BALANCE_*`; whole-training-set base
+perturbation uses `CODLLM_BASE_PERTURBATION_*`. Either or both may be active in a single run; setting
+`CODLLM_BALANCE_STRATEGY=none` and `CODLLM_BASE_PERTURBATION_RATE=0` disables both.
 
-- `CODLLM_BALANCE_STRATEGY=none|upsample|sqrt`
-- `CODLLM_BALANCE_TARGET_QUANTILE`
-- `CODLLM_BALANCE_UPSAMPLE_LABELS`
-- `CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER`
-- `CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO`
-- `CODLLM_BALANCE_SQRT_FLOOR`
-- `CODLLM_BALANCE_SQRT_DECAY`
-- `CODLLM_BALANCE_SQRT_POWER`
-- `CODLLM_BALANCE_SQRT_BUDGET_SCALE`
-- `CODLLM_BALANCE_PERTURBATIONS`
-- `CODLLM_BALANCE_BASE_PERTURBATION_RATE`
-- `CODLLM_BALANCE_PERTURBATION_MEAN`
-- `CODLLM_BALANCE_PERTURBATION_VARIANCE`
+#### Stage 1 — Floor upsampling (`CODLLM_BALANCE_STRATEGY=floor`)
 
-Perturbations are applied only to the configured `cod` segment. The mean and variance scale with COD text length, so
-longer cause strings receive more edits on average.
+Every class with fewer than `CODLLM_BALANCE_FLOOR` samples is upsampled by drawing additional rows from the same class
+until the floor is reached. The new rows are perturbed proportionally — the more aggressive the upsample, the more
+likely each synthetic copy is to be perturbed (so a class that was 10× upsampled receives noisier copies than one that
+was only doubled). `CODLLM_BALANCE_FLOOR_DECAY` softens the floor for the rarest classes via a log curve so a class
+with 1 original sample still ends up smaller than a class with 5 originals after upsampling — the natural ranking is
+preserved. Set `_DECAY=0` for a strict floor.
+
+Worked example with `FLOOR=50, DECAY=0`:
+
+| Original count | Target after upsampling |
+|---|---|
+| 1 | 50 |
+| 5 | 50 |
+| 49 | 50 |
+| 50 | 50 (unchanged) |
+| 200 | 200 (unchanged) |
+
+#### Stage 2 — Base-rate perturbation (`CODLLM_BASE_PERTURBATION_RATE > 0`)
+
+After upsampling, a configurable fraction of the *entire training set* (synthetic + original) is perturbed in place.
+This is regularization, not balance correction — `RATE=0.0` is the safe default, `RATE=1.0` perturbs every row. The
+2026-04 sweep on flan-t5-small showed `RATE=1.0` hurts macro_f1 by ~5.7pp because the model never sees clean training
+text but is evaluated on clean text. Reach for low rates (0.05 – 0.3) when you want regularization without distribution
+shift.
+
+#### Perturbation mechanics
+
+Perturbations are applied only to the configured `cod` segment of the training text — never to age, sex, or other
+metadata fields, so structural metadata stays intact across synthetic copies.
+
+- `CODLLM_BALANCE_PERTURBATIONS` — comma-separated names from {`swap_adjacent_chars`, `delete_random_char`,
+  `insert_random_whitespace`, `accent_random_vowel`, `qwerty_misspell`}. Applies to floor-upsampled copies.
+- `CODLLM_BALANCE_PERTURBATION_MEAN` and `_VARIANCE` — control edits for floor-upsampled copies.
+- `CODLLM_BASE_PERTURBATIONS`, `CODLLM_BASE_PERTURBATION_MEAN`, and `_VARIANCE` — equivalent controls for the
+  whole-training-set regularization pass.
+  Counts scale with COD text length, so longer cause strings receive more edits on average.
 
 ### Hold-Out Evaluation
 
@@ -415,12 +439,15 @@ Each training run writes checkpoints under a run-scoped output directory. Locall
 
 When W&B credentials are available, training logs:
 
-- resolved config and runtime metadata
+- compact run-page config selected by `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full`
+- full resolved config, runtime metadata, source metadata, and training args as run metadata artifacts
 - source file metadata and processed-cache fingerprints
 - split sizes, source distributions, and label summaries
 - compact data visualizations under `data/*`
-- validation, test, hold-out, and pretraining metrics under scoped namespaces
-- error tables under scopes such as `val/errors/*`, `test/errors/*`, and `holdout/test/errors/*`
+- validation, test, hold-out, and pretraining metrics under scoped namespaces, filtered by
+  `CODLLM_WANDB_METRIC_MODE=core|standard|all`
+- full evaluation metrics and row-level predictions as artifacts, plus compact error tables under scopes such as
+  `val/errors/*`, `test/errors/*`, and `holdout/test/errors/*`
 
 Multi-COD runs emit exact-match, micro, sample, Jaccard, Hamming, and label-count diagnostics. Single-label runs emit
 accuracy and macro precision/recall/F1.

@@ -1,3 +1,4 @@
+from io import StringIO
 from typing import Any
 
 import pandas as pd
@@ -65,6 +66,63 @@ class _FakeWandb:
         self.logs.append(payload)
 
 
+class _FakeRun:
+    """Minimal W&B run replacement for artifact tests."""
+
+    id = "run-1"
+    name = "run"
+    step = 7
+
+    def __init__(self) -> None:
+        self.artifacts: list[_FakeArtifact] = []
+
+    def log_artifact(self, artifact: "_FakeArtifact", aliases: list[str]) -> None:
+        """Record a logged artifact and aliases."""
+        artifact.aliases = aliases
+        self.artifacts.append(artifact)
+
+
+class _FakeArtifactFile(StringIO):
+    """StringIO that stores content on close."""
+
+    def __init__(self, artifact: "_FakeArtifact", name: str) -> None:
+        super().__init__()
+        self.artifact = artifact
+        self.name = name
+
+    def close(self) -> None:
+        self.artifact.files[self.name] = self.getvalue()
+        super().close()
+
+
+class _FakeArtifact:
+    """Minimal W&B artifact replacement for visualization tests."""
+
+    def __init__(self, name: str, type: str, metadata: dict[str, Any]) -> None:
+        self.name = name
+        self.type = type
+        self.metadata = metadata
+        self.files: dict[str, str] = {}
+        self.aliases: list[str] = []
+
+    def new_file(self, name: str, mode: str) -> _FakeArtifactFile:
+        """Return a writable fake artifact file."""
+        del mode
+        return _FakeArtifactFile(self, name)
+
+
+class _FakeArtifactWandb(_FakeWandb):
+    """Fake W&B module with artifact support."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.run = _FakeRun()
+
+    def Artifact(self, name: str, type: str, metadata: dict[str, Any]) -> _FakeArtifact:
+        """Build a fake artifact."""
+        return _FakeArtifact(name=name, type=type, metadata=metadata)
+
+
 def test_metric_artifact_logger_logs_chapter_block_error_tables(
     monkeypatch,
 ) -> None:
@@ -98,6 +156,28 @@ def test_metric_artifact_logger_logs_chapter_block_error_tables(
     assert pair_table.data[0][:3] == ["A01", "B00", 1]
     assert false_negative_table.data[0] == ["A01", 1, 1, 1.0]
     assert false_positive_table.data[0] == ["B00", 1]
+
+
+def test_metric_artifact_logger_logs_full_evaluation_artifact(monkeypatch) -> None:
+    """Prediction artifacts should preserve full metrics and row-level outputs."""
+    fake_wandb = _FakeArtifactWandb()
+    monkeypatch.setattr(visualizations_module, "_active_wandb", lambda: fake_wandb)
+    logger = MetricArtifactLogger(Config(label_separator=","))
+
+    logger(
+        metric_scope="test",
+        input_strings=["cod: alpha", "cod: beta"],
+        predictions=["A00.001", "B00.001"],
+        labels=["A00.001", "A01.001"],
+        metrics={"accuracy": 0.5, "seen_accuracy": 1.0},
+    )
+
+    artifact = fake_wandb.run.artifacts[0]
+    assert artifact.type == "evaluation"
+    assert artifact.metadata == {"scope": "test", "rows": 2}
+    assert '"seen_accuracy": 1.0' in artifact.files["metrics.json"]
+    assert '"prediction": "B00.001"' in artifact.files["predictions.jsonl"]
+    assert artifact.aliases == ["test", "latest"]
 
 
 def test_log_data_visualizations_logs_core_distribution_tables(monkeypatch) -> None:

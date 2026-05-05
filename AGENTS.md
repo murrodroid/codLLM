@@ -93,10 +93,13 @@ unexpected dependency downloads.
     `multicod_synthetic_ratio` for pretraining.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
-  * Balance perturbation count is controlled by `Config.balance_perturbation_mean`,
+  * Floor-upsample copy perturbation count is controlled by `Config.balance_perturbation_mean`,
     `Config.balance_perturbation_variance`, `CODLLM_BALANCE_PERTURBATION_MEAN`, and
-    `CODLLM_BALANCE_PERTURBATION_VARIANCE`. These values scale by the length of the processed `cod` text segment;
-    do not reintroduce a fixed balance perturbations-per-sample control for training rows.
+    `CODLLM_BALANCE_PERTURBATION_VARIANCE`. Whole-training-set base perturbation is controlled separately by
+    `Config.base_perturbation_rate`, `Config.base_perturbations`, `Config.base_perturbation_mean`,
+    `Config.base_perturbation_variance`, `CODLLM_BASE_PERTURBATION_RATE`, `CODLLM_BASE_PERTURBATIONS`,
+    `CODLLM_BASE_PERTURBATION_MEAN`, and `CODLLM_BASE_PERTURBATION_VARIANCE`. These values scale by the length of the
+    processed `cod` text segment; do not reintroduce a fixed perturbations-per-sample control for training rows.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default.
@@ -109,6 +112,10 @@ unexpected dependency downloads.
     source.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
     `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
+  * W&B run-page config volume is controlled by `Config.wandb.run_config_mode` and
+    `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full`; scalar metric volume is controlled by
+    `Config.wandb.metric_mode` and `CODLLM_WANDB_METRIC_MODE=core|standard|all`. Keep full reproducibility payloads in
+    W&B artifacts instead of flattening every metadata field onto the run page by default.
 * Ensure new or updated tests are compatible with GitHub Actions (CPU-only Linux runners
   by default) and do not depend on local-only resources or hardware.
 

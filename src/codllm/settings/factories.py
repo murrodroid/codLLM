@@ -105,7 +105,17 @@ def default_masterlist_inject_perturbations() -> list[str]:
 
 
 def default_balance_perturbations() -> list[str]:
-    """Return default perturbations for balance-policy row manipulation."""
+    """Return default perturbations for floor-upsampling synthetic copies."""
+    return [
+        "swap_adjacent_chars",
+        "delete_random_char",
+        "accent_random_vowel",
+        "qwerty_misspell",
+    ]
+
+
+def default_base_perturbations() -> list[str]:
+    """Return default perturbations for whole-training-set regularization."""
     return [
         "swap_adjacent_chars",
         "delete_random_char",

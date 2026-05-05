@@ -21,7 +21,6 @@ from codllm.data.balancing import (
     _sample_upsample_rows,
     manipulate_classes,
     select_floor_upsample_targets,
-    select_upsample_targets,
     upsample,
 )
 from codllm.data.splits import DataSplits, resolve_training_frames
@@ -52,7 +51,7 @@ from codllm.input import (
 from codllm.input.harmonization import resolve_label_harmonization_workbook_path
 from codllm.runtime.paths import resolve_source_path
 
-PREPARED_SPLITS_METADATA_VERSION = 1
+PREPARED_SPLITS_METADATA_VERSION = 2
 
 
 def _log_data_progress(message: str) -> None:
@@ -244,22 +243,15 @@ class DataHandler:
                     self.cfg.multicod_synthetic_text_separator
                 ),
                 "balance_strategy": self.cfg.balance_strategy,
-                "balance_target_quantile": self.cfg.balance_target_quantile,
                 "balance_perturbations": list(self.cfg.balance_perturbations),
                 "balance_perturbation_mean": self.cfg.balance_perturbation_mean,
                 "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
-                "balance_upsample_labels": list(self.cfg.balance_upsample_labels),
-                "balance_upsample_inverse_power": (
-                    self.cfg.balance_upsample_inverse_power
-                ),
-                "balance_upsample_budget_ratio": self.cfg.balance_upsample_budget_ratio,
-                "balance_sqrt_floor": self.cfg.balance_sqrt_floor,
-                "balance_sqrt_decay": self.cfg.balance_sqrt_decay,
-                "balance_sqrt_power": self.cfg.balance_sqrt_power,
-                "balance_sqrt_budget_scale": self.cfg.balance_sqrt_budget_scale,
-                "balance_base_perturbation_rate": (
-                    self.cfg.balance_base_perturbation_rate
-                ),
+                "balance_floor": self.cfg.balance_floor,
+                "balance_floor_decay": self.cfg.balance_floor_decay,
+                "base_perturbations": list(self.cfg.base_perturbations),
+                "base_perturbation_mean": self.cfg.base_perturbation_mean,
+                "base_perturbation_variance": self.cfg.base_perturbation_variance,
+                "base_perturbation_rate": self.cfg.base_perturbation_rate,
                 "masterlist_inject_enabled": self.cfg.masterlist_inject_enabled,
                 "masterlist_inject_target_per_label": (
                     self.cfg.masterlist_inject_target_per_label
@@ -472,7 +464,7 @@ class DataHandler:
         if not splits.train.empty:
             if (
                 self.cfg.balance_strategy != "none"
-                or self.cfg.balance_base_perturbation_rate > 0
+                or self.cfg.base_perturbation_rate > 0
             ):
                 _log_data_progress("Applying training balance/perturbation policy.")
             splits.train = self._apply_balance_policy(splits.train)
@@ -813,10 +805,10 @@ class DataHandler:
         metrics: dict[str, Any] = {
             "enabled": bool(
                 self.cfg.balance_strategy != "none"
-                or self.cfg.balance_base_perturbation_rate > 0
+                or self.cfg.base_perturbation_rate > 0
             ),
             "strategy": self.cfg.balance_strategy,
-            "base_perturbation_rate": float(self.cfg.balance_base_perturbation_rate),
+            "base_perturbation_rate": float(self.cfg.base_perturbation_rate),
             "rows_before": int(len(train_df)),
             "rows_after_upsample": int(len(train_df)),
             "rows_after": int(len(train_df)),
@@ -826,28 +818,12 @@ class DataHandler:
             "label_distribution_after": self._chapter_block_distribution(train_df),
         }
 
-        if self.cfg.balance_strategy == "upsample":
-            upsample_candidates = self.cfg.balance_upsample_labels or None
-            target_counts = select_upsample_targets(
-                df=train_df,
-                label_column=label_column,
-                target_quantile=self.cfg.balance_target_quantile,
-                candidate_labels=upsample_candidates,
-                inverse_power=self.cfg.balance_upsample_inverse_power,
-                budget_ratio=self.cfg.balance_upsample_budget_ratio,
-            )
-            balanced_train_df = upsample(
-                df=balanced_train_df,
-                label_column=self.cfg.dataset_label_column,
-                target_counts=target_counts,
-                seed=self.cfg.resolved_data_seed(),
-            )
-        elif self.cfg.balance_strategy == "sqrt":
+        if self.cfg.balance_strategy == "floor":
             target_counts = select_floor_upsample_targets(
                 df=train_df,
                 label_column=label_column,
-                floor=self.cfg.balance_sqrt_floor,
-                decay=self.cfg.balance_sqrt_decay,
+                floor=self.cfg.balance_floor,
+                decay=self.cfg.balance_floor_decay,
             )
             perturbation_fns = _resolve_perturbation_functions(
                 self.cfg.balance_perturbations
@@ -867,7 +843,7 @@ class DataHandler:
 
         metrics["rows_after_upsample"] = int(len(balanced_train_df))
         metrics["rows_added"] = int(len(balanced_train_df) - len(train_df))
-        if self.cfg.balance_base_perturbation_rate > 0:
+        if self.cfg.base_perturbation_rate > 0:
             before_perturbation_texts = (
                 balanced_train_df[text_column].fillna("").astype(str).tolist()
                 if text_column in balanced_train_df.columns
@@ -879,10 +855,10 @@ class DataHandler:
                 df=balanced_train_df,
                 text_column=text_column,
                 target_labels=None,
-                perturbation_names=self.cfg.balance_perturbations,
-                perturbation_mean=self.cfg.balance_perturbation_mean,
-                perturbation_variance=self.cfg.balance_perturbation_variance,
-                sample_fraction=self.cfg.balance_base_perturbation_rate,
+                perturbation_names=self.cfg.base_perturbations,
+                perturbation_mean=self.cfg.base_perturbation_mean,
+                perturbation_variance=self.cfg.base_perturbation_variance,
+                sample_fraction=self.cfg.base_perturbation_rate,
                 seed=self.cfg.resolved_data_seed() + 1,
             )
             after_perturbation_texts = (
@@ -1188,6 +1164,5 @@ __all__ = [
     "prepare_training_dataset",
     "resolve_training_frames",
     "save_processed_dataset",
-    "select_upsample_targets",
     "upsample",
 ]

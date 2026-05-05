@@ -8,6 +8,7 @@ from codllm.metrics import (
     _sample_precision_recall_f1,
     build_exact_match_accuracy_metric,
     collect_label_classes,
+    filter_metrics_for_logging,
 )
 
 
@@ -73,6 +74,30 @@ def test_collect_label_classes_splits_string_and_list_values() -> None:
     )
 
     assert result == {"A00", "A01", "B00", "C00"}
+
+
+def test_filter_metrics_for_logging_keeps_selected_run_page_metrics() -> None:
+    """Metric modes should trim run-page scalars without losing the save metric."""
+    metrics = {
+        "accuracy": 0.9,
+        "macro_f1": 0.7,
+        "sample_f1": 0.8,
+        "seen_accuracy": 1.0,
+        "unseen_accuracy": 0.5,
+        "avg_false_positives_per_sample": 0.2,
+    }
+
+    filtered = filter_metrics_for_logging(
+        metrics,
+        mode="core",
+        save_metric="sample_f1",
+    )
+
+    assert filtered == {
+        "accuracy": 0.9,
+        "macro_f1": 0.7,
+        "sample_f1": 0.8,
+    }
 
 
 class TestSamplePrecisionRecallF1:

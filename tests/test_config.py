@@ -44,14 +44,16 @@ ENV_KEYS = [
     "CODLLM_TEXT_FIELD_SEPARATOR",
     "CODLLM_TRAINING_INPUT",
     "CODLLM_BALANCE_STRATEGY",
-    "CODLLM_BALANCE_TARGET_QUANTILE",
     "CODLLM_BALANCE_PERTURBATIONS",
     "CODLLM_BALANCE_PERTURBATION_MEAN",
     "CODLLM_BALANCE_PERTURBATION_VARIANCE",
-    "CODLLM_BALANCE_UPSAMPLE_LABELS",
-    "CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER",
-    "CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO",
+    "CODLLM_BALANCE_FLOOR",
+    "CODLLM_BALANCE_FLOOR_DECAY",
     "CODLLM_BALANCE_BASE_PERTURBATION_RATE",
+    "CODLLM_BASE_PERTURBATIONS",
+    "CODLLM_BASE_PERTURBATION_MEAN",
+    "CODLLM_BASE_PERTURBATION_VARIANCE",
+    "CODLLM_BASE_PERTURBATION_RATE",
     "CODLLM_DETERMINISTIC_ALGORITHMS",
     "CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY",
     "CODLLM_CUDNN_DETERMINISTIC",
@@ -102,6 +104,8 @@ ENV_KEYS = [
     "CODLLM_WANDB_ENTITY",
     "CODLLM_WANDB_RUN_NAME",
     "CODLLM_WANDB_LOG_MODEL",
+    "CODLLM_WANDB_RUN_CONFIG_MODE",
+    "CODLLM_WANDB_METRIC_MODE",
 ]
 
 
@@ -177,15 +181,16 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_LABEL_SEPARATOR", ",")
     monkeypatch.setenv("CODLLM_TEXT_FIELD_SEPARATOR", " || ")
     monkeypatch.setenv("CODLLM_TRAINING_INPUT", "cod,age")
-    monkeypatch.setenv("CODLLM_BALANCE_STRATEGY", "upsample")
-    monkeypatch.setenv("CODLLM_BALANCE_TARGET_QUANTILE", "0.6")
+    monkeypatch.setenv("CODLLM_BALANCE_STRATEGY", "floor")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS", "delete_random_char")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_MEAN", "0.08")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_VARIANCE", "0.02")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_LABELS", "A00,A01")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0.6")
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "0.25")
-    monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "0.5")
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR", "50")
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR_DECAY", "0.25")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATIONS", "qwerty_misspell")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_MEAN", "0.03")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_VARIANCE", "0.01")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_RATE", "0.5")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS", "true")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY", "false")
     monkeypatch.setenv("CODLLM_CUDNN_DETERMINISTIC", "false")
@@ -246,6 +251,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_WANDB_ENTITY", "unit-tests")
     monkeypatch.setenv("CODLLM_WANDB_RUN_NAME", "run-123")
     monkeypatch.setenv("CODLLM_WANDB_LOG_MODEL", "checkpoint")
+    monkeypatch.setenv("CODLLM_WANDB_RUN_CONFIG_MODE", "minimal")
+    monkeypatch.setenv("CODLLM_WANDB_METRIC_MODE", "core")
 
     base = Config(seed=42, data_seed=None, output_dir="./runs", load_in_8bit=False)
     cfg = config_from_env(base)
@@ -291,15 +298,16 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.label_separator == ","
     assert cfg.text_field_separator == " || "
     assert cfg.training_input == ["cod", "age"]
-    assert cfg.balance_strategy == "upsample"
-    assert cfg.balance_target_quantile == 0.6
+    assert cfg.balance_strategy == "floor"
     assert cfg.balance_perturbations == ["delete_random_char"]
     assert cfg.balance_perturbation_mean == 0.08
     assert cfg.balance_perturbation_variance == 0.02
-    assert cfg.balance_upsample_labels == ["A00", "A01"]
-    assert cfg.balance_upsample_inverse_power == 0.6
-    assert cfg.balance_upsample_budget_ratio == 0.25
-    assert cfg.balance_base_perturbation_rate == 0.5
+    assert cfg.balance_floor == 50
+    assert cfg.balance_floor_decay == 0.25
+    assert cfg.base_perturbations == ["qwerty_misspell"]
+    assert cfg.base_perturbation_mean == 0.03
+    assert cfg.base_perturbation_variance == 0.01
+    assert cfg.base_perturbation_rate == 0.5
     assert cfg.deterministic_algorithms is True
     assert cfg.deterministic_algorithms_warn_only is False
     assert cfg.cudnn_deterministic is False
@@ -355,6 +363,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.wandb.entity == "unit-tests"
     assert cfg.wandb.run_name == "run-123"
     assert cfg.wandb.log_model == "checkpoint"
+    assert cfg.wandb.run_config_mode == "minimal"
+    assert cfg.wandb.metric_mode == "core"
     assert base.seed == 42
     assert base.output_dir == "./runs"
 
@@ -547,6 +557,26 @@ def test_config_from_env_rejects_invalid_wandb_mode(
         config_from_env()
 
 
+def test_config_from_env_rejects_invalid_wandb_run_config_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W&B run config mode should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_WANDB_RUN_CONFIG_MODE", "verbose")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_wandb_metric_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W&B metric mode should reject unsupported values."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_WANDB_METRIC_MODE", "everything")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
 def test_config_from_env_rejects_invalid_training_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -607,14 +637,27 @@ def test_config_from_env_rejects_invalid_multicod_synthetic_scope(
         config_from_env()
 
 
-def test_config_from_env_rejects_invalid_balance_base_perturbation_rate(
+def test_config_from_env_rejects_invalid_base_perturbation_rate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Base perturbation rate should stay inside [0, 1]."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "1.5")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_RATE", "1.5")
     with pytest.raises(ValueError):
         config_from_env()
+
+
+def test_config_from_env_accepts_legacy_balance_base_perturbation_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy base perturbation env should remain a compatibility fallback."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BALANCE_BASE_PERTURBATION_RATE", "0.25")
+
+    with pytest.warns(DeprecationWarning):
+        cfg = config_from_env()
+
+    assert cfg.base_perturbation_rate == 0.25
 
 
 def test_config_from_env_rejects_negative_balance_perturbation_mean(
@@ -637,22 +680,32 @@ def test_config_from_env_rejects_negative_balance_perturbation_variance(
         config_from_env()
 
 
-def test_config_from_env_rejects_invalid_upsample_inverse_power(
+def test_config_from_env_rejects_negative_base_perturbation_mean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Inverse power should stay inside (0, 1]."""
+    """Base perturbation mean should be non-negative."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_INVERSE_POWER", "0")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_MEAN", "-0.1")
     with pytest.raises(ValueError):
         config_from_env()
 
 
-def test_config_from_env_rejects_invalid_upsample_budget_ratio(
+def test_config_from_env_rejects_negative_base_perturbation_variance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Upsample budget ratio should stay inside [0, 1]."""
+    """Base perturbation variance should be non-negative."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_BALANCE_UPSAMPLE_BUDGET_RATIO", "1.2")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_VARIANCE", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_floor_decay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Floor decay should stay inside [0, 1]."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BALANCE_FLOOR_DECAY", "1.2")
     with pytest.raises(ValueError):
         config_from_env()
 

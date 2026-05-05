@@ -1709,6 +1709,102 @@ def test_build_experiment_metadata_includes_wandb_sweep_env(
     assert payload["runtime"]["hpc_env"]["WANDB_RUN_GROUP"] == "sweep"
 
 
+def test_trim_wandb_artifact_metadata_caps_top_level_keys() -> None:
+    """Model artifact metadata should stay within W&B's top-level key limit."""
+    metadata = {f"metric_{index}": index for index in range(150)}
+    metadata["final_model"] = True
+
+    trimmed = wandb_utils_module._trim_wandb_artifact_metadata(metadata)
+
+    assert len(trimmed) <= 100
+    assert trimmed["final_model"] is True
+
+
+def test_transformers_wandb_setup_filter_does_not_set_config_update_key() -> None:
+    """Transformers W&B setup filtering should not assign update on wandb.config."""
+
+    class RejectingWandbConfig:
+        """Fake W&B config that rejects instance attribute assignment for update."""
+
+        def __init__(self) -> None:
+            self.updates: list[dict[str, Any]] = []
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            if name == "update":
+                raise AssertionError("update must not be assigned on wandb.config")
+            object.__setattr__(self, name, value)
+
+        def update(
+            self,
+            payload: dict[str, Any],
+            allow_val_change: bool = False,
+        ) -> None:
+            self.updates.append(
+                {
+                    "payload": payload,
+                    "allow_val_change": allow_val_change,
+                }
+            )
+
+    class FakeWandbCallback:
+        """Fake Transformers W&B callback with the same setup update shape."""
+
+        def __init__(self, wandb: Any) -> None:
+            self._wandb = wandb
+
+        def setup(self, args: Any, state: Any, model: Any, **kwargs: Any) -> str:
+            del args, state, model, kwargs
+            self._wandb.init(project="unit")
+            self._wandb.config.update(
+                {
+                    "output_dir": "runs/run-1",
+                    "learning_rate": 1e-5,
+                    "unused_transformers_key": "drop",
+                },
+                allow_val_change=True,
+            )
+            return "setup-result"
+
+    integration_utils = type(
+        "FakeIntegrationUtils",
+        (),
+        {"WandbCallback": FakeWandbCallback},
+    )
+    original_update = RejectingWandbConfig.update
+    wandb_utils_module._ACTIVE_WANDB_RUN_CONFIG_MODE = "minimal"
+    wandb_utils_module._patch_transformers_wandb_setup_config_filter(integration_utils)
+
+    class FakeWandb:
+        """Fake W&B module that replaces config during init like real W&B."""
+
+        def __init__(self) -> None:
+            self.config = RejectingWandbConfig()
+            self.init_calls: list[dict[str, Any]] = []
+
+        def init(self, **kwargs: Any) -> object:
+            self.init_calls.append(kwargs)
+            self.config = RejectingWandbConfig()
+            return object()
+
+    fake_wandb = FakeWandb()
+    callback = integration_utils.WandbCallback(fake_wandb)
+
+    result = callback.setup(args=object(), state=object(), model=object())
+
+    assert result == "setup-result"
+    assert RejectingWandbConfig.update is original_update
+    assert fake_wandb.init_calls == [{"project": "unit"}]
+    assert fake_wandb.config.updates == [
+        {
+            "payload": {
+                "transformers.output_dir": "runs/run-1",
+                "transformers.learning_rate": 1e-5,
+            },
+            "allow_val_change": True,
+        }
+    ]
+
+
 def test_log_wandb_run_metadata_initializes_and_updates_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1739,16 +1835,15 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
     assert fake_wandb.init_calls[0]["project"] == "test-project"
     assert fake_wandb.init_calls[0]["entity"] == "cfg-entity"
     assert fake_wandb.init_calls[0]["name"] == "explicit-run"
-    assert (
-        fake_wandb.config.updates[0]["payload"]["dataset"]["split_rows"]["train"] == 3
-    )
+    assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.train"] == 3
+    assert "dataset" not in fake_wandb.config.updates[0]["payload"]
     assert fake_wandb.config.updates[0]["allow_val_change"] is True
 
 
-def test_log_wandb_run_metadata_writes_flattened_keys(
+def test_log_wandb_run_metadata_full_mode_writes_flattened_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Metadata logger should publish flattened dot-notation keys for filtering."""
+    """Full metadata mode should publish legacy nested and flattened config keys."""
     fake_wandb = _FakeWandbModule()
     monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
     monkeypatch.setenv("WANDB_PROJECT", "test-project")
@@ -1761,6 +1856,7 @@ def test_log_wandb_run_metadata_writes_flattened_keys(
             entity="cfg-entity",
             run_name="cfg-run",
             mode="offline",
+            run_config_mode="full",
         )
     )
     metadata = {
