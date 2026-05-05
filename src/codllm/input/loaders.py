@@ -4,7 +4,6 @@ from typing import Mapping, Sequence
 import pandas as pd
 
 from codllm.runtime.paths import resolve_source_path
-from codllm.settings.options import SUPPORTED_TRAINING_INPUTS
 from codllm.settings.schema import Config, DataSourceConfig
 from codllm.settings.types import TrainingInput
 from codllm.input.harmonization import _harmonize_processed_labels
@@ -100,7 +99,9 @@ def _format_sex_values(values: pd.Series, sex_map: Mapping[str, str]) -> pd.Seri
     return result.fillna(UNKNOWN_VALUE).astype(object)
 
 
-def _normalize_code_columns(raw_df: pd.DataFrame, columns: Sequence[int]) -> pd.DataFrame:
+def _normalize_code_columns(
+    raw_df: pd.DataFrame, columns: Sequence[int]
+) -> pd.DataFrame:
     """Return normalized code columns selected by source positions."""
     selected = {
         col: _normalize_raw_values(_raw_column(raw_df, col))
@@ -126,7 +127,9 @@ def _unique_codes_from_row(values: tuple[object, ...]) -> list[str]:
     return codes
 
 
-def _build_y_codes(raw_df: pd.DataFrame, mapping: DatasetMapping, max_labels: int) -> pd.Series:
+def _build_y_codes(
+    raw_df: pd.DataFrame, mapping: DatasetMapping, max_labels: int
+) -> pd.Series:
     """Build target code lists without constructing pandas row Series objects."""
     single_codes = _normalize_raw_values(_raw_column(raw_df, mapping.single_code_col))
     if max_labels == 1:
@@ -359,7 +362,7 @@ def load_dataset(
     processed = load_source_dataset(
         source=source,
         mapping=mapping,
-        training_input=training_input or list(SUPPORTED_TRAINING_INPUTS),
+        training_input=training_input or default_cfg.training_input,
         max_labels=max_labels,
         input_field_prefixes=default_cfg.input_field_prefixes,
         data_raw_dir="",

@@ -49,9 +49,10 @@ from codllm.input import (
     shuffle_multicod_label_order,
 )
 from codllm.input.harmonization import resolve_label_harmonization_workbook_path
+from codllm.input.transform import _coerce_row_codes
 from codllm.runtime.paths import resolve_source_path
 
-PREPARED_SPLITS_METADATA_VERSION = 2
+PREPARED_SPLITS_METADATA_VERSION = 6
 
 
 def _log_data_progress(message: str) -> None:
@@ -239,8 +240,8 @@ class DataHandler:
                 "multicod_synthetic_source_scope": (
                     self.cfg.multicod_synthetic_source_scope
                 ),
-                "multicod_synthetic_text_separator": (
-                    self.cfg.multicod_synthetic_text_separator
+                "multicod_synthetic_text_separators": list(
+                    self.cfg.multicod_synthetic_text_separators
                 ),
                 "balance_strategy": self.cfg.balance_strategy,
                 "balance_perturbations": list(self.cfg.balance_perturbations),
@@ -629,6 +630,39 @@ class DataHandler:
                 counts[block] = counts.get(block, 0) + 1
         return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
+    def _label_counts(self, dataframe: pd.DataFrame) -> pd.Series:
+        """Return per-row label cardinality using processed code lists when available."""
+        if "y_codes" in dataframe.columns:
+            return dataframe["y_codes"].map(
+                lambda raw_codes: len(
+                    _coerce_row_codes(raw_codes, self.cfg.label_separator)
+                )
+            )
+
+        labels = (
+            dataframe[self.cfg.dataset_label_column].fillna("").astype(str).str.strip()
+        )
+        if self.cfg.label_separator:
+            return labels.map(
+                lambda value: len(
+                    [
+                        part
+                        for part in value.split(self.cfg.label_separator)
+                        if part.strip()
+                    ]
+                )
+            )
+        return labels.map(lambda value: 1 if value else 0)
+
+    def _balance_upsample_eligible_mask(self, train_df: pd.DataFrame) -> pd.Series:
+        """Return rows eligible for floor upsampling."""
+        label_counts = self._label_counts(train_df)
+        eligible = label_counts.eq(1)
+        if "source_id" in train_df.columns:
+            source_ids = train_df["source_id"].fillna("").astype(str)
+            eligible &= ~source_ids.str.startswith("synthetic_multicod")
+        return eligible
+
     def _apply_pretraining_upsample_policy(
         self, pretrain_df: pd.DataFrame
     ) -> pd.DataFrame:
@@ -753,9 +787,12 @@ class DataHandler:
             raise ValueError(
                 "Synthetic pretraining multi-COD rows require 'cod' in training_input."
             )
-        if self.cfg.pretrain_multicod_synthetic_text_separator == "":
+        if any(
+            separator == ""
+            for separator in self.cfg.pretrain_multicod_synthetic_text_separators
+        ):
             raise ValueError(
-                "pretrain_multicod_synthetic_text_separator must not be empty."
+                "pretrain_multicod_synthetic_text_separators must not contain empty values."
             )
 
         rows_before = int(len(pretrain_df))
@@ -764,7 +801,7 @@ class DataHandler:
             self.cfg,
             synthetic_ratio=ratio,
             source_scope="any_source",
-            text_separator=self.cfg.pretrain_multicod_synthetic_text_separator,
+            text_separators=self.cfg.pretrain_multicod_synthetic_text_separators,
             synthetic_source_prefix="synthetic_pretrain_multicod",
             seed_offset=29,
         )
@@ -784,7 +821,9 @@ class DataHandler:
         self._pretraining_multicod_metrics = {
             "enabled": True,
             "ratio": float(ratio),
-            "text_separator": self.cfg.pretrain_multicod_synthetic_text_separator,
+            "text_separators": list(
+                self.cfg.pretrain_multicod_synthetic_text_separators
+            ),
             "rows_before": rows_before,
             "rows_after": int(len(result_df)),
             "rows_added": synthetic_count,
@@ -813,14 +852,27 @@ class DataHandler:
             "rows_after_upsample": int(len(train_df)),
             "rows_after": int(len(train_df)),
             "rows_added": 0,
+            "upsample_eligible_rows": int(len(train_df)),
+            "upsample_excluded_multicod_rows": 0,
+            "upsample_excluded_synthetic_multicod_rows": 0,
             "base_perturbed_rows": 0,
             "label_distribution_before": self._chapter_block_distribution(train_df),
             "label_distribution_after": self._chapter_block_distribution(train_df),
         }
 
         if self.cfg.balance_strategy == "floor":
+            eligible_mask = self._balance_upsample_eligible_mask(train_df)
+            label_counts = self._label_counts(train_df)
+            metrics["upsample_eligible_rows"] = int(eligible_mask.sum())
+            metrics["upsample_excluded_multicod_rows"] = int(label_counts.gt(1).sum())
+            if "source_id" in train_df.columns:
+                source_ids = train_df["source_id"].fillna("").astype(str)
+                metrics["upsample_excluded_synthetic_multicod_rows"] = int(
+                    source_ids.str.startswith("synthetic_multicod").sum()
+                )
+            balance_source_df = train_df.loc[eligible_mask]
             target_counts = select_floor_upsample_targets(
-                df=train_df,
+                df=balance_source_df,
                 label_column=label_column,
                 floor=self.cfg.balance_floor,
                 decay=self.cfg.balance_floor_decay,

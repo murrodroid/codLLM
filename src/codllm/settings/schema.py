@@ -11,7 +11,9 @@ from codllm.settings.factories import (
     default_device_map,
     default_input_field_prefixes,
     default_masterlist_inject_perturbations,
+    default_multicod_synthetic_text_separators,
     default_pretrain_perturbations,
+    default_pretrain_multicod_synthetic_text_separators,
     default_training_input,
 )
 from codllm.settings.types import (
@@ -134,7 +136,9 @@ class Config:
     multicod_shuffle_labels: bool = True
     multicod_synthetic_ratio: float = 0.0
     multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
-    multicod_synthetic_text_separator: str = "; "
+    multicod_synthetic_text_separators: list[str] = field(
+        default_factory=default_multicod_synthetic_text_separators
+    )
     inference_validate_registry: bool = False
 
     dataset_size: float = 0.5
@@ -157,7 +161,9 @@ class Config:
     )
     pretrain_upsample_perturbations_per_sample: int = 1
     pretrain_multicod_synthetic_ratio: float = 0.0
-    pretrain_multicod_synthetic_text_separator: str = "; "
+    pretrain_multicod_synthetic_text_separators: list[str] = field(
+        default_factory=default_pretrain_multicod_synthetic_text_separators
+    )
     masterlist_inject_enabled: bool = False
     masterlist_inject_target_per_label: int = 10
     masterlist_inject_perturbations: list[str] = field(

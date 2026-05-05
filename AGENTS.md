@@ -87,12 +87,14 @@ unexpected dependency downloads.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
   * Synthetic multi-COD rows for masterlist pretraining are controlled independently by
-    `Config.pretrain_multicod_synthetic_ratio`, `Config.pretrain_multicod_synthetic_text_separator`,
-    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO`, and
-    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR`; do not reuse fine-tuning
-    `multicod_synthetic_ratio` for pretraining.
+    `Config.pretrain_multicod_synthetic_ratio`, `Config.pretrain_multicod_synthetic_text_separators`,
+    `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO`, and `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS`; do not reuse
+    fine-tuning `multicod_*` settings for pretraining. Separator env vars are JSON string arrays and preserve
+    whitespace.
   * Processed input field prefixes are owned by `Config.input_field_prefixes`; do not hardcode
     `cod: `, `age: `, or `sex: ` when building or parsing processed text.
+  * The default training input is COD text only. Set `Config.training_input` or `CODLLM_TRAINING_INPUT` explicitly for
+    runs that should include age, sex, or other supported fields.
   * Floor-upsample copy perturbation count is controlled by `Config.balance_perturbation_mean`,
     `Config.balance_perturbation_variance`, `CODLLM_BALANCE_PERTURBATION_MEAN`, and
     `CODLLM_BALANCE_PERTURBATION_VARIANCE`. Whole-training-set base perturbation is controlled separately by
@@ -102,7 +104,9 @@ unexpected dependency downloads.
     processed `cod` text segment; do not reintroduce a fixed perturbations-per-sample control for training rows.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
-    rather than the default.
+    rather than the default. Use `Config.multicod_synthetic_text_separators` and
+    `CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS` for stochastic synthetic COD text separators; the env var is a JSON
+    string array and preserves whitespace.
   * Dataset leave-one-source-out evaluation is controlled by `Config.hold_out_dataset` and
     `CODLLM_HOLD_OUT_DATASET`. Hold-out matching uses processed `source_id` values, removes the entire matching source
     from train/val/test splitting, keeps normal val/test splits on the remaining sources, and evaluates the held-out

@@ -611,6 +611,9 @@ def _standard_wandb_config_payload(
             "multicod.shuffle_labels": cfg.multicod_shuffle_labels,
             "multicod.synthetic_ratio": cfg.multicod_synthetic_ratio,
             "multicod.synthetic_source_scope": cfg.multicod_synthetic_source_scope,
+            "multicod.synthetic_text_separators": list(
+                cfg.multicod_synthetic_text_separators
+            ),
             "balance.floor": cfg.balance_floor,
             "balance.floor_decay": cfg.balance_floor_decay,
             "balance.perturbations": list(cfg.balance_perturbations),
@@ -623,6 +626,9 @@ def _standard_wandb_config_payload(
             "pretraining.learning_rate": cfg.pretrain_learning_rate,
             "pretraining.warmup_ratio": cfg.pretrain_warmup_ratio,
             "pretraining.multicod_synthetic_ratio": cfg.pretrain_multicod_synthetic_ratio,
+            "pretraining.multicod_synthetic_text_separators": list(
+                cfg.pretrain_multicod_synthetic_text_separators
+            ),
             "seed.global": cfg.seed,
             "seed.data": cfg.data_seed,
             "seed.resolved_data": cfg.resolved_data_seed(),

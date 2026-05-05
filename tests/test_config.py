@@ -36,7 +36,7 @@ ENV_KEYS = [
     "CODLLM_MULTICOD_SHUFFLE_LABELS",
     "CODLLM_MULTICOD_SYNTHETIC_RATIO",
     "CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE",
-    "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
+    "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS",
     "CODLLM_MAX_TARGET_LENGTH",
     "CODLLM_LABEL_CODE_LENGTH",
     "CODLLM_MAX_TARGET_LENGTH_BUFFER",
@@ -85,7 +85,7 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS",
     "CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE",
     "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO",
-    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR",
+    "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS",
     "CODLLM_LABEL_HARMONIZATION_ENABLED",
     "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
     "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME",
@@ -120,7 +120,15 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     cfg = Config()
 
     assert cfg.model_task == "seq2seq"
-    assert cfg.training_input == ["cod", "age", "sex"]
+    assert cfg.training_input == ["cod"]
+    assert cfg.multicod_synthetic_text_separators == [", ", " & ", " ", "; ", " / "]
+    assert cfg.pretrain_multicod_synthetic_text_separators == [
+        ", ",
+        " & ",
+        " ",
+        "; ",
+        " / ",
+    ]
     assert cfg.input_field_prefixes == {
         "cod": "cod: ",
         "age": "age: ",
@@ -174,7 +182,10 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_MULTICOD_SHUFFLE_LABELS", "false")
     monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_RATIO", "0.25")
     monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_SOURCE_SCOPE", "any_source")
-    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
+    monkeypatch.setenv(
+        "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS",
+        '[", ", " & ", " "]',
+    )
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH", "18")
     monkeypatch.setenv("CODLLM_LABEL_CODE_LENGTH", "7")
     monkeypatch.setenv("CODLLM_MAX_TARGET_LENGTH_BUFFER", "6")
@@ -227,7 +238,10 @@ def test_config_from_env_applies_runtime_overrides(
     )
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE", "2")
     monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO", "0.2")
-    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", " + ")
+    monkeypatch.setenv(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS",
+        '["; ", " / "]',
+    )
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_ENABLED", "true")
     monkeypatch.setenv(
         "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
@@ -291,7 +305,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.multicod_shuffle_labels is False
     assert cfg.multicod_synthetic_ratio == 0.25
     assert cfg.multicod_synthetic_source_scope == "any_source"
-    assert cfg.multicod_synthetic_text_separator == " + "
+    assert cfg.multicod_synthetic_text_separators == [", ", " & ", " "]
     assert cfg.max_target_length == 18
     assert cfg.label_code_length == 7
     assert cfg.max_target_length_buffer == 6
@@ -342,7 +356,7 @@ def test_config_from_env_applies_runtime_overrides(
     ]
     assert cfg.pretrain_upsample_perturbations_per_sample == 2
     assert cfg.pretrain_multicod_synthetic_ratio == 0.2
-    assert cfg.pretrain_multicod_synthetic_text_separator == " + "
+    assert cfg.pretrain_multicod_synthetic_text_separators == ["; ", " / "]
     assert cfg.label_harmonization_enabled is True
     assert cfg.label_harmonization_masterlist_path == (
         "data/raw/ICD10h_Masterlist_2024.xlsx"
@@ -780,12 +794,25 @@ def test_config_from_env_rejects_negative_pretrain_multicod_synthetic_ratio(
         config_from_env()
 
 
-def test_config_from_env_rejects_empty_pretrain_multicod_separator(
+def test_config_from_env_rejects_invalid_multicod_separator_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pretraining multi-COD text separator should not be empty."""
+    """Multi-COD separator variants should be a non-empty string array."""
     _clear_relevant_env(monkeypatch)
-    monkeypatch.setenv("CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR", "")
+    monkeypatch.setenv("CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS", '["; ", ""]')
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_invalid_pretrain_multicod_separator_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pretraining multi-COD separator variants should reject malformed JSON arrays."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS",
+        '{"separator": "; "}',
+    )
     with pytest.raises(ValueError):
         config_from_env()
 

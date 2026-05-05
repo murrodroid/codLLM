@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 import codllm.data.handler as data_handler_module
 from codllm.config import Config, DataSourceConfig
-from codllm.input import COPENHAGEN_MAPPING
+from codllm.input import COPENHAGEN_MAPPING, build_synthetic_multicod_rows
 from codllm.data.handler import (
     DataHandler,
     DataSplits,
@@ -598,7 +598,7 @@ class TestLoaders:
             multicod_shuffle_labels=False,
             multicod_synthetic_ratio=1.0,
             multicod_synthetic_source_scope="within_source",
-            multicod_synthetic_text_separator="; ",
+            multicod_synthetic_text_separators=["; "],
             data_processed_dir=str(tmp_path / "processed"),
             processed_filename="training.csv",
             dataset_size=1.0,
@@ -636,6 +636,80 @@ class TestLoaders:
                 assert "alpha" in text and "beta" in text
             if codes == {"C02.002", "D03.003"}:
                 assert "gamma" in text and "delta" in text
+
+    def test_synthetic_multicod_rows_follow_existing_cardinality_distribution(
+        self,
+    ) -> None:
+        """Synthetic multi-COD rows should mirror observed multi-COD cardinality."""
+        cfg = Config(
+            max_label_count=3,
+            label_separator=",",
+            multicod_synthetic_ratio=5.0,
+            multicod_synthetic_source_scope="within_source",
+            multicod_synthetic_text_separators=[", "],
+            data_seed=17,
+        )
+        source = pd.DataFrame(
+            {
+                "source_id": ["real"] * 6,
+                "record_id": [f"RID-{idx}" for idx in range(6)],
+                "source_path": ["sample.csv"] * 6,
+                "text": [
+                    "cod: alpha | age: 1 | sex: male",
+                    "cod: beta | age: 1 | sex: male",
+                    "cod: gamma | age: 1 | sex: male",
+                    "cod: delta | age: 1 | sex: male",
+                    "cod: alpha, beta | age: 1 | sex: male",
+                    "cod: gamma, delta | age: 1 | sex: male",
+                ],
+                "y_codes": [
+                    ["A00"],
+                    ["B00"],
+                    ["C00"],
+                    ["D00"],
+                    ["A00", "B00"],
+                    ["C00", "D00"],
+                ],
+                "label": ["A00", "B00", "C00", "D00", "A00,B00", "C00,D00"],
+            }
+        )
+
+        synthetic = build_synthetic_multicod_rows(source, cfg)
+
+        assert len(synthetic) == 20
+        assert synthetic["y_codes"].map(len).eq(2).all()
+
+    def test_synthetic_multicod_rows_vary_text_separators(self) -> None:
+        """Synthetic multi-COD text should sample from configured separator variants."""
+        cfg = Config(
+            max_label_count=2,
+            label_separator=",",
+            multicod_synthetic_ratio=4.0,
+            multicod_synthetic_text_separators=[" ~~ ", " && "],
+            data_seed=23,
+        )
+        source = pd.DataFrame(
+            {
+                "source_id": ["real"] * 4,
+                "record_id": [f"RID-{idx}" for idx in range(4)],
+                "source_path": ["sample.csv"] * 4,
+                "text": [
+                    "cod: alpha | age: 1 | sex: male",
+                    "cod: beta | age: 1 | sex: male",
+                    "cod: gamma | age: 1 | sex: male",
+                    "cod: delta | age: 1 | sex: male",
+                ],
+                "y_codes": [["A00"], ["B00"], ["C00"], ["D00"]],
+                "label": ["A00", "B00", "C00", "D00"],
+            }
+        )
+
+        synthetic = build_synthetic_multicod_rows(source, cfg)
+        synthetic_texts = synthetic["text"].tolist()
+
+        assert len(synthetic) == 16
+        assert any(" ~~ " in text for text in synthetic_texts)
+        assert any(" && " in text for text in synthetic_texts)
 
     def test_load_source_dataset_excludes_rows_above_max_label_count(
         self, tmp_path: Path
@@ -846,7 +920,7 @@ class TestDataHandler:
             pretrain_masterlist_sheet_name="Masterlist",
             pretrain_upsample_enabled=False,
             pretrain_multicod_synthetic_ratio=0.5,
-            pretrain_multicod_synthetic_text_separator=" + ",
+            pretrain_multicod_synthetic_text_separators=[" + "],
             max_label_count=3,
             training_input=["cod"],
             data_sources=[],
@@ -975,6 +1049,7 @@ class TestDataHandler:
         """Manipulation should find the configured COD segment prefix."""
         cfg = Config(
             text_field_separator=" | ",
+            training_input=["cod", "age", "sex"],
             input_field_prefixes={
                 "cod": "cause=",
                 "age": "years=",
@@ -1036,11 +1111,63 @@ class TestDataHandler:
         assert metrics["label_distribution_before"]["A00"] == 2
         assert metrics["label_distribution_after"]["B00"] >= 1
 
+    def test_apply_balance_policy_does_not_floor_upsample_multicod_rows(self) -> None:
+        """Floor balancing should upsample atomic labels without expanding multi-COD rows."""
+        cfg = Config(
+            text_field_separator=" | ",
+            label_separator=",",
+            balance_strategy="floor",
+            balance_floor=3,
+            balance_floor_decay=0.0,
+            balance_perturbations=[],
+            base_perturbation_rate=0.0,
+            max_label_count=2,
+        )
+        handler = DataHandler(cfg)
+        source = pd.DataFrame(
+            {
+                "source_id": [
+                    "real",
+                    "real",
+                    "real",
+                    "synthetic_multicod:real",
+                ],
+                "text": [
+                    "cod: alpha",
+                    "cod: beta",
+                    "cod: alpha, beta",
+                    "cod: alpha, beta",
+                ],
+                "y_codes": [
+                    ["A00"],
+                    ["B00"],
+                    ["A00", "B00"],
+                    ["A00", "B00"],
+                ],
+                "label": ["A00", "B00", "A00,B00", "A00,B00"],
+            }
+        )
+
+        balanced = handler._apply_balance_policy(source)
+        metrics = handler.get_training_balance_metrics()
+
+        assert metrics is not None
+        assert len(balanced) == 8
+        assert balanced["label"].value_counts().to_dict() == {
+            "A00": 3,
+            "B00": 3,
+            "A00,B00": 2,
+        }
+        assert metrics["rows_added"] == 4
+        assert metrics["upsample_eligible_rows"] == 2
+        assert metrics["upsample_excluded_multicod_rows"] == 2
+        assert metrics["upsample_excluded_synthetic_multicod_rows"] == 1
+
     def test_manipulate_classes_scales_perturbation_count_by_cod_length(
         self,
     ) -> None:
         """Length-scaled perturbation settings should affect longer COD text more."""
-        cfg = Config(text_field_separator=" | ")
+        cfg = Config(text_field_separator=" | ", training_input=["cod", "age", "sex"])
         source = pd.DataFrame(
             {
                 "text": [
