@@ -1720,6 +1720,91 @@ def test_trim_wandb_artifact_metadata_caps_top_level_keys() -> None:
     assert trimmed["final_model"] is True
 
 
+def test_transformers_wandb_setup_filter_does_not_set_config_update_key() -> None:
+    """Transformers W&B setup filtering should not assign update on wandb.config."""
+
+    class RejectingWandbConfig:
+        """Fake W&B config that rejects instance attribute assignment for update."""
+
+        def __init__(self) -> None:
+            self.updates: list[dict[str, Any]] = []
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            if name == "update":
+                raise AssertionError("update must not be assigned on wandb.config")
+            object.__setattr__(self, name, value)
+
+        def update(
+            self,
+            payload: dict[str, Any],
+            allow_val_change: bool = False,
+        ) -> None:
+            self.updates.append(
+                {
+                    "payload": payload,
+                    "allow_val_change": allow_val_change,
+                }
+            )
+
+    class FakeWandbCallback:
+        """Fake Transformers W&B callback with the same setup update shape."""
+
+        def __init__(self, wandb: Any) -> None:
+            self._wandb = wandb
+
+        def setup(self, args: Any, state: Any, model: Any, **kwargs: Any) -> str:
+            del args, state, model, kwargs
+            self._wandb.init(project="unit")
+            self._wandb.config.update(
+                {
+                    "output_dir": "runs/run-1",
+                    "learning_rate": 1e-5,
+                    "unused_transformers_key": "drop",
+                },
+                allow_val_change=True,
+            )
+            return "setup-result"
+
+    integration_utils = type(
+        "FakeIntegrationUtils",
+        (),
+        {"WandbCallback": FakeWandbCallback},
+    )
+    original_update = RejectingWandbConfig.update
+    wandb_utils_module._ACTIVE_WANDB_RUN_CONFIG_MODE = "minimal"
+    wandb_utils_module._patch_transformers_wandb_setup_config_filter(integration_utils)
+
+    class FakeWandb:
+        """Fake W&B module that replaces config during init like real W&B."""
+
+        def __init__(self) -> None:
+            self.config = RejectingWandbConfig()
+            self.init_calls: list[dict[str, Any]] = []
+
+        def init(self, **kwargs: Any) -> object:
+            self.init_calls.append(kwargs)
+            self.config = RejectingWandbConfig()
+            return object()
+
+    fake_wandb = FakeWandb()
+    callback = integration_utils.WandbCallback(fake_wandb)
+
+    result = callback.setup(args=object(), state=object(), model=object())
+
+    assert result == "setup-result"
+    assert RejectingWandbConfig.update is original_update
+    assert fake_wandb.init_calls == [{"project": "unit"}]
+    assert fake_wandb.config.updates == [
+        {
+            "payload": {
+                "transformers.output_dir": "runs/run-1",
+                "transformers.learning_rate": 1e-5,
+            },
+            "allow_val_change": True,
+        }
+    ]
+
+
 def test_log_wandb_run_metadata_initializes_and_updates_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

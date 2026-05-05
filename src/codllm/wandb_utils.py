@@ -231,29 +231,60 @@ def _patch_transformers_wandb_setup_config_filter(integration_utils: Any) -> Non
         self: Any, args: Any, state: Any, model: Any, **kwargs: Any
     ) -> Any:
         wandb = getattr(self, "_wandb", None)
-        config_obj = getattr(wandb, "config", None)
-        original_update = getattr(config_obj, "update", None)
-        if not callable(original_update):
-            return original_setup(self, args, state, model, **kwargs)
+        patched_config_updates: dict[type[Any], Any] = {}
 
         def filtered_update(
+            target_config: Any,
             payload: dict[str, Any],
             *update_args: Any,
             **update_kwargs: Any,
         ) -> Any:
             if _looks_like_transformers_setup_config(payload):
                 payload = _filter_transformers_setup_config(payload)
-            return original_update(payload, *update_args, **update_kwargs)
+            original_update = patched_config_updates[type(target_config)]
+            return original_update(
+                target_config,
+                payload,
+                *update_args,
+                **update_kwargs,
+            )
+
+        def patch_config_update(config_obj: Any) -> None:
+            if config_obj is None:
+                return
+            config_cls = type(config_obj)
+            if config_cls in patched_config_updates:
+                return
+            original_update = getattr(config_cls, "update", None)
+            if not callable(original_update):
+                return
+            patched_config_updates[config_cls] = original_update
+            setattr(config_cls, "update", filtered_update)
+
+        patch_config_update(getattr(wandb, "config", None))
+        original_init = getattr(wandb, "init", None)
+
+        def init_and_patch_config(*init_args: Any, **init_kwargs: Any) -> Any:
+            result = original_init(*init_args, **init_kwargs)
+            patch_config_update(getattr(wandb, "config", None))
+            return result
 
         try:
-            setattr(config_obj, "update", filtered_update)
+            if callable(original_init):
+                setattr(wandb, "init", init_and_patch_config)
         except (AttributeError, TypeError):
-            return original_setup(self, args, state, model, **kwargs)
+            original_init = None
         try:
             return original_setup(self, args, state, model, **kwargs)
         finally:
+            if callable(original_init):
+                try:
+                    setattr(wandb, "init", original_init)
+                except (AttributeError, TypeError):
+                    pass
             try:
-                setattr(config_obj, "update", original_update)
+                for config_cls, original_update in patched_config_updates.items():
+                    setattr(config_cls, "update", original_update)
             except (AttributeError, TypeError):
                 pass
 
