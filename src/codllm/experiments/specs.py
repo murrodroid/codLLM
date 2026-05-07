@@ -42,12 +42,12 @@ class ExperimentRun:
             env["TRAIN_EXTRA_ARGS"] = " ".join(self.extra_args)
         if self.sweep_index is not None:
             env["CODLLM_EXPERIMENT_SWEEP_INDEX"] = str(self.sweep_index)
+            env["CODLLM_EXPERIMENT_SWEEP_ID"] = _experiment_sweep_id(spec)
             env["CODLLM_EXPERIMENT_SWEEP_VALUES"] = json.dumps(
                 self.sweep_values,
                 ensure_ascii=True,
                 sort_keys=True,
             )
-            env.setdefault("WANDB_SWEEP_ID", _wandb_sweep_id(spec))
             env.setdefault("WANDB_RUN_GROUP", spec.name)
         env.setdefault("CODLLM_WANDB_RUN_NAME", self.name)
         return env
@@ -298,8 +298,8 @@ def _env_key_slug(value: str) -> str:
     return _slugify(lowered)
 
 
-def _wandb_sweep_id(spec: ExperimentSpec) -> str:
-    """Return the stable W&B sweep id used for generated TOML sweep runs."""
+def _experiment_sweep_id(spec: ExperimentSpec) -> str:
+    """Return the stable sweep id used for generated TOML sweep runs."""
     return f"codllm-{_slugify(spec.name)}"
 
 

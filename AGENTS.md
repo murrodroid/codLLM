@@ -49,8 +49,9 @@ Processed raw-data caches live under `Config.data_processed_dir`; prepared split
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
 prepared split content.
-Generated TOML sweep runs export `WANDB_SWEEP_ID=codllm-<experiment-name-slug>` and
-`WANDB_RUN_GROUP=<experiment-name>` unless those values are explicitly set in `[env]`.
+Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
+`WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
+unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.
 Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
 `<scope>/errors/*`, where scopes include `val`, `test`, `holdout/val`, `holdout/test`, and pretraining scopes.
 Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.

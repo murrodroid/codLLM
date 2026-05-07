@@ -475,6 +475,7 @@ def _runtime_metadata() -> dict[str, Any]:
         "LSB_QUEUE",
         "LSB_HOSTS",
         "CUDA_VISIBLE_DEVICES",
+        "CODLLM_EXPERIMENT_SWEEP_ID",
         "WANDB_SWEEP_ID",
         "WANDB_RUN_GROUP",
         "HF_HOME",
@@ -642,6 +643,7 @@ def _standard_wandb_config_payload(
             for key in (
                 "WANDB_SWEEP_ID",
                 "WANDB_RUN_GROUP",
+                "CODLLM_EXPERIMENT_SWEEP_ID",
                 "LSB_JOBID",
                 "LSB_JOBINDEX",
             ):
