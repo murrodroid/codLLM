@@ -302,6 +302,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if verbose is not None:
         cfg.verbose = verbose
 
+    uncertainty_eval_enabled = _parse_env_bool("CODLLM_UNCERTAINTY_EVAL_ENABLED")
+    if uncertainty_eval_enabled is not None:
+        cfg.uncertainty_eval_enabled = uncertainty_eval_enabled
+
     torch_dtype = os.getenv("CODLLM_TORCH_DTYPE")
     if torch_dtype is not None and torch_dtype.strip() != "":
         normalized_torch_dtype = torch_dtype.strip().lower()

@@ -136,6 +136,7 @@ class Config:
     multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
     multicod_synthetic_text_separator: str = "; "
     inference_validate_registry: bool = False
+    uncertainty_eval_enabled: bool = True
 
     dataset_size: float = 0.5
     train_size: float = 0.9

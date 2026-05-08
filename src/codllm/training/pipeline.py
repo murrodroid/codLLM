@@ -28,6 +28,7 @@ from codllm.training.stages import (
 )
 from codllm.training.trainer_factory import run_training_stage
 from codllm.training.visualizations import log_data_visualizations
+from codllm.uncertainty.end_of_training import run_end_of_training_uncertainty
 
 
 def _log_progress(message: str) -> None:
@@ -347,4 +348,20 @@ def train(
             label2id=classifier_label2id,
             metric_key_prefix="holdout_test",
         )
+    if (
+        cfg.uncertainty_eval_enabled
+        and cfg.model_task == "seq2seq"
+        and dataset_row_count(splits.test) not in (None, 0)
+    ):
+        _log_progress("Running end-of-training uncertainty pass on test split.")
+        try:
+            run_end_of_training_uncertainty(
+                cfg=cfg,
+                model=trainer.model,
+                tokenizer=tokenizer,
+                test_df=splits.test,
+                run_dir=Path(cfg.output_dir),
+            )
+        except Exception as exc:  # pragma: no cover - defensive: never fail training
+            _log_progress(f"Uncertainty pass skipped due to error: {exc!r}")
     return trainer, tokenizer, splits
