@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Historical Mortality Records — Source Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:        #FAF7F2;
+      --paper-edge:   #F2EDE3;
+      --ink:          #1B2546;
+      --ink-soft:     #4A5168;
+      --ink-faint:    #8A8B95;
+      --rule:         #E5DEC8;
+      --rule-soft:    #ECE5D3;
+      --accent:       #A87C4F;
+      --accent-soft:  #C9A472;
+
+      --tint-belgium:    #F4E2BD;
+      --tint-amsterdam:  #D8E5DA;
+      --tint-copenhagen: #D8E0EA;
+      --tint-madrid:     #ECD3C8;
+      --tint-ipswich:    #E0D6E2;
+      --tint-historic:   #E1DDD2;
+
+      --max-w: 1180px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+      font-weight: 400;
+      font-feature-settings: "ss01", "cv11";
+      line-height: 1.55;
+      letter-spacing: 0.005em;
+      background-image:
+        radial-gradient(1200px 600px at 80% -200px, #F1EBDF 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 90%, #F1EBDF 0%, transparent 55%);
+      background-attachment: fixed;
+    }
+
+    main {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 64px 56px 96px;
+    }
+
+    /* ───── Header ───── */
+    header.masthead {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 32px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 56px;
+    }
+    .masthead .kicker {
+      margin: 0 0 14px 0;
+      font-family: "Manrope", sans-serif;
+      font-weight: 600;
+      font-size: 11.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .masthead h1 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 64px;
+      line-height: 1.02;
+      letter-spacing: -0.012em;
+      color: var(--ink);
+    }
+    .masthead h1 em {
+      font-style: italic;
+      font-weight: 500;
+      color: var(--accent);
+    }
+    .masthead .colophon {
+      font-size: 12px;
+      color: var(--ink-faint);
+      text-align: right;
+      max-width: 220px;
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    /* ───── Section header ───── */
+    section + section { margin-top: 88px; }
+    .section-head {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 22px;
+      align-items: baseline;
+      margin-bottom: 36px;
+    }
+    .section-head .num {
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 500;
+      font-size: 34px;
+      color: var(--accent);
+      font-feature-settings: "lnum";
+      width: 48px;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 34px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+    }
+    .section-head .lede {
+      grid-column: 2;
+      margin: 8px 0 0;
+      max-width: 720px;
+      color: var(--ink-soft);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ───── Grid + cards ───── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 22px;
+    }
+    @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 28px 26px 24px;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.18);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .card::before {
+      /* Soft tinted band at the top edge of the card */
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 92px;
+      background: var(--tint, var(--rule-soft));
+      opacity: 0.7;
+      z-index: -1;
+      mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+    }
+
+    /* Per-source tints */
+    .card.belgium    { --tint: var(--tint-belgium); }
+    .card.amsterdam  { --tint: var(--tint-amsterdam); }
+    .card.copenhagen { --tint: var(--tint-copenhagen); }
+    .card.madrid     { --tint: var(--tint-madrid); }
+    .card.ipswich    { --tint: var(--tint-ipswich); }
+    .card.historic   { --tint: var(--tint-historic); }
+
+    /* Aggregate card — visually distinct: deep ink background, light text */
+    .card.aggregate {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #FAF7F2;
+    }
+    .card.aggregate::before { display: none; }
+    .card.aggregate .ds-meta { color: #C9A472; }
+    .card.aggregate .ds-meta .dot { background: var(--accent-soft); }
+    .card.aggregate .ds-name { color: #FAF7F2; }
+    .card.aggregate .ds-language { color: #C5C7D1; }
+    .card.aggregate .ds-language b { color: #FAF7F2; }
+    .card.aggregate .ds-count .n { color: #FAF7F2; }
+    .card.aggregate .ds-count .label { color: #C5C7D1; }
+    .card.aggregate .ds-credits {
+      color: #C5C7D1;
+      border-top-color: rgba(250, 247, 242, 0.18);
+    }
+    .card.aggregate .ds-credits .label { color: var(--accent-soft); }
+
+    /* ───── Dataset card content ───── */
+    .ds-meta {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      font-weight: 600;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .ds-meta .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      display: inline-block;
+    }
+    .ds-name {
+      margin: 14px 0 4px;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 26px;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .ds-name em {
+      font-style: italic;
+      font-weight: 500;
+    }
+    .ds-language {
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      letter-spacing: 0.02em;
+    }
+    .ds-language b { color: var(--ink); font-weight: 600; }
+
+    .ds-count {
+      margin: 22px 0 4px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .ds-count .n {
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .ds-count .label {
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      letter-spacing: 0.02em;
+    }
+
+    .ds-credits {
+      margin: 22px 0 0;
+      padding-top: 18px;
+      border-top: 1px dashed var(--rule);
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      font-style: italic;
+      line-height: 1.55;
+    }
+    .ds-credits .label {
+      font-style: normal;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 10.5px;
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    /* ───── Combined chart ───── */
+    .combined-chart {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 32px 36px 28px;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.18);
+    }
+    .combined-chart .legend {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px dashed var(--rule);
+      font-size: 11.5px;
+      color: var(--ink-soft);
+      letter-spacing: 0.02em;
+    }
+    .combined-chart .legend-label {
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: 10.5px;
+      color: var(--accent);
+      margin-right: 4px;
+    }
+    .combined-chart .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .combined-chart .legend-swatch {
+      width: 18px;
+      height: 12px;
+      border-radius: 2.5px;
+      display: inline-block;
+    }
+    .combined-chart svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .combined-chart .row-label {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 17px;
+      font-weight: 600;
+      fill: var(--ink);
+      dominant-baseline: middle;
+    }
+    .combined-chart .row-meta {
+      font-family: "Manrope", sans-serif;
+      font-size: 10.5px;
+      fill: var(--ink-faint);
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      dominant-baseline: middle;
+    }
+    .combined-chart .seg-label {
+      font-family: "Manrope", sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      fill: #FFFFFF;
+      dominant-baseline: middle;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+    .combined-chart .seg-label.dark { fill: var(--ink); }
+    .combined-chart .axis-tick {
+      stroke: var(--rule);
+      stroke-width: 1;
+    }
+    .combined-chart .axis-text {
+      font-family: "Manrope", sans-serif;
+      font-size: 10.5px;
+      fill: var(--ink-faint);
+      font-weight: 500;
+      text-anchor: middle;
+    }
+    .combined-chart .axis-title {
+      font-family: "Manrope", sans-serif;
+      font-size: 11px;
+      fill: var(--ink-soft);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-anchor: middle;
+      font-style: italic;
+    }
+
+    /* ───── Footer ───── */
+    footer.colophon {
+      margin-top: 96px;
+      padding-top: 28px;
+      border-top: 1px solid var(--rule);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      letter-spacing: 0.04em;
+    }
+    footer.colophon .right { font-style: italic; }
+
+    @media print {
+      body { background: white; }
+      main { padding: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div>
+        <p class="kicker">codLLM · Source Catalog · 2026</p>
+        <h1>Five historical<br>death-record datasets,<br><em>1,579,115</em> records</h1>
+      </div>
+      <p class="colophon">An atlas of the European archives consumed during model training and evaluation.</p>
+    </header>
+
+    <section>
+      <div class="section-head">
+        <div class="num">I.</div>
+        <div>
+          <h2>The Sources</h2>
+          <p class="lede">Each archive contributes a different language, century, and recording convention. Together they form the multilingual corpus the model is trained and evaluated against.</p>
+        </div>
+      </div>
+
+      <div class="grid" id="datasets-grid">
+        <!-- Cards injected by JS -->
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div class="num">II.</div>
+        <div>
+          <h2>Records by number of cause-of-death codes</h2>
+          <p class="lede">Some archives record only a single primary cause; others permit several co-occurring conditions on a single death certificate. Each row below shows the share of records in that source by total unique codes per record.</p>
+        </div>
+      </div>
+
+      <div id="combined-chart-mount"></div>
+    </section>
+
+    <footer class="colophon">
+      <span>codLLM &nbsp;·&nbsp; Bachelor thesis, DTU 2026</span>
+      <span class="right">Counts derived from the raw source files. n_CoDs = unique codes per record (single + multi columns).</span>
+    </footer>
+  </main>
+
+  <script>
+    // ─── Dataset metadata ──────────────────────────────────────────────────
+    // `records` = raw row count from the source file (before any filtering).
+    const DATASETS = [
+      {
+        id: "belgium", klass: "belgium",
+        years: "1920 – 1930",
+        name: "Belgium · <em>SOSA</em>",
+        languageTags: ["French", "Flemish"],
+        records: 42116,
+        credits: "Sven Vrielinck — Ghent University (Sven.Vrielinck@UGent.be)",
+      },
+      {
+        id: "amsterdam", klass: "amsterdam",
+        years: "1854 – 1926",
+        name: "Amsterdam · <em>AMC</em>",
+        languageTags: ["Dutch"],
+        records: 580315,
+        credits: "Tim Riswick — Amsterdam municipal cause-of-death records",
+      },
+      {
+        id: "copenhagen", klass: "copenhagen",
+        years: "1854 – 1939",
+        name: "Copenhagen · <em>burials</em>",
+        languageTags: ["Danish"],
+        records: 547230,
+        credits: "Københavns Stadsarkiv — Copenhagen burial register (May 2025 export)",
+      },
+      {
+        id: "madrid", klass: "madrid",
+        years: "1905 – 1927",
+        name: "Madrid",
+        languageTags: ["Spanish"],
+        records: 366543,
+        credits: "Diego Ramiro Fariñas, Stanislao Mazzoni, Mélanie Bourguignon, Begoña Villuendas Hijosa, Michel Oris",
+      },
+      {
+        id: "ipswich", klass: "ipswich",
+        years: "1871 – 1901",
+        name: "Ipswich",
+        languageTags: ["English"],
+        records: 42911,
+        credits: "Garrett, E.M. & Reid, A.M. (2025) — Individual-level cause-of-death strings with ICD-10h codes, Ipswich 1871-1901",
+      },
+    ];
+
+    // Aggregate card — sixth tile in the grid summarising the corpus as a whole.
+    const AGGREGATE = {
+      id: "all", klass: "aggregate",
+      years: "1854 – 1939",
+      name: "All sources combined",
+      languages: ["French", "Flemish", "Dutch", "Danish", "Spanish", "English"],
+      sources: 5,
+    };
+
+    // ─── n_CoDs distribution data ──────────────────────────────────────────
+    // Counted from the raw source files (single_code_col + multi_code_cols,
+    // deduplicated per record). See experiments/visualizations/output/
+    // n_codes_per_record.json for the canonical dump.
+    let N_CODES_DATA = {
+      "belgium":         { total_rows: 42116,  rows_with_at_least_one_code: 42116,  distribution: { 1: 35287, 2: 6318,  3: 484,   4: 24,  5: 2,  6: 1 } },
+      "amsterdam":       { total_rows: 580315, rows_with_at_least_one_code: 580315, distribution: { 1: 471598, 2: 97203, 3: 11307, 4: 183, 5: 23, 6: 1 } },
+      "copenhagen":      { total_rows: 547230, rows_with_at_least_one_code: 502149, distribution: { 0: 45081, 1: 502149 } },
+      "madrid":          { total_rows: 366543, rows_with_at_least_one_code: 366543, distribution: { 1: 347814, 2: 18729 } },
+      "ipswich":         { total_rows: 42911,  rows_with_at_least_one_code: 39304,  distribution: { 0: 3607,  1: 22669, 2: 13850, 3: 2441, 4: 332, 5: 11, 6: 1 } },
+      "historic_strings":{ total_rows: 3307,   rows_with_at_least_one_code: 3307,   distribution: { 1: 3307 } },
+    };
+
+    // ─── Helpers ───────────────────────────────────────────────────────────
+    const fmt = n => new Intl.NumberFormat("en-US").format(n);
+
+    function renderDatasets() {
+      const grid = document.getElementById("datasets-grid");
+      const cards = DATASETS.map(d => `
+        <article class="card ${d.klass}">
+          <div class="ds-meta"><span class="dot"></span><span>${d.years}</span></div>
+          <h3 class="ds-name">${d.name}</h3>
+          <p class="ds-language"><b>${d.languageTags.join(" · ")}</b></p>
+          <div class="ds-count">
+            <span class="n">${fmt(d.records)}</span>
+            <span class="label">records</span>
+          </div>
+          <p class="ds-credits"><span class="label">Credits</span>${d.credits}</p>
+        </article>
+      `);
+
+      // Aggregate card (position 6)
+      const totalRecords = DATASETS.reduce((s, d) => s + d.records, 0);
+      cards.push(`
+        <article class="card ${AGGREGATE.klass}">
+          <div class="ds-meta"><span class="dot"></span><span>${AGGREGATE.years}  ·  ${AGGREGATE.sources} sources</span></div>
+          <h3 class="ds-name">${AGGREGATE.name}</h3>
+          <p class="ds-language"><b>Multilingual</b> · ${AGGREGATE.languages.join(" · ")}</p>
+          <div class="ds-count">
+            <span class="n">${fmt(totalRecords)}</span>
+            <span class="label">records across the corpus</span>
+          </div>
+          <p class="ds-credits"><span class="label">Combined</span>see five source-specific cards above for individual credits</p>
+        </article>
+      `);
+
+      grid.innerHTML = cards.join("");
+    }
+
+    function renderCombinedChart() {
+      // One stacked horizontal bar per dataset, segmented by n_CoDs bucket.
+      // Buckets: 0 (no code recorded), 1, 2, 3, 4, 5+. Per-segment % labels
+      // are inlaid where the segment is wide enough.
+      const mount = document.getElementById("combined-chart-mount");
+      if (!N_CODES_DATA) return;
+
+      const BUCKETS = [
+        { key: 0,  label: "0",   color: "#D6CFBE",          dark: true,
+          desc: "no code recorded" },
+        { key: 1,  label: "1",   color: "#3A6B8A",          dark: false,
+          desc: "single primary cause" },
+        { key: 2,  label: "2",   color: "#6E97AE",          dark: false,
+          desc: "two co-occurring" },
+        { key: 3,  label: "3",   color: "#A8C0CC",          dark: true,
+          desc: "three" },
+        { key: 4,  label: "4",   color: "#C9B98C",          dark: true,
+          desc: "four" },
+        { key: 5,  label: "5+",  color: "#A87C4F",          dark: false,
+          desc: "five or more" },
+      ];
+
+      const datasets = DATASETS.filter(d => N_CODES_DATA[d.id]);
+
+      // Layout
+      const W = 1080;
+      const PAD_L = 240;     // space for dataset name + count
+      const PAD_R = 24;
+      const PAD_T = 14;
+      const PAD_B = 38;      // x-axis labels
+      const ROW_H = 46;
+      const ROW_GAP = 14;
+      const innerW = W - PAD_L - PAD_R;
+      const H = PAD_T + datasets.length * ROW_H + (datasets.length - 1) * ROW_GAP + PAD_B;
+
+      // Build legend
+      const legend = `
+        <span class="legend-label">N codes per record</span>
+        ${BUCKETS.map(b => `
+          <span class="legend-item">
+            <span class="legend-swatch" style="background:${b.color}"></span>
+            <span>${b.label}<span style="color:var(--ink-faint); margin-left:4px">${b.desc}</span></span>
+          </span>
+        `).join("")}
+      `;
+
+      // Build SVG rows
+      const rows = datasets.map((d, i) => {
+        const meta = N_CODES_DATA[d.id];
+        const dist = meta.distribution;
+        const total = meta.total_rows;
+        const counts = BUCKETS.map(b => {
+          if (b.key === 5) {
+            // 5+: anything >=5
+            return Object.entries(dist)
+              .filter(([k]) => +k >= 5)
+              .reduce((s, [, v]) => s + v, 0);
+          }
+          return dist[b.key] || 0;
+        });
+        const pcts = counts.map(c => total > 0 ? c / total : 0);
+
+        const y = PAD_T + i * (ROW_H + ROW_GAP);
+        const barH = ROW_H * 0.62;
+        const barY = y + (ROW_H - barH) / 2;
+
+        // Dataset label & meta on the left
+        const labelX = PAD_L - 18;
+        const labelGroup = `
+          <text class="row-label" x="${labelX}" y="${y + ROW_H / 2 - 7}" text-anchor="end">${d.name.replace(/<[^>]+>/g,'')}</text>
+          <text class="row-meta"  x="${labelX}" y="${y + ROW_H / 2 + 9}" text-anchor="end">${d.years}  ·  ${fmt(total)} records</text>
+        `;
+
+        // Stacked segments
+        let cursor = PAD_L;
+        const segs = pcts.map((p, j) => {
+          const w = p * innerW;
+          if (w <= 0.5) { cursor += w; return ""; }
+          const x = cursor;
+          cursor += w;
+          const b = BUCKETS[j];
+          const pctTxt = p >= 0.04
+            ? (p * 100).toFixed(p >= 0.1 ? 0 : 1) + "%"
+            : "";
+          const labelClass = b.dark ? "seg-label dark" : "seg-label";
+          return `
+            <rect x="${x.toFixed(2)}" y="${barY.toFixed(2)}" width="${w.toFixed(2)}" height="${barH.toFixed(2)}" fill="${b.color}" rx="2"></rect>
+            ${pctTxt ? `<text class="${labelClass}" x="${(x + w/2).toFixed(2)}" y="${(barY + barH/2).toFixed(2)}">${pctTxt}</text>` : ""}
+          `;
+        }).join("");
+
+        return labelGroup + segs;
+      }).join("");
+
+      // X-axis (just a single bottom rule + 0/100% ticks)
+      const axisY = PAD_T + datasets.length * ROW_H + (datasets.length - 1) * ROW_GAP + 6;
+      const axis = `
+        <line class="axis-tick" x1="${PAD_L}" y1="${axisY}" x2="${W - PAD_R}" y2="${axisY}"></line>
+        <line class="axis-tick" x1="${PAD_L}" y1="${axisY}" x2="${PAD_L}" y2="${axisY + 4}"></line>
+        <line class="axis-tick" x1="${(PAD_L + innerW/2).toFixed(1)}" y1="${axisY}" x2="${(PAD_L + innerW/2).toFixed(1)}" y2="${axisY + 4}"></line>
+        <line class="axis-tick" x1="${W - PAD_R}" y1="${axisY}" x2="${W - PAD_R}" y2="${axisY + 4}"></line>
+        <text class="axis-text" x="${PAD_L}" y="${axisY + 16}">0%</text>
+        <text class="axis-text" x="${(PAD_L + innerW/2).toFixed(1)}" y="${axisY + 16}">50%</text>
+        <text class="axis-text" x="${W - PAD_R}" y="${axisY + 16}">100%</text>
+        <text class="axis-title" x="${(PAD_L + innerW/2).toFixed(1)}" y="${axisY + 30}">share of records in source</text>
+      `;
+
+      mount.innerHTML = `
+        <div class="combined-chart">
+          <div class="legend">${legend}</div>
+          <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="n_CoDs distribution across sources">
+            ${rows}
+            ${axis}
+          </svg>
+        </div>
+      `;
+    }
+
+    renderDatasets();
+    renderCombinedChart();
+
+    // Allow late injection of n_codes data by setting window.N_CODES_DATA from
+    // an external source (e.g. an embedded JSON or a fetch). The page renders
+    // with the inlined data first so screenshots work without any network.
+    window.setNCodsData = function (payload) {
+      N_CODES_DATA = payload;
+      renderCombinedChart();
+    };
+  </script>
+</body>
+</html>
