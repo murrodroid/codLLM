@@ -299,7 +299,7 @@ def run_end_of_training_uncertainty(
     val_df: pd.DataFrame | None = None,
     device: str | None = None,
     log_every: int = 50,
-    temperature_max_records: int | None = 2000,
+    temperature_max_records: int | None = None,
 ) -> dict[str, Any] | None:
     """Score the test split with output_scores, save artifacts, log RC curves.
 

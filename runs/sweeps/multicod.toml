@@ -1,4 +1,4 @@
-base = "../base/h100-large.toml"
+base = "../profiles/h100-large.toml"
 name = "multicod"
 description = "Sweep to test multicod synthetic data effectiveness"
 force_reprocess = false

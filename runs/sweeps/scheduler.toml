@@ -1,4 +1,4 @@
-base = "../base/h100-large.toml"
+base = "../profiles/h100-large.toml"
 name = "scheduler"
 description = "Sweep different lr schedulers"
 force_reprocess = false

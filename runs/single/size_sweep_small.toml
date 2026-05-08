@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "size_sweep_small"
 description = """
 Size-sweep baseline for flan-t5-small. Identical multi-CoD setup, splits,
@@ -14,6 +14,13 @@ force_reprocess = false
 CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 80
+
+# Effective batch size = 32 across all four sizes (small/base/large/xl) so
+# the sweep compares the same gradient signal at each scale, not different
+# optimization landscapes. Override the h100-small.toml profile defaults.
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 32
+CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 32
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 1
 
 # Multi-CoD task definition (matches existing multicod sweep convention).
 CODLLM_MAX_LABEL_COUNT = 3

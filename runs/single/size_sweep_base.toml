@@ -1,4 +1,4 @@
-base = "../base/h100-base.toml"
+base = "../profiles/h100-base.toml"
 name = "size_sweep_base"
 description = """
 Size-sweep baseline for flan-t5-base. Same hyperparameters and multi-CoD
@@ -11,6 +11,11 @@ force_reprocess = false
 CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 80
+
+# Effective batch size 32 = 16 * 2; matches small/large/xl for fair comparison.
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 16
+CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 16
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 2
 
 CODLLM_MAX_LABEL_COUNT = 3
 CODLLM_MULTICOD_SHUFFLE_LABELS = 1
