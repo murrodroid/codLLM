@@ -9,7 +9,12 @@ from transformers import (
     TrainingArguments,
 )
 
-from codllm.metrics import reset_metric_artifact_scope, set_metric_artifact_scope
+from codllm.metrics import (
+    reset_metric_artifact_scope,
+    reset_metric_source_ids,
+    set_metric_artifact_scope,
+    set_metric_source_ids,
+)
 
 
 def _normalize_stage_name(stage_name: str) -> str:
@@ -76,6 +81,31 @@ def _metric_key_prefix_from_evaluate_call(
     if len(args) >= 3:
         return str(args[2])
     return "eval"
+
+
+def _eval_dataset_from_evaluate_call(
+    self_eval_dataset: Any,
+    args: tuple[Any, ...],
+    kwargs: Mapping[str, Any],
+) -> Any:
+    """Resolve the eval dataset Trainer.evaluate will iterate, matching its signature."""
+    if "eval_dataset" in kwargs:
+        eval_dataset = kwargs["eval_dataset"]
+    elif args:
+        eval_dataset = args[0]
+    else:
+        eval_dataset = None
+    return eval_dataset if eval_dataset is not None else self_eval_dataset
+
+
+def _resolve_source_ids(eval_dataset: Any) -> list[str] | None:
+    """Return source ids registered on the eval dataset, when available."""
+    if eval_dataset is None:
+        return None
+    source_ids = getattr(eval_dataset, "source_ids", None)
+    if source_ids is None:
+        return None
+    return list(source_ids)
 
 
 class EvaluateEveryNEpochsCallback(TrainerCallback):
@@ -212,13 +242,18 @@ class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
     def evaluate(self, *args: Any, **kwargs: Any) -> dict[str, float]:
         """Evaluate with a stage-scoped context for metric artifact logging."""
         metric_key_prefix = _metric_key_prefix_from_evaluate_call(args, kwargs)
-        token = set_metric_artifact_scope(
+        scope_token = set_metric_artifact_scope(
             _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
         )
+        eval_dataset = _eval_dataset_from_evaluate_call(
+            self.eval_dataset, args, kwargs
+        )
+        source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
         try:
             return super().evaluate(*args, **kwargs)
         finally:
-            reset_metric_artifact_scope(token)
+            reset_metric_source_ids(source_ids_token)
+            reset_metric_artifact_scope(scope_token)
 
 
 class StageScopedTrainer(Trainer):
@@ -241,10 +276,15 @@ class StageScopedTrainer(Trainer):
     def evaluate(self, *args: Any, **kwargs: Any) -> dict[str, float]:
         """Evaluate with a stage-scoped context for metric artifact logging."""
         metric_key_prefix = _metric_key_prefix_from_evaluate_call(args, kwargs)
-        token = set_metric_artifact_scope(
+        scope_token = set_metric_artifact_scope(
             _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
         )
+        eval_dataset = _eval_dataset_from_evaluate_call(
+            self.eval_dataset, args, kwargs
+        )
+        source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
         try:
             return super().evaluate(*args, **kwargs)
         finally:
-            reset_metric_artifact_scope(token)
+            reset_metric_source_ids(source_ids_token)
+            reset_metric_artifact_scope(scope_token)
