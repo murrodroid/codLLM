@@ -299,3 +299,80 @@ def test_uncertainty_signal_direction_table_covers_all_signals() -> None:
     assert set(UNCERTAINTY_SIGNAL_DIRECTION.keys()) == set(UNCERTAINTY_SIGNAL_NAMES)
     for direction in UNCERTAINTY_SIGNAL_DIRECTION.values():
         assert direction in (-1, 1)
+
+
+# ---------------------------------------------------------------------------
+# Temperature-scaling tests
+# ---------------------------------------------------------------------------
+
+
+class TestFitTemperature:
+    def test_well_calibrated_logits_yield_temperature_near_one(self) -> None:
+        """Logits that already match the gold distribution should not move T much."""
+        import torch
+
+        from codllm.uncertainty.calibration import fit_temperature
+
+        torch.manual_seed(0)
+        n, vocab = 256, 8
+        logits = torch.randn(n, vocab) * 1.5
+        gold_ids = logits.argmax(dim=-1)
+        # Argmax targets => optimal T -> 0+, but we cap iterations and start at 1.
+        temperature, nll_before, nll_after = fit_temperature(logits, gold_ids, max_iter=50)
+        assert temperature > 0.0
+        # NLL should not get worse after fitting.
+        assert nll_after <= nll_before + 1e-6
+
+    def test_overconfident_logits_recover_temperature_above_one(self) -> None:
+        """Logits scaled by 4x against a noisier label should pull T toward 4."""
+        import torch
+
+        from codllm.uncertainty.calibration import fit_temperature
+
+        torch.manual_seed(7)
+        n, vocab = 512, 16
+        true_logits = torch.randn(n, vocab)
+        gold_ids = torch.distributions.Categorical(
+            logits=true_logits
+        ).sample()
+        # Make the model overconfident by scaling logits up by 4x.
+        overconfident_logits = true_logits * 4.0
+        temperature, _, _ = fit_temperature(overconfident_logits, gold_ids, max_iter=100)
+        # Recovered T should be close to 4 (the inverse of the overconfidence scale).
+        assert temperature == pytest.approx(4.0, rel=0.25)
+
+    def test_empty_logits_short_circuit(self) -> None:
+        import torch
+
+        from codllm.uncertainty.calibration import fit_temperature
+
+        empty_logits = torch.zeros((0, 4))
+        empty_gold = torch.zeros((0,), dtype=torch.long)
+        temperature, nll_before, nll_after = fit_temperature(
+            empty_logits, empty_gold
+        )
+        assert temperature == 1.0
+        assert nll_before == 0.0
+        assert nll_after == 0.0
+
+
+class TestTemperatureFitSerialization:
+    def test_round_trip(self, tmp_path: Path) -> None:
+        from codllm.uncertainty.calibration import (
+            TemperatureFit,
+            write_temperature_json,
+        )
+
+        fit = TemperatureFit(
+            temperature=1.5,
+            nll_before=2.3,
+            nll_after=2.0,
+            n_tokens=1234,
+            n_records=200,
+            max_records=2000,
+        )
+        path = write_temperature_json(fit, tmp_path / "temperature.json")
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        assert loaded["temperature"] == 1.5
+        assert loaded["n_tokens"] == 1234
+        assert loaded["max_records"] == 2000

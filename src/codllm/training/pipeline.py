@@ -360,6 +360,7 @@ def train(
                 model=trainer.model,
                 tokenizer=tokenizer,
                 test_df=splits.test,
+                val_df=splits.val,
                 run_dir=Path(cfg.output_dir),
             )
         except Exception as exc:  # pragma: no cover - defensive: never fail training

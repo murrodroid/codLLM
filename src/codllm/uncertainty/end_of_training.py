@@ -25,6 +25,12 @@ from typing import Any, Iterable, Mapping
 import pandas as pd
 
 from codllm.config import Config
+from codllm.uncertainty.calibration import (
+    TemperatureFit,
+    fit_temperature_on_val,
+    log_temperature_to_wandb,
+    write_temperature_json,
+)
 from codllm.uncertainty.rc_curve import (
     DEFAULT_COVERAGES,
     UNCERTAINTY_SIGNAL_DIRECTION,
@@ -290,8 +296,10 @@ def run_end_of_training_uncertainty(
     test_df: pd.DataFrame,
     *,
     run_dir: Path,
+    val_df: pd.DataFrame | None = None,
     device: str | None = None,
     log_every: int = 50,
+    temperature_max_records: int | None = 2000,
 ) -> dict[str, Any] | None:
     """Score the test split with output_scores, save artifacts, log RC curves.
 
@@ -319,6 +327,30 @@ def run_end_of_training_uncertainty(
     resolved_device = device or _resolve_device_from_model(model)
     max_new_tokens = cfg.resolved_max_target_length()
     label_separator = cfg.label_separator
+
+    temperature_fit: TemperatureFit | None = None
+    temperature_path: Path | None = None
+    if val_df is not None and len(val_df) > 0:
+        try:
+            temperature_fit = fit_temperature_on_val(
+                model,
+                tokenizer,
+                val_df,
+                device=resolved_device,
+                max_source_length=cfg.max_source_length,
+                max_target_length=max_new_tokens,
+                text_column=text_column,
+                label_column=label_column,
+                max_records=temperature_max_records,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Temperature fit skipped due to error: %r", exc)
+            temperature_fit = None
+        if temperature_fit is not None:
+            temperature_path = write_temperature_json(
+                temperature_fit, Path(run_dir) / "temperature.json"
+            )
+            log_temperature_to_wandb(temperature_fit)
 
     was_training = getattr(model, "training", False)
     if was_training:
@@ -372,13 +404,21 @@ def run_end_of_training_uncertainty(
     curves = compute_all_rc_curves(records, label_separator=label_separator)
     rc_curves_path = write_rc_curves_json(curves, run_dir / "rc_curves.json")
     _log_rc_curves_to_wandb(curves)
+    artifact_files = [predictions_path, test_rows_path, rc_curves_path]
+    if temperature_path is not None:
+        artifact_files.append(temperature_path)
     _log_artifacts_to_wandb(
         artifact_name="end_of_training_eval",
-        file_paths=[predictions_path, test_rows_path, rc_curves_path],
+        file_paths=artifact_files,
         metadata={
             "n_records": len(records),
             "max_new_tokens": int(max_new_tokens),
             "label_separator": label_separator,
+            "temperature": (
+                float(temperature_fit.temperature)
+                if temperature_fit is not None
+                else None
+            ),
         },
     )
 
@@ -387,6 +427,14 @@ def run_end_of_training_uncertainty(
         "predictions_path": str(predictions_path),
         "test_rows_path": str(test_rows_path),
         "rc_curves_path": str(rc_curves_path),
+        "temperature_path": (
+            str(temperature_path) if temperature_path is not None else None
+        ),
+        "temperature": (
+            float(temperature_fit.temperature)
+            if temperature_fit is not None
+            else None
+        ),
         "rc_curves": _rc_curves_to_serializable(curves),
     }
 
