@@ -138,6 +138,14 @@ class Config:
     inference_validate_registry: bool = False
     uncertainty_eval_enabled: bool = True
 
+    auto_resume: bool = False
+    per_size_output_dir: bool = False
+    load_best_model_at_end: bool = False
+    early_stopping_patience: int = 0
+    early_stopping_threshold: float = 0.0
+    max_runtime_seconds: int = 0
+    runtime_safety_margin_seconds: int = 300
+
     dataset_size: float = 0.5
     train_size: float = 0.9
     val_size: float = 0.05

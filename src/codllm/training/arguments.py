@@ -117,6 +117,21 @@ def build_training_args(
         training_kwargs["greater_is_better"] = _metric_greater_is_better(
             cfg.save_strategy_best_metric
         )
+
+    if cfg.load_best_model_at_end:
+        if eval_strategy == "no":
+            raise ValueError(
+                "load_best_model_at_end=True requires validation data and "
+                "eval_strategy set to 'steps' or 'epoch'."
+            )
+        training_kwargs["load_best_model_at_end"] = True
+        training_kwargs.setdefault(
+            "metric_for_best_model", cfg.save_strategy_best_metric
+        )
+        training_kwargs.setdefault(
+            "greater_is_better",
+            _metric_greater_is_better(cfg.save_strategy_best_metric),
+        )
     if resolved_stage.warmup_ratio >= 0:
         training_kwargs["warmup_steps"] = resolved_stage.warmup_ratio
     if cfg.model_task == "seq2seq":
