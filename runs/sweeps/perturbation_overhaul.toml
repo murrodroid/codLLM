@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "perturbation-overhaul"
 description = """
 2x2 ablation establishing whether full-distribution perturbation helps on top of

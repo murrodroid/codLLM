@@ -16,6 +16,7 @@ experiments/notebooks/data/
 
 # Local training output
 runs/
+runs_smoke/
 
 # Downloaded model checkpoints (large binaries — fetch from W&B instead)
 experiments/model_from_wandb/

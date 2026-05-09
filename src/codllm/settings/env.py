@@ -302,6 +302,70 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if verbose is not None:
         cfg.verbose = verbose
 
+    uncertainty_eval_enabled = _parse_env_bool("CODLLM_UNCERTAINTY_EVAL_ENABLED")
+    if uncertainty_eval_enabled is not None:
+        cfg.uncertainty_eval_enabled = uncertainty_eval_enabled
+
+    auto_resume = _parse_env_bool("CODLLM_AUTO_RESUME")
+    if auto_resume is not None:
+        cfg.auto_resume = auto_resume
+
+    per_size_output_dir = _parse_env_bool("CODLLM_PER_SIZE_OUTPUT_DIR")
+    if per_size_output_dir is not None:
+        cfg.per_size_output_dir = per_size_output_dir
+
+    load_best_model_at_end = _parse_env_bool("CODLLM_LOAD_BEST_MODEL_AT_END")
+    if load_best_model_at_end is not None:
+        cfg.load_best_model_at_end = load_best_model_at_end
+
+    early_stopping_patience_raw = os.getenv("CODLLM_EARLY_STOPPING_PATIENCE")
+    if early_stopping_patience_raw is not None and early_stopping_patience_raw.strip() != "":
+        try:
+            cfg.early_stopping_patience = int(early_stopping_patience_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_EARLY_STOPPING_PATIENCE must be a non-negative integer."
+            ) from exc
+        if cfg.early_stopping_patience < 0:
+            raise ValueError(
+                "CODLLM_EARLY_STOPPING_PATIENCE must be non-negative."
+            )
+
+    early_stopping_threshold_raw = os.getenv("CODLLM_EARLY_STOPPING_THRESHOLD")
+    if early_stopping_threshold_raw is not None and early_stopping_threshold_raw.strip() != "":
+        try:
+            cfg.early_stopping_threshold = float(early_stopping_threshold_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_EARLY_STOPPING_THRESHOLD must be a float."
+            ) from exc
+
+    max_runtime_seconds_raw = os.getenv("CODLLM_MAX_RUNTIME_SECONDS")
+    if max_runtime_seconds_raw is not None and max_runtime_seconds_raw.strip() != "":
+        try:
+            cfg.max_runtime_seconds = int(max_runtime_seconds_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_MAX_RUNTIME_SECONDS must be a non-negative integer."
+            ) from exc
+        if cfg.max_runtime_seconds < 0:
+            raise ValueError(
+                "CODLLM_MAX_RUNTIME_SECONDS must be non-negative."
+            )
+
+    runtime_safety_margin_raw = os.getenv("CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS")
+    if runtime_safety_margin_raw is not None and runtime_safety_margin_raw.strip() != "":
+        try:
+            cfg.runtime_safety_margin_seconds = int(runtime_safety_margin_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS must be a non-negative integer."
+            ) from exc
+        if cfg.runtime_safety_margin_seconds < 0:
+            raise ValueError(
+                "CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS must be non-negative."
+            )
+
     torch_dtype = os.getenv("CODLLM_TORCH_DTYPE")
     if torch_dtype is not None and torch_dtype.strip() != "":
         normalized_torch_dtype = torch_dtype.strip().lower()

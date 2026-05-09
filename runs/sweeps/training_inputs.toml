@@ -1,4 +1,4 @@
-base = "../base/h100-large.toml"
+base = "../profiles/h100-large.toml"
 name = "inputs"
 description = "Sweep seq2seq fine-tuning input features while holding the training setup fixed."
 force_reprocess = false

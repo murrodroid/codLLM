@@ -96,7 +96,7 @@ class Config:
     save_steps: int = 5000
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
-    save_strategy_best_metric: SaveStrategyBestMetric = "macro_f1"
+    save_strategy_best_metric: SaveStrategyBestMetric = "sample_f1"
     model_task: ModelTask = "seq2seq"
     lr_scheduler_type: LRSchedulerType = "cosine"
     verbose: bool = False
@@ -130,12 +130,21 @@ class Config:
     input_field_prefixes: dict[TrainingInput, str] = field(
         default_factory=default_input_field_prefixes
     )
-    max_label_count: int = 1
+    max_label_count: int = 3
     multicod_shuffle_labels: bool = True
     multicod_synthetic_ratio: float = 0.0
     multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
     multicod_synthetic_text_separator: str = "; "
     inference_validate_registry: bool = False
+    uncertainty_eval_enabled: bool = True
+
+    auto_resume: bool = False
+    per_size_output_dir: bool = False
+    load_best_model_at_end: bool = False
+    early_stopping_patience: int = 0
+    early_stopping_threshold: float = 0.0
+    max_runtime_seconds: int = 0
+    runtime_safety_margin_seconds: int = 300
 
     dataset_size: float = 0.5
     train_size: float = 0.9

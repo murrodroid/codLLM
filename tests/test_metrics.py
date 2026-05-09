@@ -2,13 +2,20 @@ import numpy as np
 import pytest
 
 from codllm.metrics import (
+    _hierarchy_metrics,
+    _hierarchy_truncated_codes,
     _macro_precision_recall_f1,
     _micro_precision_recall_f1,
     _multilabel_diagnostic_metrics,
+    _per_source_metrics,
     _sample_precision_recall_f1,
+    _sanitize_source_key,
     build_exact_match_accuracy_metric,
     collect_label_classes,
+    current_metric_source_ids,
     filter_metrics_for_logging,
+    reset_metric_source_ids,
+    set_metric_source_ids,
 )
 
 
@@ -343,3 +350,172 @@ def test_multilabel_metric_callback_reports_sample_and_hamming_metrics() -> None
     assert metrics["hamming_loss"] == pytest.approx(2 / 15)
     assert metrics["hamming_score"] == pytest.approx(13 / 15)
     assert metrics["label_count_mae"] == 0.0
+
+
+class TestSanitizeSourceKey:
+    def test_alphanumeric_passes_through(self) -> None:
+        assert _sanitize_source_key("belgium_1920_1930") == "belgium_1920_1930"
+
+    def test_replaces_special_characters(self) -> None:
+        assert _sanitize_source_key("a/b c.d") == "a_b_c_d"
+
+    def test_strips_leading_and_trailing_underscores(self) -> None:
+        assert _sanitize_source_key("///source///") == "source"
+
+    def test_blank_yields_unknown(self) -> None:
+        assert _sanitize_source_key("") == "unknown"
+        assert _sanitize_source_key("///") == "unknown"
+
+
+class TestMetricSourceIdsContextVar:
+    def test_default_is_none(self) -> None:
+        assert current_metric_source_ids() is None
+
+    def test_set_and_reset(self) -> None:
+        token = set_metric_source_ids(["a", "b"])
+        try:
+            assert current_metric_source_ids() == ["a", "b"]
+        finally:
+            reset_metric_source_ids(token)
+        assert current_metric_source_ids() is None
+
+    def test_set_none_does_not_break_reset(self) -> None:
+        token = set_metric_source_ids(None)
+        try:
+            assert current_metric_source_ids() is None
+        finally:
+            reset_metric_source_ids(token)
+
+
+class TestHierarchyTruncatedCodes:
+    def test_truncates_to_chapter(self) -> None:
+        codes = [{"J18.900", "K70.300"}, {"A00.000"}]
+        assert _hierarchy_truncated_codes(codes, 1) == [{"J", "K"}, {"A"}]
+
+    def test_truncates_to_block(self) -> None:
+        codes = [{"J18.900", "J18.000"}, {"K76.400"}]
+        assert _hierarchy_truncated_codes(codes, 3) == [{"J18"}, {"K76"}]
+
+    def test_drops_empty_codes(self) -> None:
+        codes = [{"", "J18.900"}]
+        assert _hierarchy_truncated_codes(codes, 1) == [{"J"}]
+
+
+class TestHierarchyMetrics:
+    def test_chapter_correct_block_off_by_one(self) -> None:
+        """Chapter accuracy stays high even when block-level is wrong."""
+        # Both predictions share the chapter J/J/A but block J18 only matches twice.
+        predictions = [{"J18.900"}, {"J17.000"}, {"A00.000"}]
+        labels = [{"J18.900"}, {"J18.500"}, {"A00.000"}]
+
+        result = _hierarchy_metrics(predictions, labels, multi_label=False)
+
+        assert result["chapter_accuracy"] == pytest.approx(1.0)
+        assert result["block_accuracy"] == pytest.approx(2 / 3)
+        assert result["chapter_exact_match"] == pytest.approx(1.0)
+        assert result["block_exact_match"] == pytest.approx(2 / 3)
+
+    def test_multi_cod_chapter_set_match(self) -> None:
+        """For multi-CoD, the chapter set must match exactly to count as correct."""
+        predictions = [{"J18.900", "K70.300"}, {"A00.000"}]
+        labels = [{"J18.900", "K76.400"}, {"A00.000"}]
+
+        result = _hierarchy_metrics(predictions, labels, multi_label=True)
+
+        assert result["chapter_accuracy"] == pytest.approx(1.0)
+        assert result["block_accuracy"] == pytest.approx(0.5)
+
+
+class TestPerSourceMetrics:
+    def test_returns_empty_when_source_ids_missing(self) -> None:
+        result = _per_source_metrics(
+            [{"A"}], [{"A"}], [True], None, multi_label=False
+        )
+        assert result == {}
+
+    def test_returns_empty_on_length_mismatch(self) -> None:
+        result = _per_source_metrics(
+            [{"A"}, {"B"}],
+            [{"A"}, {"B"}],
+            [True, True],
+            ["only_one"],
+            multi_label=False,
+        )
+        assert result == {}
+
+    def test_per_source_slicing_and_counts(self) -> None:
+        """Each unique source_id should get its own metric set with row count."""
+        predictions = [{"A"}, {"B"}, {"A"}, {"D"}]
+        labels = [{"A"}, {"C"}, {"A"}, {"D"}]
+        matches = [True, False, True, True]
+        sources = ["copenhagen", "amsterdam", "copenhagen", "ipswich"]
+
+        result = _per_source_metrics(
+            predictions, labels, matches, sources, multi_label=False
+        )
+
+        assert result["source_copenhagen_count"] == 2.0
+        assert result["source_copenhagen_accuracy"] == pytest.approx(1.0)
+        assert result["source_amsterdam_count"] == 1.0
+        assert result["source_amsterdam_accuracy"] == pytest.approx(0.0)
+        assert result["source_ipswich_count"] == 1.0
+        assert result["source_ipswich_accuracy"] == pytest.approx(1.0)
+
+    def test_sanitizes_source_keys(self) -> None:
+        result = _per_source_metrics(
+            [{"A"}],
+            [{"A"}],
+            [True],
+            ["weird/source name"],
+            multi_label=False,
+        )
+        assert "source_weird_source_name_accuracy" in result
+
+    def test_default_excludes_historic_strings_en_2024(self) -> None:
+        """historic_strings_en_2024 is masterlist reference text, not archival data."""
+        result = _per_source_metrics(
+            [{"A"}, {"B"}, {"C"}],
+            [{"A"}, {"B"}, {"C"}],
+            [True, True, True],
+            ["copenhagen", "historic_strings_en_2024", "amsterdam"],
+            multi_label=False,
+        )
+        assert "source_copenhagen_accuracy" in result
+        assert "source_amsterdam_accuracy" in result
+        assert "source_historic_strings_en_2024_accuracy" not in result
+        assert "source_historic_strings_en_2024_count" not in result
+
+    def test_excluded_sources_override(self) -> None:
+        """Caller can override the excluded set when needed."""
+        result = _per_source_metrics(
+            [{"A"}],
+            [{"A"}],
+            [True],
+            ["copenhagen"],
+            multi_label=False,
+            excluded_sources=frozenset({"copenhagen"}),
+        )
+        assert result == {}
+
+
+def test_filter_metrics_for_logging_passes_per_source_and_hierarchy_keys() -> None:
+    """Standard mode must allow per-source and hierarchy metrics through."""
+    metrics = {
+        "accuracy": 0.9,
+        "macro_f1": 0.7,
+        "source_copenhagen_accuracy": 0.95,
+        "source_amsterdam_count": 100.0,
+        "chapter_accuracy": 0.99,
+        "block_f1": 0.85,
+        "random_metric": 1.0,
+    }
+
+    filtered = filter_metrics_for_logging(metrics, mode="standard")
+
+    assert "accuracy" in filtered
+    assert "macro_f1" in filtered
+    assert "source_copenhagen_accuracy" in filtered
+    assert "source_amsterdam_count" in filtered
+    assert "chapter_accuracy" in filtered
+    assert "block_f1" in filtered
+    assert "random_metric" not in filtered
