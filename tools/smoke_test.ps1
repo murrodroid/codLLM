@@ -11,7 +11,10 @@ Run from the repo root:
 A second invocation should auto-resume into the same run-* dir.
 #>
 
-$ErrorActionPreference = "Stop"
+# Avoid $ErrorActionPreference = "Stop": PowerShell 5.1 wraps native-command
+# stderr (e.g. transformers' deprecation warnings, W&B's credential warning)
+# as halting ErrorRecords even when the process exits 0. We rely on
+# $LASTEXITCODE checks below for genuine failure detection instead.
 
 # Minimal training config: 1 epoch, 1% of data, flan-t5-small, no W&B.
 $env:CODLLM_NUM_TRAIN_EPOCHS = "1"

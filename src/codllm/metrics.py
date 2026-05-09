@@ -572,8 +572,17 @@ def _per_source_metrics(
     *,
     multi_label: bool,
     label_universe: set[str] | None = None,
+    excluded_sources: frozenset[str] = _PER_SOURCE_AGGREGATE_EXCLUDED,
 ) -> dict[str, float]:
-    """Compute the standard metric set for each source_id slice of predictions."""
+    """Compute the standard metric set for each source_id slice of predictions.
+
+    Sources listed in ``excluded_sources`` are skipped entirely so the W&B
+    Compare-runs view does not surface them as comparable data points.
+    historic_strings_en_2024 is the canonical example: it is the masterlist's
+    English-translated reference, not historical messy archive text, so its
+    accuracy is mechanically inflated and should not be plotted alongside the
+    five real archival sources.
+    """
     if source_ids is None or len(source_ids) != len(predictions):
         return {}
 
@@ -583,6 +592,8 @@ def _per_source_metrics(
 
     result: dict[str, float] = {}
     for source, indices in indices_by_source.items():
+        if source in excluded_sources:
+            continue
         bucket_metrics = _prediction_metric_set(
             _subset_by_indices(predictions, indices),
             _subset_by_indices(labels, indices),

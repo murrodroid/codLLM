@@ -440,10 +440,12 @@ def run_end_of_training_uncertainty(
 
 
 def _resolve_device_from_model(model: Any) -> str:
-    """Return a device string suitable for `tokenizer(...).to(device)`."""
+    """Return a device string suitable for `tokenizer(...).to(device)`.
+
+    Falls back to CPU when the model has no parameters (StopIteration) or no
+    ``parameters`` attribute at all (AttributeError, e.g. test stubs).
+    """
     try:
         return str(next(model.parameters()).device)
-    except StopIteration:
-        return "cpu"
-    except Exception:
+    except (StopIteration, AttributeError):
         return "cpu"

@@ -471,6 +471,32 @@ class TestPerSourceMetrics:
         )
         assert "source_weird_source_name_accuracy" in result
 
+    def test_default_excludes_historic_strings_en_2024(self) -> None:
+        """historic_strings_en_2024 is masterlist reference text, not archival data."""
+        result = _per_source_metrics(
+            [{"A"}, {"B"}, {"C"}],
+            [{"A"}, {"B"}, {"C"}],
+            [True, True, True],
+            ["copenhagen", "historic_strings_en_2024", "amsterdam"],
+            multi_label=False,
+        )
+        assert "source_copenhagen_accuracy" in result
+        assert "source_amsterdam_accuracy" in result
+        assert "source_historic_strings_en_2024_accuracy" not in result
+        assert "source_historic_strings_en_2024_count" not in result
+
+    def test_excluded_sources_override(self) -> None:
+        """Caller can override the excluded set when needed."""
+        result = _per_source_metrics(
+            [{"A"}],
+            [{"A"}],
+            [True],
+            ["copenhagen"],
+            multi_label=False,
+            excluded_sources=frozenset({"copenhagen"}),
+        )
+        assert result == {}
+
 
 def test_filter_metrics_for_logging_passes_per_source_and_hierarchy_keys() -> None:
     """Standard mode must allow per-source and hierarchy metrics through."""

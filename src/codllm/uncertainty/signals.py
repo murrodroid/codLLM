@@ -40,14 +40,21 @@ class UncertaintySignals:
         }
 
 
+# Sentinel values for generations that produce zero usable tokens (immediate EOS,
+# pad-only output, etc.). 0.0 across the board would have ranked these AS THE
+# MOST CONFIDENT outputs on RC curves (since 0 > any typical -2 to -3 logprob),
+# poisoning the high-coverage buckets. -1e9 / +1e9 keep them at the minimum
+# confidence end after orientation while remaining JSON-safe (no inf/NaN).
+_EMPTY_LOGPROB_SENTINEL = -1e9
+_EMPTY_ENTROPY_SENTINEL = 1e9
 _EMPTY_SIGNALS = UncertaintySignals(
     prediction="",
     n_tokens=0,
-    sum_logprob=0.0,
-    mean_logprob=0.0,
-    min_logprob=0.0,
-    mean_entropy=0.0,
-    first_token_entropy=0.0,
+    sum_logprob=_EMPTY_LOGPROB_SENTINEL,
+    mean_logprob=_EMPTY_LOGPROB_SENTINEL,
+    min_logprob=_EMPTY_LOGPROB_SENTINEL,
+    mean_entropy=_EMPTY_ENTROPY_SENTINEL,
+    first_token_entropy=_EMPTY_ENTROPY_SENTINEL,
 )
 
 
@@ -90,11 +97,11 @@ def _aggregate_signals(
         return UncertaintySignals(
             prediction=decoded,
             n_tokens=0,
-            sum_logprob=0.0,
-            mean_logprob=0.0,
-            min_logprob=0.0,
-            mean_entropy=0.0,
-            first_token_entropy=0.0,
+            sum_logprob=_EMPTY_LOGPROB_SENTINEL,
+            mean_logprob=_EMPTY_LOGPROB_SENTINEL,
+            min_logprob=_EMPTY_LOGPROB_SENTINEL,
+            mean_entropy=_EMPTY_ENTROPY_SENTINEL,
+            first_token_entropy=_EMPTY_ENTROPY_SENTINEL,
         )
     return UncertaintySignals(
         prediction=decoded,

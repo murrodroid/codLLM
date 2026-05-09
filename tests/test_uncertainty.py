@@ -301,6 +301,89 @@ def test_uncertainty_signal_direction_table_covers_all_signals() -> None:
         assert direction in (-1, 1)
 
 
+class TestEmptyGenerationSentinels:
+    """Empty-generation rows must rank at MIN confidence on every RC curve."""
+
+    def test_empty_signals_rank_below_legitimate_predictions(self) -> None:
+        """Sentinel logprob/-entropy keep no-output rows out of high-coverage buckets."""
+        from codllm.uncertainty.signals import (
+            _EMPTY_ENTROPY_SENTINEL,
+            _EMPTY_LOGPROB_SENTINEL,
+            _aggregate_signals,
+        )
+
+        empty = _aggregate_signals(decoded="", token_logprobs=[], token_entropies=[])
+        assert empty.n_tokens == 0
+        assert empty.mean_logprob == _EMPTY_LOGPROB_SENTINEL
+        assert empty.first_token_entropy == _EMPTY_ENTROPY_SENTINEL
+
+        # Mix one empty-generation row in with three legit predictions and
+        # verify it sits at the BOTTOM of the confidence-sorted RC curve at
+        # 75% coverage (so we drop it before any real prediction).
+        scores = [
+            -2.0,  # legit, mid confidence
+            -0.5,  # legit, high confidence
+            empty.mean_logprob,  # sentinel
+            -3.0,  # legit, low confidence
+        ]
+        matches = [True, True, False, True]
+        points = compute_rc_curve_by_coverage(
+            scores,
+            matches,
+            metric_fn=accuracy_metric,
+            direction=1,  # logprob: higher is more confident
+            coverages=(0.75,),
+        )
+        assert points[0].coverage == 0.75
+        assert points[0].n_kept == 3
+        # The 3 kept rows are the three legit predictions (all True),
+        # not the empty-generation False -> accuracy must be 1.0, not 2/3.
+        assert points[0].metric_value == 1.0
+
+    def test_empty_signals_are_json_safe(self) -> None:
+        """Sentinels must be finite for downstream json.dumps writers."""
+        import math
+
+        from codllm.uncertainty.signals import (
+            _EMPTY_ENTROPY_SENTINEL,
+            _EMPTY_LOGPROB_SENTINEL,
+        )
+
+        for value in (_EMPTY_LOGPROB_SENTINEL, _EMPTY_ENTROPY_SENTINEL):
+            assert math.isfinite(value)
+
+
+class TestLoadBestModelAtEndGuard:
+    """load_best_model_at_end with a multi-label-only metric must reject single-CoD."""
+
+    def test_rejects_sample_f1_with_single_label(self) -> None:
+        from codllm.config import Config
+        from codllm.training.arguments import build_training_args
+
+        cfg = Config(
+            max_label_count=1,
+            load_best_model_at_end=True,
+            save_strategy_best_metric="sample_f1",
+            eval_strategy="epoch",
+        )
+        with pytest.raises(ValueError, match="max_label_count > 1"):
+            build_training_args(cfg=cfg, has_eval=True)
+
+    def test_accepts_multi_label_pairing(self) -> None:
+        from codllm.config import Config
+        from codllm.training.arguments import build_training_args
+
+        cfg = Config(
+            max_label_count=3,
+            load_best_model_at_end=True,
+            save_strategy_best_metric="sample_f1",
+            eval_strategy="epoch",
+        )
+        args = build_training_args(cfg=cfg, has_eval=True)
+        assert args.load_best_model_at_end is True
+        assert args.metric_for_best_model == "sample_f1"
+
+
 # ---------------------------------------------------------------------------
 # Temperature-scaling tests
 # ---------------------------------------------------------------------------

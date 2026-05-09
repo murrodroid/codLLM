@@ -124,6 +124,15 @@ def build_training_args(
                 "load_best_model_at_end=True requires validation data and "
                 "eval_strategy set to 'steps' or 'epoch'."
             )
+        if (
+            _metric_requires_multi_label(cfg.save_strategy_best_metric)
+            and cfg.max_label_count <= 1
+        ):
+            raise ValueError(
+                "load_best_model_at_end=True with save_strategy_best_metric "
+                f"'{cfg.save_strategy_best_metric}' requires max_label_count > 1; "
+                "this metric is only emitted for multi-label runs."
+            )
         training_kwargs["load_best_model_at_end"] = True
         training_kwargs.setdefault(
             "metric_for_best_model", cfg.save_strategy_best_metric
