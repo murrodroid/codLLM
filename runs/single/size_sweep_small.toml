@@ -51,7 +51,7 @@ CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600
 
 # Balance + perturbation policy from the small-model baseline.
 CODLLM_BALANCE_STRATEGY = "floor"
-CODLLM_BALANCE_FLOOR = 25
+CODLLM_BALANCE_FLOOR = 50
 CODLLM_BALANCE_FLOOR_DECAY = 0.0
 CODLLM_BALANCE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
 CODLLM_BASE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
