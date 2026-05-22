@@ -790,6 +790,19 @@ def log_wandb_run_metadata(
             "unseen_macro_f1",
             "seen_accuracy",
             "unseen_accuracy",
+            "chapter_block_accuracy",
+            "chapter_block_macro_f1",
+            "cross_source_label_accuracy",
+            "cross_source_label_macro_f1",
+            "cross_source_label_recall",
+            "cross_source_label_chapter_block_accuracy",
+            "cross_source_label_chapter_block_macro_f1",
+            "same_source_label_accuracy",
+            "same_source_label_macro_f1",
+            "same_source_label_recall",
+            "unseen_label_accuracy",
+            "unseen_label_macro_f1",
+            "unseen_label_recall",
         ]:
             wandb.define_metric(f"{prefix}/{metric_name}", summary="max")
         for metric_name in [

@@ -98,7 +98,7 @@ class Config:
     save_steps: int = 5000
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
-    save_strategy_best_metric: SaveStrategyBestMetric = "macro_f1"
+    save_strategy_best_metric: SaveStrategyBestMetric = "chapter_block_macro_f1"
     model_task: ModelTask = "seq2seq"
     lr_scheduler_type: LRSchedulerType = "cosine"
     verbose: bool = False

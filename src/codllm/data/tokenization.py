@@ -10,7 +10,11 @@ from codllm.data.preprocess import build_preprocess_fn
 class TokenizedSeq2SeqDataset(Dataset):
     """Simple torch dataset wrapper for tokenized seq2seq features."""
 
-    def __init__(self, features: dict[str, list[Any]]) -> None:
+    def __init__(
+        self,
+        features: dict[str, list[Any]],
+        metric_source_ids: list[str] | None = None,
+    ) -> None:
         if not features:
             raise ValueError("Tokenized features must not be empty.")
         lengths = {len(values) for values in features.values()}
@@ -18,6 +22,9 @@ class TokenizedSeq2SeqDataset(Dataset):
             raise ValueError("Tokenized feature lengths are inconsistent.")
         self.features = features
         self.length = lengths.pop()
+        if metric_source_ids is not None and len(metric_source_ids) != self.length:
+            raise ValueError("Metric source-id length must match tokenized features.")
+        self.metric_source_ids = metric_source_ids
 
     def __len__(self) -> int:
         """Return number of rows."""
@@ -60,7 +67,10 @@ def _tokenize_dataframe(
         truncation=True,
     )
     model_inputs["labels"] = labels["input_ids"]
-    return TokenizedSeq2SeqDataset(model_inputs)
+    metric_source_ids = None
+    if "source_id" in dataframe.columns:
+        metric_source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
+    return TokenizedSeq2SeqDataset(model_inputs, metric_source_ids=metric_source_ids)
 
 
 def prepare_training_dataset(
@@ -136,7 +146,10 @@ def _tokenize_dataframe_for_sequence_classification(
         truncation=True,
     )
     model_inputs["labels"] = [int(label2id[label]) for label in labels]
-    return TokenizedSeq2SeqDataset(model_inputs)
+    metric_source_ids = None
+    if "source_id" in dataframe.columns:
+        metric_source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
+    return TokenizedSeq2SeqDataset(model_inputs, metric_source_ids=metric_source_ids)
 
 
 def prepare_sequence_classification_dataset(
