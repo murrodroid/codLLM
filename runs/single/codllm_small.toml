@@ -1,9 +1,10 @@
 base = "../base/h100-small.toml"
-name = "base_small"
+name = "codllm_small"
 description = "simple run to check baseline model performance"
 force_reprocess = false
 
 [env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
 CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 80
