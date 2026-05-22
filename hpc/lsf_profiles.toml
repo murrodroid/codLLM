@@ -9,6 +9,29 @@ job_name_prefix = "codllm"
 storage_folder = "/work3/$USER"
 modules = ["cuda/12.2"]
 
+[h100-20h]
+queue = "gpuh100"
+wall_time = "20:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
+
+[h100-16h]
+queue = "gpuh100"
+wall_time = "16:00"
+cores = 17
+memory = "4GB"
+gpu = "num=1:mode=exclusive_process"
+email = "s234805@dtu.dk"
+job_name_prefix = "codllm"
+storage_folder = "/work3/$USER"
+modules = ["cuda/12.2"]
+
 [h100-10h]
 queue = "gpuh100"
 wall_time = "10:00"
