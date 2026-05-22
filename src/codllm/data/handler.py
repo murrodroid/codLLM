@@ -824,6 +824,8 @@ class DataHandler:
                 label_column=label_column,
                 floor=self.cfg.balance_floor,
                 decay=self.cfg.balance_floor_decay,
+                singlecod_only=self.cfg.balance_floor_singlecod_only,
+                label_separator=self.cfg.label_separator,
             )
             perturbation_fns = _resolve_perturbation_functions(
                 self.cfg.balance_perturbations

@@ -829,6 +829,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             raise ValueError("CODLLM_BALANCE_FLOOR_DECAY must be between 0 and 1.")
         cfg.balance_floor_decay = balance_floor_decay
 
+    balance_floor_singlecod_only = _parse_env_bool(
+        "CODLLM_BALANCE_FLOOR_SINGLECOD_ONLY"
+    )
+    if balance_floor_singlecod_only is not None:
+        cfg.balance_floor_singlecod_only = balance_floor_singlecod_only
+
     base_perturbation_rate = _parse_env_float("CODLLM_BASE_PERTURBATION_RATE")
     legacy_balance_base_perturbation_rate = (
         _parse_env_float("CODLLM_BALANCE_BASE_PERTURBATION_RATE")
