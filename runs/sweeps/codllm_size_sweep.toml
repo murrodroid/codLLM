@@ -44,4 +44,15 @@ CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS = '[", ", " & ", " ", "; ", "
 CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.15
 
 [sweep]
-CODLLM_HF_MODEL = ["google/flan-t5-small","google/flan-t5-base","google/flan-t5-large"]
+CODLLM_HF_MODEL = [
+  "google/flan-t5-small",
+  "google/flan-t5-base",
+  "google/flan-t5-large",
+]
+CODLLM_HOLD_OUT_DATASET = [
+  "belgium_1920_1930",
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "ipswich_1871_1911",
+  "madrid_1905_1927",
+]
