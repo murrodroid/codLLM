@@ -16,10 +16,13 @@ CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 80
 
-# Effective batch size 256 = 32 * 8; matches small/base/large for fair comparison.
-CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 32
-CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 32
-CODLLM_GRADIENT_ACCUMULATION_STEPS = 8
+# Effective batch size 256 = 16 * 16; per-device dropped from 32 after XL
+# OOMed at step 26 of pretraining with 79.16 GB used of 80 GB H100 capacity.
+# Halving per-device batch halves activation memory; doubled grad_accum
+# preserves effective batch 256 to keep size comparisons fair.
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 16
+CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 16
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 16
 
 CODLLM_MAX_LABEL_COUNT = 3
 CODLLM_MULTICOD_SHUFFLE_LABELS = 1
