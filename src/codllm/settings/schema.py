@@ -94,6 +94,7 @@ class Config:
     logging_steps: int = 25
     eval_steps: int = 200
     save_steps: int = 5000
+    save_total_limit: int | None = None
     eval_strategy: EvalStrategy = "epoch"
     save_strategy: SaveStrategy = "epoch"
     save_strategy_best_metric: SaveStrategyBestMetric = "sample_f1"

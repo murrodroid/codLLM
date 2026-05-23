@@ -191,6 +191,7 @@ def run_training_stage(
             TimeBudgetCallback(
                 max_runtime_seconds=float(cfg.max_runtime_seconds),
                 safety_margin_seconds=float(cfg.runtime_safety_margin_seconds),
+                output_dir=args.output_dir,
             )
         )
 

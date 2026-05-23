@@ -1,6 +1,7 @@
 import logging
 import signal
 import time
+from pathlib import Path
 from typing import Any, Mapping
 
 from transformers import (
@@ -235,12 +236,19 @@ class TimeBudgetCallback(TrainerCallback):
     when that budget is exhausted we set ``should_save`` and
     ``should_training_stop`` so the trainer writes a clean checkpoint and
     exits before the scheduler sends SIGKILL.
+
+    Also drops a ``.resume_needed`` marker file at ``output_dir`` when the
+    budget triggers, so downstream automation can distinguish a graceful
+    "this run wants more wall time" exit from an actual crash.
     """
+
+    RESUME_MARKER_FILENAME = ".resume_needed"
 
     def __init__(
         self,
         max_runtime_seconds: float,
         safety_margin_seconds: float = 300.0,
+        output_dir: str | None = None,
     ) -> None:
         if max_runtime_seconds < 0:
             raise ValueError("max_runtime_seconds must be non-negative.")
@@ -248,6 +256,7 @@ class TimeBudgetCallback(TrainerCallback):
             raise ValueError("safety_margin_seconds must be non-negative.")
         self.max_runtime_seconds = float(max_runtime_seconds)
         self.safety_margin_seconds = float(safety_margin_seconds)
+        self.output_dir = output_dir
         self._start_time: float | None = None
         self._stopping = False
 
@@ -259,9 +268,12 @@ class TimeBudgetCallback(TrainerCallback):
         **kwargs: Any,
     ) -> TrainerControl:
         """Record the training start timestamp."""
-        del args, state, kwargs
+        del state, kwargs
         self._start_time = time.monotonic()
         self._stopping = False
+        # Use the trainer's output_dir if we weren't given one at construction.
+        if self.output_dir is None and args is not None:
+            self.output_dir = getattr(args, "output_dir", None)
         return control
 
     def remaining_seconds(self) -> float:
@@ -271,6 +283,23 @@ class TimeBudgetCallback(TrainerCallback):
         elapsed = time.monotonic() - self._start_time
         deadline = self.max_runtime_seconds - self.safety_margin_seconds
         return float(deadline - elapsed)
+
+    def _write_resume_marker(self) -> None:
+        """Drop a marker file so resubmit logic can distinguish graceful exit."""
+        if not self.output_dir:
+            return
+        try:
+            marker = Path(self.output_dir) / self.RESUME_MARKER_FILENAME
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(
+                f"graceful_exit_at={time.time():.0f}\n"
+                f"max_runtime_seconds={self.max_runtime_seconds:.0f}\n"
+                f"safety_margin_seconds={self.safety_margin_seconds:.0f}\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            # Marker is a convenience for automation; never fail training over it.
+            return
 
     def on_step_end(
         self,
@@ -293,6 +322,7 @@ class TimeBudgetCallback(TrainerCallback):
             control.should_save = True
             control.should_training_stop = True
             self._stopping = True
+            self._write_resume_marker()
         return control
 
 

@@ -96,6 +96,7 @@ def build_training_args(
         "include_for_metrics": ["inputs"] if metric_inputs_enabled else [],
         "save_strategy": cfg.save_strategy,
         "save_steps": cfg.save_steps,
+        "save_total_limit": cfg.save_total_limit,
         "fp16": fp16,
         "bf16": bf16,
         "report_to": report_to,

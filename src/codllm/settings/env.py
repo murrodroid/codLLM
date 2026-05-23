@@ -835,6 +835,17 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if balance_floor_singlecod_only is not None:
         cfg.balance_floor_singlecod_only = balance_floor_singlecod_only
 
+    save_total_limit_raw = os.getenv("CODLLM_SAVE_TOTAL_LIMIT")
+    if save_total_limit_raw is not None and save_total_limit_raw.strip() != "":
+        try:
+            cfg.save_total_limit = int(save_total_limit_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "CODLLM_SAVE_TOTAL_LIMIT must be an integer."
+            ) from exc
+        if cfg.save_total_limit is not None and cfg.save_total_limit < 1:
+            raise ValueError("CODLLM_SAVE_TOTAL_LIMIT must be at least 1.")
+
     base_perturbation_rate = _parse_env_float("CODLLM_BASE_PERTURBATION_RATE")
     legacy_balance_base_perturbation_rate = (
         _parse_env_float("CODLLM_BALANCE_BASE_PERTURBATION_RATE")
