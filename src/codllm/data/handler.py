@@ -248,6 +248,9 @@ class DataHandler:
                 "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
                 "balance_floor": self.cfg.balance_floor,
                 "balance_floor_decay": self.cfg.balance_floor_decay,
+                "balance_floor_singlecod_only": (
+                    self.cfg.balance_floor_singlecod_only
+                ),
                 "base_perturbations": list(self.cfg.base_perturbations),
                 "base_perturbation_mean": self.cfg.base_perturbation_mean,
                 "base_perturbation_variance": self.cfg.base_perturbation_variance,
