@@ -203,14 +203,17 @@ def collect_val_logits(
         if result is None:
             continue
         logits, gold_ids = result
-        logit_chunks.append(logits)
-        gold_chunks.append(gold_ids)
+        # Accumulate on CPU: holding every record's full per-token logit
+        # vectors (vocab_size wide) on the GPU OOMs on large val sets. A
+        # single temperature scalar is fit from a capped sample anyway.
+        logit_chunks.append(logits.detach().to("cpu"))
+        gold_chunks.append(gold_ids.detach().to("cpu"))
         n_records_used += 1
 
     if not logit_chunks:
         return (
-            torch.zeros((0,), device=device),
-            torch.zeros((0,), device=device, dtype=torch.long),
+            torch.zeros((0,)),
+            torch.zeros((0,), dtype=torch.long),
             0,
         )
 
@@ -266,7 +269,14 @@ def fit_temperature_on_val(
     if logits.shape[0] == 0:
         return None
 
-    temperature, nll_before, nll_after = fit_temperature(logits, gold_ids)
+    # Logits accumulate on CPU; move the (capped) tensor to the fit device once.
+    # Falls back to CPU if the GPU can't host it alongside the model.
+    try:
+        fit_logits = logits.to(device)
+        fit_gold = gold_ids.to(device)
+    except (RuntimeError, torch.cuda.OutOfMemoryError):
+        fit_logits, fit_gold = logits, gold_ids
+    temperature, nll_before, nll_after = fit_temperature(fit_logits, fit_gold)
     return TemperatureFit(
         temperature=temperature,
         nll_before=nll_before,
