@@ -33,15 +33,19 @@ CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR = ", "
 # records are preserved.
 CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
 
-# Step-cadence saves so a 24h kill loses at most one save_steps interval.
-CODLLM_SAVE_STRATEGY = "steps"
-CODLLM_SAVE_STEPS = 2000
+# Epoch-cadence eval + save. Best checkpoint and early stopping track
+# macro_f1 (per-class, rare-class-sensitive) rather than sample_f1 — sample_f1
+# saturates early on common codes while macro_f1 keeps improving as rare codes
+# are learned, which is what RQ4 (minority classes) actually cares about.
+# Early stopping fires after 5 epochs with <0.001 macro_f1 gain. The
+# TimeBudgetCallback still forces a mid-epoch save before the 24h wall, so
+# epoch-cadence saving doesn't risk losing a whole epoch to SIGKILL.
+CODLLM_SAVE_STRATEGY = "epoch"
 CODLLM_SAVE_TOTAL_LIMIT = 3
-CODLLM_EVAL_STRATEGY = "steps"
-CODLLM_EVAL_STEPS = 2000
-CODLLM_SAVE_STRATEGY_BEST_METRIC = "sample_f1"
+CODLLM_EVAL_STRATEGY = "epoch"
+CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
 CODLLM_LOAD_BEST_MODEL_AT_END = 1
-CODLLM_EARLY_STOPPING_PATIENCE = 8
+CODLLM_EARLY_STOPPING_PATIENCE = 5
 CODLLM_EARLY_STOPPING_THRESHOLD = 0.001
 
 # HPC resilience (24h slot, save+stop ~10min before SIGKILL).
