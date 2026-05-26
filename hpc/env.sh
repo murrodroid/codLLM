@@ -23,6 +23,12 @@ export WANDB_DIR="${WANDB_DIR:-$RUN_STORAGE_DIR/cache/wandb}"
 export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-$WANDB_DIR/cache}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_STORAGE_DIR/cache/xdg}"
 
+# Reduce CUDA allocator fragmentation. flan-t5-xl sits near the 80 GB H100
+# ceiling at the pretrain->finetune transfer; expandable_segments lets the
+# allocator reclaim reserved-but-unallocated blocks instead of OOMing on a
+# tiny allocation amid fragmentation.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
 mkdir -p \
   "$RUN_STORAGE_DIR" \
   "$UV_CACHE_DIR" \

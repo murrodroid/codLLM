@@ -119,6 +119,10 @@ def _train_with_pretraining(
         id2label=id2label,
     )
     release_stage_trainer_memory(cfg=cfg, trainer=pretrain_trainer)
+    # Drop the caller's own reference so gc inside release can actually collect
+    # the pretraining trainer (otherwise it stays alive until this function
+    # returns, pinning its CUDA allocations through the finetune stage).
+    pretrain_trainer = None
     trainer = run_training_stage(
         cfg=cfg,
         stage=finetune_stage,

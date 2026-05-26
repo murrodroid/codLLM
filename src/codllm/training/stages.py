@@ -100,11 +100,22 @@ def should_apply_eval_interval_callback(
 
 
 def release_stage_trainer_memory(cfg: Config, trainer: Any) -> None:
-    """Release trainer-owned state before starting the next stage."""
+    """Release trainer-owned state before starting the next stage.
+
+    Frees the stage's optimizer, scheduler, and -- crucially -- the model's
+    gradient buffers. Without zeroing grads, the previous stage's per-parameter
+    gradient tensors (e.g. ~6 GB for flan-t5-xl) stay resident on the GPU and
+    stack on top of the next stage's fresh optimizer + gradients, OOMing the
+    pretrain->finetune transfer on large models. set_to_none=True actually
+    releases the tensors rather than zeroing them in place.
+    """
     if hasattr(trainer, "optimizer"):
         trainer.optimizer = None
     if hasattr(trainer, "lr_scheduler"):
         trainer.lr_scheduler = None
+    model = getattr(trainer, "model", None)
+    if model is not None and hasattr(model, "zero_grad"):
+        model.zero_grad(set_to_none=True)
     del trainer
     gc.collect()
     if cfg.uses_cuda():
