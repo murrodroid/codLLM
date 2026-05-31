@@ -37,15 +37,16 @@ CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
 # macro_f1 (per-class, rare-class-sensitive) rather than sample_f1 — sample_f1
 # saturates early on common codes while macro_f1 keeps improving as rare codes
 # are learned, which is what RQ4 (minority classes) actually cares about.
-# Early stopping fires after 5 epochs with <0.001 macro_f1 gain. The
-# TimeBudgetCallback still forces a mid-epoch save before the 24h wall, so
-# epoch-cadence saving doesn't risk losing a whole epoch to SIGKILL.
+# Early stopping fires after 10 consecutive epochs that fail to STRICTLY
+# beat the running-best macro_f1 (threshold=0 -> any improvement counts).
+# The TimeBudgetCallback still forces a mid-epoch save before the 24h wall,
+# so epoch-cadence saving doesn't risk losing a whole epoch to SIGKILL.
 CODLLM_SAVE_STRATEGY = "epoch"
 CODLLM_SAVE_TOTAL_LIMIT = 3
 CODLLM_EVAL_STRATEGY = "epoch"
 CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
 CODLLM_LOAD_BEST_MODEL_AT_END = 1
-CODLLM_EARLY_STOPPING_PATIENCE = 5
+CODLLM_EARLY_STOPPING_PATIENCE = 10
 CODLLM_EARLY_STOPPING_THRESHOLD = 0.0
 
 # HPC resilience (24h slot, save+stop ~10min before SIGKILL).
