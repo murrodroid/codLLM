@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
-from codllm.settings.options import SUPPORTED_TRAINING_INPUTS
 from codllm.settings.types import TrainingInput
 
 if TYPE_CHECKING:
@@ -71,8 +70,8 @@ def default_data_sources() -> list[DataSourceConfig]:
 
 
 def default_training_input() -> list[TrainingInput]:
-    """Return the default training input field order."""
-    return list(SUPPORTED_TRAINING_INPUTS)
+    """Return the default training input fields."""
+    return ["cod"]
 
 
 def default_input_field_prefixes() -> dict[TrainingInput, str]:
@@ -82,6 +81,16 @@ def default_input_field_prefixes() -> dict[TrainingInput, str]:
         "age": "age: ",
         "sex": "sex: ",
     }
+
+
+def default_multicod_synthetic_text_separators() -> list[str]:
+    """Return separator variants for synthetic multi-COD text."""
+    return [", ", " & ", " ", "; ", " / "]
+
+
+def default_pretrain_multicod_synthetic_text_separators() -> list[str]:
+    """Return separator variants for synthetic pretraining multi-COD text."""
+    return [", ", " & ", " ", "; ", " / "]
 
 
 def default_pretrain_perturbations() -> list[str]:

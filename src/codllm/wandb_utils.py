@@ -511,6 +511,7 @@ def _runtime_metadata() -> dict[str, Any]:
         "LSB_QUEUE",
         "LSB_HOSTS",
         "CUDA_VISIBLE_DEVICES",
+        "CODLLM_EXPERIMENT_SWEEP_ID",
         "WANDB_SWEEP_ID",
         "WANDB_RUN_GROUP",
         "HF_HOME",
@@ -647,6 +648,9 @@ def _standard_wandb_config_payload(
             "multicod.shuffle_labels": cfg.multicod_shuffle_labels,
             "multicod.synthetic_ratio": cfg.multicod_synthetic_ratio,
             "multicod.synthetic_source_scope": cfg.multicod_synthetic_source_scope,
+            "multicod.synthetic_text_separators": list(
+                cfg.multicod_synthetic_text_separators
+            ),
             "balance.floor": cfg.balance_floor,
             "balance.floor_decay": cfg.balance_floor_decay,
             "balance.perturbations": list(cfg.balance_perturbations),
@@ -659,6 +663,9 @@ def _standard_wandb_config_payload(
             "pretraining.learning_rate": cfg.pretrain_learning_rate,
             "pretraining.warmup_ratio": cfg.pretrain_warmup_ratio,
             "pretraining.multicod_synthetic_ratio": cfg.pretrain_multicod_synthetic_ratio,
+            "pretraining.multicod_synthetic_text_separators": list(
+                cfg.pretrain_multicod_synthetic_text_separators
+            ),
             "seed.global": cfg.seed,
             "seed.data": cfg.data_seed,
             "seed.resolved_data": cfg.resolved_data_seed(),
@@ -672,6 +679,7 @@ def _standard_wandb_config_payload(
             for key in (
                 "WANDB_SWEEP_ID",
                 "WANDB_RUN_GROUP",
+                "CODLLM_EXPERIMENT_SWEEP_ID",
                 "LSB_JOBID",
                 "LSB_JOBINDEX",
             ):
@@ -824,6 +832,19 @@ def log_wandb_run_metadata(
             "unseen_macro_f1",
             "seen_accuracy",
             "unseen_accuracy",
+            "chapter_block_accuracy",
+            "chapter_block_macro_f1",
+            "cross_source_label_accuracy",
+            "cross_source_label_macro_f1",
+            "cross_source_label_recall",
+            "cross_source_label_chapter_block_accuracy",
+            "cross_source_label_chapter_block_macro_f1",
+            "same_source_label_accuracy",
+            "same_source_label_macro_f1",
+            "same_source_label_recall",
+            "unseen_label_accuracy",
+            "unseen_label_macro_f1",
+            "unseen_label_recall",
         ]:
             wandb.define_metric(f"{prefix}/{metric_name}", summary="max")
         for metric_name in [

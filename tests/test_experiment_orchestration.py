@@ -82,8 +82,10 @@ CODLLM_HF_MODEL = "google/flan-t5-small"
     assert "export CODLLM_WANDB_RUN_NAME=run" in content
 
 
-def test_sweep_env_file_sets_wandb_sweep_metadata(tmp_path: Path) -> None:
-    """Generated TOML sweep runs should populate W&B native sweep fields."""
+def test_sweep_env_file_sets_group_metadata_without_native_wandb_sweep(
+    tmp_path: Path,
+) -> None:
+    """Generated TOML sweep runs should group W&B runs without requiring a W&B sweep."""
     spec_path = tmp_path / "run.toml"
     spec_path.write_text(
         """
@@ -97,13 +99,16 @@ CODLLM_LR = [1e-5, 2e-5]
     spec = load_experiment_spec(spec_path)
     content = format_env_file(spec.expanded_runs()[0], spec)
 
-    assert "export WANDB_SWEEP_ID=codllm-run" in content
+    assert "WANDB_SWEEP_ID" not in content
     assert "export WANDB_RUN_GROUP=run" in content
+    assert "export CODLLM_EXPERIMENT_SWEEP_ID=codllm-run" in content
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=1" in content
 
 
-def test_sweep_env_file_preserves_explicit_wandb_sweep_id(tmp_path: Path) -> None:
-    """Explicit W&B sweep env values should override generated defaults."""
+def test_sweep_env_file_preserves_explicit_native_wandb_sweep_id(
+    tmp_path: Path,
+) -> None:
+    """Explicit W&B sweep env values should be preserved for real W&B sweeps."""
     spec_path = tmp_path / "run.toml"
     spec_path.write_text(
         """
@@ -123,6 +128,7 @@ CODLLM_LR = [1e-5]
 
     assert "export WANDB_SWEEP_ID=external-sweep" in content
     assert "export WANDB_RUN_GROUP=external-group" in content
+    assert "export CODLLM_EXPERIMENT_SWEEP_ID=codllm-run" in content
 
 
 def test_prepare_lsf_submission_writes_script_env_files_and_manifest(
@@ -172,7 +178,7 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
 
     assert '#BSUB -J "codllm-sweep[1-2]"' in script
     assert "module load cuda/12.2" in script
-    assert 'unset VIRTUAL_ENV' in script
+    assert "unset VIRTUAL_ENV" in script
     assert "uv run --no-dev python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest

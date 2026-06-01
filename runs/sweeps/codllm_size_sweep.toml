@@ -1,0 +1,58 @@
+base = "../base/h100-small.toml"
+name = "codllm_size_sweep"
+description = "simple run to check baseline model performance"
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 1.0
+CODLLM_LR = 2.5e-5
+CODLLM_NUM_TRAIN_EPOCHS = 16
+CODLLM_SAVE_STRATEGY = "best"
+
+CODLLM_TRAINING_INPUT = "cod"
+
+CODLLM_MAX_LABEL_COUNT = 5
+CODLLM_MULTICOD_SHUFFLE_LABELS = 1
+CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS = '[", ", " & ", " ", "; ", " / "]'
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.2
+
+CODLLM_BALANCE_STRATEGY = "floor"
+CODLLM_BALANCE_FLOOR = 50
+CODLLM_BALANCE_FLOOR_DECAY = 0.0
+
+CODLLM_BASE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
+CODLLM_BASE_PERTURBATION_RATE = 1.0
+CODLLM_BASE_PERTURBATION_MEAN = 0.08
+CODLLM_BASE_PERTURBATION_VARIANCE = 0.06
+
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_PRETRAIN_WARMUP_RATIO = 0.5
+CODLLM_PRETRAIN_LR_SCHEDULER_TYPE = "constant"
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 4
+CODLLM_PRETRAIN_UPSAMPLE_ENABLED = true
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 8
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
+  "swap_adjacent_chars",
+  "delete_random_char",
+  "accent_random_vowel",
+  "qwerty_misspell",
+]
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 6
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS = '[", ", " & ", " ", "; ", " / "]'
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.15
+
+[sweep]
+CODLLM_HF_MODEL = [
+  "google/flan-t5-small",
+  "google/flan-t5-base",
+  "google/flan-t5-large",
+]
+CODLLM_HOLD_OUT_DATASET = [
+  "belgium_1920_1930",
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "ipswich_1871_1911",
+  "madrid_1905_1927",
+]

@@ -124,6 +124,46 @@ def _single_label_values(dataframe: pd.DataFrame, cfg: Config) -> pd.Series:
     return labels.where(labels.ne("") & label_lengths.eq(1), None).astype(object)
 
 
+def _label_counts(dataframe: pd.DataFrame, cfg: Config) -> pd.Series:
+    """Return per-row label cardinality from processed labels."""
+    if "y_codes" in dataframe.columns:
+        return dataframe["y_codes"].map(
+            lambda raw_codes: len(_coerce_row_codes(raw_codes, cfg.label_separator))
+        )
+
+    labels = dataframe[cfg.dataset_label_column].fillna("").astype(str).str.strip()
+    if cfg.label_separator:
+        return labels.map(
+            lambda value: len(
+                [part for part in value.split(cfg.label_separator) if part.strip()]
+            )
+        )
+    return labels.map(lambda value: 1 if value else 0)
+
+
+def _multicod_label_count_distribution(
+    dataframe: pd.DataFrame,
+    cfg: Config,
+) -> dict[int, int]:
+    """Return the empirical multi-COD label-count distribution."""
+    label_counts = _label_counts(dataframe, cfg)
+    distribution = label_counts[
+        label_counts.between(2, cfg.max_label_count, inclusive="both")
+    ].value_counts()
+    return {int(label_count): int(count) for label_count, count in distribution.items()}
+
+
+def _resolve_text_separators(
+    text_separators: list[str] | None,
+) -> list[str]:
+    """Return candidate text separators for synthetic COD merging."""
+    resolved = [] if text_separators is None else list(text_separators)
+
+    if not resolved or any(separator == "" for separator in resolved):
+        raise ValueError("multicod_synthetic_text_separators must not be empty.")
+    return resolved
+
+
 def _candidate_source_values(
     dataframe: pd.DataFrame,
     column: str,
@@ -157,6 +197,7 @@ def _sample_distinct_label_positions(
     positions_by_label: dict[str, list[int]],
     available_labels: list[str],
     max_label_count: int,
+    label_count_distribution: dict[int, int],
     rng: random.Random,
 ) -> tuple[list[str], list[int]]:
     """Sample candidate row positions with distinct labels."""
@@ -164,7 +205,19 @@ def _sample_distinct_label_positions(
     if upper_label_count < 2:
         return [], []
 
-    label_count = rng.randint(2, upper_label_count)
+    eligible_counts = [
+        label_count
+        for label_count in sorted(label_count_distribution)
+        if 2 <= label_count <= upper_label_count
+    ]
+    if eligible_counts:
+        label_count = rng.choices(
+            eligible_counts,
+            weights=[label_count_distribution[count] for count in eligible_counts],
+            k=1,
+        )[0]
+    else:
+        label_count = rng.randint(2, upper_label_count)
     sampled_labels = rng.sample(available_labels, label_count)
     return sampled_labels, [
         rng.choice(positions_by_label[label]) for label in sampled_labels
@@ -177,7 +230,7 @@ def build_synthetic_multicod_rows(
     *,
     synthetic_ratio: float | None = None,
     source_scope: MultiCodSyntheticSourceScope | None = None,
-    text_separator: str | None = None,
+    text_separators: list[str] | None = None,
     synthetic_source_prefix: str = "synthetic_multicod",
     seed_offset: int = 17,
 ) -> pd.DataFrame:
@@ -188,10 +241,10 @@ def build_synthetic_multicod_rows(
     resolved_source_scope = (
         cfg.multicod_synthetic_source_scope if source_scope is None else source_scope
     )
-    resolved_text_separator = (
-        cfg.multicod_synthetic_text_separator
-        if text_separator is None
-        else text_separator
+    resolved_text_separators = _resolve_text_separators(
+        cfg.multicod_synthetic_text_separators
+        if text_separators is None
+        else text_separators
     )
 
     if dataframe.empty or cfg.max_label_count < 2 or resolved_ratio <= 0:
@@ -200,8 +253,6 @@ def build_synthetic_multicod_rows(
         raise ValueError(
             "Synthetic multi-COD examples require 'cod' in training_input so cause strings can be merged."
         )
-    if resolved_text_separator == "":
-        raise ValueError("multicod_synthetic_text_separator must not be empty.")
 
     _log_multicod_progress(f"extracting candidates from {len(dataframe)} train rows.")
     label_values = _single_label_values(dataframe, cfg)
@@ -232,6 +283,7 @@ def build_synthetic_multicod_rows(
         _log_multicod_progress("found no source groups with at least two labels.")
         return dataframe.iloc[0:0].copy()
 
+    label_count_distribution = _multicod_label_count_distribution(dataframe, cfg)
     synthetic_count = int(round(len(candidates) * resolved_ratio))
     if synthetic_count < 1:
         synthetic_count = 1
@@ -239,11 +291,16 @@ def build_synthetic_multicod_rows(
     rng = random.Random(cfg.resolved_data_seed() + seed_offset)
     group_keys = list(groups)
     group_weights = [
-        sum(len(positions_for_label) for positions_for_label in groups[group_key].values())
+        sum(
+            len(positions_for_label)
+            for positions_for_label in groups[group_key].values()
+        )
         for group_key in group_keys
     ]
     group_labels = {group_key: list(groups[group_key]) for group_key in group_keys}
-    sampled_group_keys = rng.choices(group_keys, weights=group_weights, k=synthetic_count)
+    sampled_group_keys = rng.choices(
+        group_keys, weights=group_weights, k=synthetic_count
+    )
     _log_multicod_progress(
         f"assembling {synthetic_count} synthetic rows from {len(group_keys)} groups."
     )
@@ -271,16 +328,18 @@ def build_synthetic_multicod_rows(
             positions_by_label=groups[group_key],
             available_labels=group_labels[group_key],
             max_label_count=cfg.max_label_count,
+            label_count_distribution=label_count_distribution,
             rng=rng,
         )
         if len(sampled_positions) < 2:
             continue
 
+        row_text_separator = rng.choice(resolved_text_separators)
         merged_text = _merge_cod_values(
             anchor_text=text_values[sampled_positions[0]],
             cod_values=[cod_value_list[position] for position in sampled_positions],
             cfg=cfg,
-            text_separator=resolved_text_separator,
+            text_separator=row_text_separator,
         )
         if merged_text is None:
             continue
@@ -302,8 +361,8 @@ def build_synthetic_multicod_rows(
         sampled_label_sets.append(labels)
         synthetic_source_ids.append(synthetic_source_id)
         synthetic_record_ids.append(f"{synthetic_source_id}:{idx:06d}")
-        synthetic_source_paths.append(resolved_text_separator.join(source_paths))
-        synthetic_source_id_sets.append(resolved_text_separator.join(source_ids))
+        synthetic_source_paths.append("; ".join(source_paths))
+        synthetic_source_id_sets.append("; ".join(source_ids))
 
     if not anchor_positions:
         _log_multicod_progress("no synthetic rows were assembled.")

@@ -39,4 +39,10 @@ SaveStrategyBestMetric = Literal[
     "sample_jaccard",
     "hamming_loss",
     "hamming_score",
+    "chapter_block_accuracy",
+    "chapter_block_exact_match",
+    "chapter_block_macro_f1",
+    "cross_source_label_accuracy",
+    "cross_source_label_macro_f1",
+    "cross_source_label_recall",
 ]

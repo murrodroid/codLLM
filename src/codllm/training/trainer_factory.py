@@ -22,6 +22,7 @@ from codllm.metrics import (
     build_sequence_classification_metric,
     collect_input_strings,
     collect_label_classes,
+    collect_label_source_index,
 )
 from codllm.trainer_logging import (
     EvaluateEveryNEpochsCallback,
@@ -92,6 +93,11 @@ def run_training_stage(
         collator: Any = DataCollatorWithPadding(tokenizer=tokenizer)
         train_input_strings = collect_input_strings(processed_train_ds, tokenizer)
         train_classes = None
+        train_label_sources = collect_label_source_index(
+            train_ds,
+            label_column=cfg.dataset_label_column,
+            label_separator=cfg.label_separator,
+        )
     else:
         processed_train_ds = prepare_training_dataset(
             cfg,
@@ -117,6 +123,11 @@ def run_training_stage(
             )
         collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
         train_classes = collect_label_classes(
+            train_ds,
+            label_column=cfg.dataset_label_column,
+            label_separator=cfg.label_separator,
+        )
+        train_label_sources = collect_label_source_index(
             train_ds,
             label_column=cfg.dataset_label_column,
             label_separator=cfg.label_separator,
@@ -211,6 +222,7 @@ def run_training_stage(
                 build_sequence_classification_metric(
                     id2label=id2label,
                     tokenizer=tokenizer,
+                    train_label_sources=train_label_sources or None,
                     train_input_strings=train_input_strings or None,
                     artifact_logger=metric_artifact_logger,
                     metric_mode=cfg.wandb.metric_mode,
@@ -242,6 +254,7 @@ def run_training_stage(
                     label_separator=cfg.label_separator,
                     max_label_count=cfg.max_label_count,
                     train_classes=train_classes or None,
+                    train_label_sources=train_label_sources or None,
                     train_input_strings=train_input_strings or None,
                     artifact_logger=metric_artifact_logger,
                     metric_mode=cfg.wandb.metric_mode,

@@ -480,7 +480,15 @@ def _train_preparation_rows(
         )
 
     if balance_metrics is not None:
-        for key in ("rows_before", "rows_added", "rows_after", "base_perturbed_rows"):
+        for key in (
+            "rows_before",
+            "rows_added",
+            "rows_after",
+            "upsample_eligible_rows",
+            "upsample_excluded_multicod_rows",
+            "upsample_excluded_synthetic_multicod_rows",
+            "base_perturbed_rows",
+        ):
             value = balance_metrics.get(key)
             if isinstance(value, int | float):
                 rows.append([f"balance_{key}", value])
@@ -654,7 +662,16 @@ def log_data_visualizations(
         _metrics_summary_rows(
             "balance",
             balance_metrics,
-            ["enabled", "strategy", "rows_before", "rows_added", "rows_after"],
+            [
+                "enabled",
+                "strategy",
+                "rows_before",
+                "rows_added",
+                "rows_after",
+                "upsample_eligible_rows",
+                "upsample_excluded_multicod_rows",
+                "upsample_excluded_synthetic_multicod_rows",
+            ],
         )
     )
     scalar_rows.extend(

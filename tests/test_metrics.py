@@ -8,10 +8,13 @@ from codllm.metrics import (
     _micro_precision_recall_f1,
     _multilabel_diagnostic_metrics,
     _per_source_metrics,
+    _prediction_metric_set,
     _sample_precision_recall_f1,
     _sanitize_source_key,
     build_exact_match_accuracy_metric,
+    build_sequence_classification_metric,
     collect_label_classes,
+    collect_label_source_index,
     current_metric_source_ids,
     filter_metrics_for_logging,
     reset_metric_source_ids,
@@ -81,6 +84,26 @@ def test_collect_label_classes_splits_string_and_list_values() -> None:
     )
 
     assert result == {"A00", "A01", "B00", "C00"}
+
+
+def test_collect_label_source_index_skips_non_dataset_training_sources() -> None:
+    """Source transfer metrics should use real source datasets as label support."""
+    dataset = {
+        "label": ["A00 | A01", "B00", "C00"],
+        "source_id": [
+            "dataset_one",
+            "synthetic_multicod:any_source",
+            "masterlist_pretrain",
+        ],
+    }
+
+    result = collect_label_source_index(
+        dataset,
+        label_column="label",
+        label_separator=" | ",
+    )
+
+    assert result == {"A00": {"dataset_one"}, "A01": {"dataset_one"}}
 
 
 def test_filter_metrics_for_logging_keeps_selected_run_page_metrics() -> None:
@@ -210,6 +233,19 @@ class TestMacroPrecisionRecallF1:
         assert result["macro_f1"] == 1.0
 
 
+def test_prediction_metric_set_includes_chapter_block_rollups() -> None:
+    """Chapter-block metrics should score codes after first-three-char collapse."""
+    preds = [{"A001"}, {"A009"}, {"B001"}]
+    labels = [{"A002"}, {"B001"}, {"B001"}]
+    matches = [False, False, True]
+
+    result = _prediction_metric_set(preds, labels, matches, multi_label=False)
+
+    assert result["accuracy"] == pytest.approx(1 / 3)
+    assert result["chapter_block_accuracy"] == pytest.approx(2 / 3)
+    assert result["chapter_block_macro_f1"] == pytest.approx(2 / 3)
+
+
 class _StrictDecodeTokenizer:
     """Tokenizer stub that raises on invalid token ids."""
 
@@ -311,6 +347,36 @@ def test_seen_unseen_metrics_use_input_strings_not_label_classes() -> None:
     assert metrics["seen_accuracy"] == 1.0
     assert metrics["unseen_accuracy"] == 0.0
     assert "seen_class_count" not in metrics
+
+
+def test_sequence_metric_reports_cross_source_label_transfer() -> None:
+    """Cross-source labels are labels seen in train, but not from the eval source."""
+    metric_fn = build_sequence_classification_metric(
+        id2label={0: "A001", 1: "B001", 2: "C001"},
+        train_label_sources={"A001": {"source_one"}, "B001": {"source_two"}},
+    )
+    predictions = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+        ]
+    )
+    labels = np.array([0, 1, 2])
+    token = set_metric_source_ids(["source_two", "source_two", "source_three"])
+    try:
+        metrics = metric_fn((predictions, labels))
+    finally:
+        reset_metric_source_ids(token)
+
+    assert metrics["cross_source_label_sample_count"] == 1.0
+    assert metrics["cross_source_label_true_count"] == 1.0
+    assert metrics["cross_source_label_recall"] == 1.0
+    assert metrics["cross_source_label_accuracy"] == 1.0
+    assert metrics["same_source_label_sample_count"] == 1.0
+    assert metrics["same_source_label_recall"] == 0.0
+    assert metrics["unseen_label_sample_count"] == 1.0
+    assert metrics["unseen_label_recall"] == 0.0
 
 
 def test_multilabel_metric_callback_reports_sample_and_hamming_metrics() -> None:

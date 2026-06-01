@@ -1,10 +1,12 @@
 from collections.abc import Mapping as MappingABC
 from contextvars import ContextVar, Token
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
 MetricArtifactLogger = Callable[..., None]
+
+
 _METRIC_ARTIFACT_SCOPE: ContextVar[str | None] = ContextVar(
     "codllm_metric_artifact_scope",
     default=None,
@@ -25,6 +27,10 @@ _CORE_LOGGED_METRICS = frozenset(
         "sample_jaccard",
         "micro_jaccard",
         "hamming_loss",
+        "chapter_block_accuracy",
+        "chapter_block_macro_f1",
+        "cross_source_label_accuracy",
+        "cross_source_label_recall",
     }
 )
 _STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
@@ -36,6 +42,39 @@ _STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
         "micro_f1",
         "hamming_score",
         "label_count_mae",
+        "chapter_block_exact_match",
+        "chapter_block_macro_precision",
+        "chapter_block_macro_recall",
+        "chapter_block_micro_precision",
+        "chapter_block_micro_recall",
+        "chapter_block_micro_f1",
+        "chapter_block_micro_jaccard",
+        "chapter_block_sample_precision",
+        "chapter_block_sample_recall",
+        "chapter_block_sample_f1",
+        "chapter_block_sample_jaccard",
+        "cross_source_label_sample_count",
+        "cross_source_label_sample_rate",
+        "cross_source_label_true_count",
+        "cross_source_label_macro_f1",
+        "cross_source_label_chapter_block_accuracy",
+        "cross_source_label_chapter_block_macro_f1",
+        "same_source_label_sample_count",
+        "same_source_label_sample_rate",
+        "same_source_label_true_count",
+        "same_source_label_accuracy",
+        "same_source_label_recall",
+        "same_source_label_macro_f1",
+        "same_source_label_chapter_block_accuracy",
+        "same_source_label_chapter_block_macro_f1",
+        "unseen_label_sample_count",
+        "unseen_label_sample_rate",
+        "unseen_label_true_count",
+        "unseen_label_accuracy",
+        "unseen_label_recall",
+        "unseen_label_macro_f1",
+        "unseen_label_chapter_block_accuracy",
+        "unseen_label_chapter_block_macro_f1",
     }
 )
 
@@ -124,6 +163,13 @@ def _split_predicted_codes(text: str, label_separator: str) -> set[str]:
     return {token.strip() for token in tokens if token.strip()}
 
 
+def _split_label_value(value: Any, label_separator: str) -> set[str]:
+    """Split one dataset label value into a normalized code set."""
+    if isinstance(value, list | tuple | set):
+        return {str(item).strip() for item in value if str(item).strip()}
+    return _split_predicted_codes(str(value), label_separator)
+
+
 def collect_label_classes(
     dataset: Any,
     label_column: str,
@@ -143,10 +189,7 @@ def collect_label_classes(
 
     classes: set[str] = set()
     for value in label_values:
-        if isinstance(value, list | tuple | set):
-            classes.update(str(item).strip() for item in value if str(item).strip())
-        else:
-            classes.update(_split_predicted_codes(str(value), label_separator))
+        classes.update(_split_label_value(value, label_separator))
     return classes
 
 
@@ -246,6 +289,47 @@ def _dataset_column_values(dataset: Any, column: str) -> Any | None:
             values.append(item[column])
         return values
     return None
+
+
+def _is_real_training_source_id(source_id: str) -> bool:
+    """Return whether a source id should count as a real source dataset."""
+    normalized = source_id.strip()
+    if not normalized:
+        return False
+    return not normalized.startswith(
+        (
+            "synthetic_multicod",
+            "synthetic_pretrain_multicod",
+            "masterlist_",
+        )
+    )
+
+
+def collect_label_source_index(
+    dataset: Any,
+    label_column: str,
+    label_separator: str,
+    source_column: str = "source_id",
+) -> dict[str, set[str]]:
+    """Collect source datasets observed for each training label."""
+    label_values = _dataset_column_values(dataset, label_column)
+    source_values = _dataset_column_values(dataset, source_column)
+    if label_values is None or source_values is None:
+        return {}
+
+    label_list = list(label_values)
+    source_list = list(source_values)
+    if len(label_list) != len(source_list):
+        return {}
+
+    index: dict[str, set[str]] = {}
+    for value, source_value in zip(label_list, source_list):
+        source_id = str(source_value).strip()
+        if not _is_real_training_source_id(source_id):
+            continue
+        for label in _split_label_value(value, label_separator):
+            index.setdefault(label, set()).add(source_id)
+    return index
 
 
 def collect_input_strings(
@@ -487,6 +571,39 @@ def _macro_precision_recall_f1(
     return {f"macro_{k}": v for k, v in raw.items()}
 
 
+def _chapter_block_codes(codes: set[str]) -> set[str]:
+    """Collapse ICD10h codes to their first three-character chapter block."""
+    return {code.strip()[:3] for code in codes if code.strip()}
+
+
+def _chapter_block_metric_set(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    *,
+    multi_label: bool,
+    label_universe: set[str] | None = None,
+) -> dict[str, float]:
+    """Compute standard metrics after collapsing codes to chapter blocks."""
+    block_predictions = [_chapter_block_codes(codes) for codes in predictions]
+    block_labels = [_chapter_block_codes(codes) for codes in labels]
+    block_matches = [
+        prediction == label
+        for prediction, label in zip(block_predictions, block_labels)
+    ]
+    block_universe = (
+        _chapter_block_codes(label_universe) if label_universe is not None else None
+    )
+    metrics = _prediction_metric_set(
+        block_predictions,
+        block_labels,
+        block_matches,
+        multi_label=multi_label,
+        label_universe=block_universe,
+        include_chapter_block=False,
+    )
+    return {f"chapter_block_{key}": value for key, value in metrics.items()}
+
+
 def _prediction_metric_set(
     predictions: list[set[str]],
     labels: list[set[str]],
@@ -494,6 +611,7 @@ def _prediction_metric_set(
     *,
     multi_label: bool,
     label_universe: set[str] | None = None,
+    include_chapter_block: bool = True,
 ) -> dict[str, float]:
     """Compute the standard metric set for one prediction slice."""
     accuracy = float(np.mean(matches)) if matches else 0.0
@@ -509,6 +627,15 @@ def _prediction_metric_set(
             )
         )
     result.update(_macro_precision_recall_f1(predictions, labels))
+    if include_chapter_block:
+        result.update(
+            _chapter_block_metric_set(
+                predictions,
+                labels,
+                multi_label=multi_label,
+                label_universe=label_universe,
+            )
+        )
     return result
 
 
@@ -657,6 +784,75 @@ def _seen_unseen_string_metrics(
     return result
 
 
+def _cross_source_label_metrics(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    matches: list[bool],
+    source_ids: Sequence[str],
+    train_label_sources: Mapping[str, set[str]],
+    *,
+    multi_label: bool,
+    label_universe: set[str] | None = None,
+) -> dict[str, float]:
+    """Compute metrics for labels seen in training only from other sources."""
+    if len(source_ids) != len(predictions):
+        return {}
+    if not train_label_sources:
+        return {}
+
+    bucket_indices: dict[str, list[int]] = {
+        "cross_source_label": [],
+        "same_source_label": [],
+        "unseen_label": [],
+    }
+    bucket_true_counts = {key: 0 for key in bucket_indices}
+    bucket_hits = {key: 0 for key in bucket_indices}
+
+    for index, (predicted_codes, label_codes, source_id) in enumerate(
+        zip(predictions, labels, source_ids)
+    ):
+        sample_buckets = set()
+        normalized_source_id = str(source_id).strip()
+        for label in label_codes:
+            training_sources = train_label_sources.get(label, set())
+            if not training_sources:
+                bucket = "unseen_label"
+            elif normalized_source_id in training_sources:
+                bucket = "same_source_label"
+            else:
+                bucket = "cross_source_label"
+
+            bucket_true_counts[bucket] += 1
+            if label in predicted_codes:
+                bucket_hits[bucket] += 1
+            sample_buckets.add(bucket)
+
+        for bucket in sample_buckets:
+            bucket_indices[bucket].append(index)
+
+    sample_count = len(predictions)
+    result: dict[str, float] = {}
+    for bucket, indices in bucket_indices.items():
+        true_count = bucket_true_counts[bucket]
+        result[f"{bucket}_sample_count"] = float(len(indices))
+        result[f"{bucket}_sample_rate"] = (
+            float(len(indices) / sample_count) if sample_count > 0 else 0.0
+        )
+        result[f"{bucket}_true_count"] = float(true_count)
+        result[f"{bucket}_recall"] = (
+            float(bucket_hits[bucket] / true_count) if true_count > 0 else 0.0
+        )
+        bucket_metrics = _prediction_metric_set(
+            _subset_by_indices(predictions, indices),
+            _subset_by_indices(labels, indices),
+            _subset_by_indices(matches, indices),
+            multi_label=multi_label,
+            label_universe=label_universe,
+        )
+        result.update(_prefixed_metrics(bucket_metrics, bucket))
+    return result
+
+
 def _extract_eval_prediction(eval_pred: Any) -> tuple[Any, Any, Any | None]:
     """Extract predictions, labels, and optional metric inputs from Trainer output."""
     if hasattr(eval_pred, "predictions") and hasattr(eval_pred, "label_ids"):
@@ -678,6 +874,7 @@ def build_exact_match_accuracy_metric(
     label_separator: str = ",",
     max_label_count: int = 1,
     train_classes: set[str] | None = None,
+    train_label_sources: Mapping[str, set[str]] | None = None,
     train_input_strings: set[str] | None = None,
     artifact_logger: MetricArtifactLogger | None = None,
     metric_mode: str = "all",
@@ -794,6 +991,19 @@ def build_exact_match_accuracy_metric(
                     label_universe=train_classes,
                 )
             )
+        source_ids = current_metric_source_ids()
+        if train_label_sources is not None and source_ids is not None:
+            result.update(
+                _cross_source_label_metrics(
+                    predicted_code_sets,
+                    label_code_sets,
+                    matches,
+                    source_ids,
+                    train_label_sources,
+                    multi_label=multi_label,
+                    label_universe=train_classes,
+                )
+            )
         if artifact_logger is not None:
             artifact_logger(
                 metric_scope=current_metric_artifact_scope(),
@@ -814,6 +1024,7 @@ def build_exact_match_accuracy_metric(
 def build_sequence_classification_metric(
     id2label: Mapping[int, str],
     tokenizer: Any | None = None,
+    train_label_sources: Mapping[str, set[str]] | None = None,
     train_input_strings: set[str] | None = None,
     artifact_logger: MetricArtifactLogger | None = None,
     metric_mode: str = "all",
@@ -901,6 +1112,18 @@ def build_sequence_classification_metric(
                     matches,
                     input_strings,
                     train_input_strings,
+                    multi_label=False,
+                )
+            )
+        source_ids = current_metric_source_ids()
+        if train_label_sources is not None and source_ids is not None:
+            result.update(
+                _cross_source_label_metrics(
+                    predicted_code_sets,
+                    label_code_sets,
+                    matches,
+                    source_ids,
+                    train_label_sources,
                     multi_label=False,
                 )
             )

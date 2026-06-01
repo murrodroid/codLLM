@@ -1,3 +1,4 @@
+import json
 import os
 import warnings
 from copy import deepcopy
@@ -68,6 +69,32 @@ def _parse_env_float(name: str) -> Optional[float]:
         return float(raw_value)
     except ValueError as exc:
         raise ValueError(f"Environment variable '{name}' must be a float.") from exc
+
+
+def _parse_env_string_list(name: str) -> list[str] | None:
+    """Parse an optional string-list environment variable."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return None
+    if raw_value == "":
+        raise ValueError(f"{name} must not be empty.")
+
+    stripped_value = raw_value.strip()
+    if not stripped_value.startswith("["):
+        raise ValueError(f"{name} must be a JSON string array.")
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{name} must be a JSON string array.") from exc
+    if not isinstance(parsed, list) or not all(
+        isinstance(item, str) for item in parsed
+    ):
+        raise ValueError(f"{name} must be a JSON string array.")
+    values = parsed
+
+    if not values or any(value == "" for value in values):
+        raise ValueError(f"{name} must contain at least one non-empty separator.")
+    return values
 
 
 def _parse_training_input(raw_value: str) -> list[TrainingInput]:
@@ -236,11 +263,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             MultiCodSyntheticSourceScope, normalized_scope
         )
 
-    multicod_synthetic_text_separator = os.getenv(
-        "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR"
+    multicod_synthetic_text_separators = _parse_env_string_list(
+        "CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATORS"
     )
-    if multicod_synthetic_text_separator is not None:
-        cfg.multicod_synthetic_text_separator = multicod_synthetic_text_separator
+    if multicod_synthetic_text_separators is not None:
+        cfg.multicod_synthetic_text_separators = multicod_synthetic_text_separators
 
     max_source_length = _parse_env_int("CODLLM_MAX_SOURCE_LENGTH")
     if max_source_length is not None:
@@ -663,16 +690,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.pretrain_multicod_synthetic_ratio = pretrain_multicod_synthetic_ratio
 
-    pretrain_multicod_synthetic_text_separator = os.getenv(
-        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR"
+    pretrain_multicod_synthetic_text_separators = _parse_env_string_list(
+        "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS"
     )
-    if pretrain_multicod_synthetic_text_separator is not None:
-        if pretrain_multicod_synthetic_text_separator == "":
-            raise ValueError(
-                "CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR must not be empty."
-            )
-        cfg.pretrain_multicod_synthetic_text_separator = (
-            pretrain_multicod_synthetic_text_separator
+    if pretrain_multicod_synthetic_text_separators is not None:
+        cfg.pretrain_multicod_synthetic_text_separators = (
+            pretrain_multicod_synthetic_text_separators
         )
 
     masterlist_inject_enabled = _parse_env_bool("CODLLM_MASTERLIST_INJECT_ENABLED")
