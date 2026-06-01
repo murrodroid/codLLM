@@ -29,8 +29,8 @@ _CORE_LOGGED_METRICS = frozenset(
         "hamming_loss",
         "chapter_block_accuracy",
         "chapter_block_macro_f1",
-        "cross_source_label_accuracy",
-        "cross_source_label_recall",
+        "source_transfer_label_accuracy",
+        "source_transfer_label_recall",
     }
 )
 _STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
@@ -53,12 +53,12 @@ _STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
         "chapter_block_sample_recall",
         "chapter_block_sample_f1",
         "chapter_block_sample_jaccard",
-        "cross_source_label_sample_count",
-        "cross_source_label_sample_rate",
-        "cross_source_label_true_count",
-        "cross_source_label_macro_f1",
-        "cross_source_label_chapter_block_accuracy",
-        "cross_source_label_chapter_block_macro_f1",
+        "source_transfer_label_sample_count",
+        "source_transfer_label_sample_rate",
+        "source_transfer_label_true_count",
+        "source_transfer_label_macro_f1",
+        "source_transfer_label_chapter_block_accuracy",
+        "source_transfer_label_chapter_block_macro_f1",
         "same_source_label_sample_count",
         "same_source_label_sample_rate",
         "same_source_label_true_count",
@@ -784,7 +784,7 @@ def _seen_unseen_string_metrics(
     return result
 
 
-def _cross_source_label_metrics(
+def _source_transfer_label_metrics(
     predictions: list[set[str]],
     labels: list[set[str]],
     matches: list[bool],
@@ -794,14 +794,14 @@ def _cross_source_label_metrics(
     multi_label: bool,
     label_universe: set[str] | None = None,
 ) -> dict[str, float]:
-    """Compute metrics for labels seen in training only from other sources."""
+    """Compute metrics for labels that require source-to-source transfer."""
     if len(source_ids) != len(predictions):
         return {}
     if not train_label_sources:
         return {}
 
     bucket_indices: dict[str, list[int]] = {
-        "cross_source_label": [],
+        "source_transfer_label": [],
         "same_source_label": [],
         "unseen_label": [],
     }
@@ -820,7 +820,7 @@ def _cross_source_label_metrics(
             elif normalized_source_id in training_sources:
                 bucket = "same_source_label"
             else:
-                bucket = "cross_source_label"
+                bucket = "source_transfer_label"
 
             bucket_true_counts[bucket] += 1
             if label in predicted_codes:
@@ -994,7 +994,7 @@ def build_exact_match_accuracy_metric(
         source_ids = current_metric_source_ids()
         if train_label_sources is not None and source_ids is not None:
             result.update(
-                _cross_source_label_metrics(
+                _source_transfer_label_metrics(
                     predicted_code_sets,
                     label_code_sets,
                     matches,
@@ -1118,7 +1118,7 @@ def build_sequence_classification_metric(
         source_ids = current_metric_source_ids()
         if train_label_sources is not None and source_ids is not None:
             result.update(
-                _cross_source_label_metrics(
+                _source_transfer_label_metrics(
                     predicted_code_sets,
                     label_code_sets,
                     matches,

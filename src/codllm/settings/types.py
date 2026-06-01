@@ -42,7 +42,7 @@ SaveStrategyBestMetric = Literal[
     "chapter_block_accuracy",
     "chapter_block_exact_match",
     "chapter_block_macro_f1",
-    "cross_source_label_accuracy",
-    "cross_source_label_macro_f1",
-    "cross_source_label_recall",
+    "source_transfer_label_accuracy",
+    "source_transfer_label_macro_f1",
+    "source_transfer_label_recall",
 ]

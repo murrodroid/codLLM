@@ -116,7 +116,9 @@ unexpected dependency downloads.
     `CODLLM_HOLD_OUT_EVALUATE_RATIO`; the final post-training hold-out evaluation must always use the full held-out
     source.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
-    `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`.
+    `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`; source-transfer metrics such
+    as `source_transfer_label_accuracy`, `source_transfer_label_macro_f1`, and `source_transfer_label_recall` are also
+    valid save metrics.
   * W&B run-page config volume is controlled by `Config.wandb.run_config_mode` and
     `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full`; scalar metric volume is controlled by
     `Config.wandb.metric_mode` and `CODLLM_WANDB_METRIC_MODE=core|standard|all`. Keep full reproducibility payloads in

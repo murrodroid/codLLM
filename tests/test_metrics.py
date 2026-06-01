@@ -349,8 +349,8 @@ def test_seen_unseen_metrics_use_input_strings_not_label_classes() -> None:
     assert "seen_class_count" not in metrics
 
 
-def test_sequence_metric_reports_cross_source_label_transfer() -> None:
-    """Cross-source labels are labels seen in train, but not from the eval source."""
+def test_sequence_metric_reports_source_transfer_label_generalization() -> None:
+    """Source-transfer labels are seen in train, but not from the eval source."""
     metric_fn = build_sequence_classification_metric(
         id2label={0: "A001", 1: "B001", 2: "C001"},
         train_label_sources={"A001": {"source_one"}, "B001": {"source_two"}},
@@ -369,10 +369,10 @@ def test_sequence_metric_reports_cross_source_label_transfer() -> None:
     finally:
         reset_metric_source_ids(token)
 
-    assert metrics["cross_source_label_sample_count"] == 1.0
-    assert metrics["cross_source_label_true_count"] == 1.0
-    assert metrics["cross_source_label_recall"] == 1.0
-    assert metrics["cross_source_label_accuracy"] == 1.0
+    assert metrics["source_transfer_label_sample_count"] == 1.0
+    assert metrics["source_transfer_label_true_count"] == 1.0
+    assert metrics["source_transfer_label_recall"] == 1.0
+    assert metrics["source_transfer_label_accuracy"] == 1.0
     assert metrics["same_source_label_sample_count"] == 1.0
     assert metrics["same_source_label_recall"] == 0.0
     assert metrics["unseen_label_sample_count"] == 1.0
