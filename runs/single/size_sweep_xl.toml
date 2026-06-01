@@ -1,0 +1,71 @@
+base = "../profiles/h100-xl.toml"
+name = "size_sweep_xl"
+description = """
+Size-sweep baseline for flan-t5-xl. Same hyperparameters and multi-CoD
+contract as size_sweep_small.toml so the W&B 'Compare runs' view shows
+size scaling on identical splits.
+
+flan-t5-xl is roughly 4x larger than flan-t5-large; expect early stopping
+to fire long before the 80-epoch cap, and expect 2-4 HPC slots before
+training completes (auto-resume handles the slot transitions).
+"""
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 1.0
+CODLLM_LR = 2.5e-5
+CODLLM_NUM_TRAIN_EPOCHS = 80
+
+# Effective batch size 256 = 16 * 16; per-device dropped from 32 after XL
+# OOMed at step 26 of pretraining with 79.16 GB used of 80 GB H100 capacity.
+# Halving per-device batch halves activation memory; doubled grad_accum
+# preserves effective batch 256 to keep size comparisons fair.
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 16
+CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 16
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 16
+
+CODLLM_MAX_LABEL_COUNT = 3
+CODLLM_MULTICOD_SHUFFLE_LABELS = 1
+CODLLM_MULTICOD_SYNTHETIC_TEXT_SEPARATOR = ", "
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
+
+CODLLM_SAVE_STRATEGY = "epoch"
+CODLLM_SAVE_TOTAL_LIMIT = 3
+CODLLM_EVAL_STRATEGY = "epoch"
+CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
+CODLLM_LOAD_BEST_MODEL_AT_END = 1
+CODLLM_EARLY_STOPPING_PATIENCE = 10
+CODLLM_EARLY_STOPPING_THRESHOLD = 0.0
+
+CODLLM_AUTO_RESUME = 1
+CODLLM_PER_SIZE_OUTPUT_DIR = 1
+CODLLM_MAX_RUNTIME_SECONDS = 82800
+CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600
+
+CODLLM_BALANCE_STRATEGY = "floor"
+CODLLM_BALANCE_FLOOR = 50
+CODLLM_BALANCE_FLOOR_DECAY = 0.0
+CODLLM_BALANCE_FLOOR_SINGLECOD_ONLY = 1
+CODLLM_BALANCE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
+CODLLM_BASE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
+CODLLM_BASE_PERTURBATION_RATE = 0.5
+CODLLM_BASE_PERTURBATION_MEAN = 0.10
+CODLLM_BASE_PERTURBATION_VARIANCE = 0.05
+
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_PRETRAIN_WARMUP_RATIO = 0.5
+CODLLM_PRETRAIN_LR_SCHEDULER_TYPE = "constant"
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 4
+CODLLM_PRETRAIN_UPSAMPLE_ENABLED = true
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 8
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
+  "swap_adjacent_chars",
+  "delete_random_char",
+  "accent_random_vowel",
+  "qwerty_misspell",
+]
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 6
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATOR = ", "
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.15

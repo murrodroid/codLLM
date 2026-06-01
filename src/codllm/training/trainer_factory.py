@@ -1,9 +1,12 @@
 from datetime import datetime
 from typing import Any
 
+from pathlib import Path
+
 from transformers import (
     DataCollatorForSeq2Seq,
     DataCollatorWithPadding,
+    EarlyStoppingCallback,
     Trainer,
     TrainerCallback,
 )
@@ -24,8 +27,10 @@ from codllm.metrics import (
 from codllm.trainer_logging import (
     EvaluateEveryNEpochsCallback,
     HoldoutEvaluationCallback,
+    SigtermSaveCallback,
     StageScopedSeq2SeqTrainer,
     StageScopedTrainer,
+    TimeBudgetCallback,
 )
 from codllm.training.arguments import build_training_args
 from codllm.training.metadata import (
@@ -184,6 +189,25 @@ def run_training_stage(
         )
         callbacks.append(holdout_callback)
 
+    if cfg.early_stopping_patience > 0 and processed_eval_ds is not None:
+        callbacks.append(
+            EarlyStoppingCallback(
+                early_stopping_patience=cfg.early_stopping_patience,
+                early_stopping_threshold=cfg.early_stopping_threshold,
+            )
+        )
+
+    if cfg.max_runtime_seconds > 0:
+        callbacks.append(
+            TimeBudgetCallback(
+                max_runtime_seconds=float(cfg.max_runtime_seconds),
+                safety_margin_seconds=float(cfg.runtime_safety_margin_seconds),
+                output_dir=args.output_dir,
+            )
+        )
+
+    callbacks.append(SigtermSaveCallback())
+
     if cfg.model_task == "sequence_classification":
         trainer = StageScopedTrainer(
             model=model,
@@ -245,5 +269,22 @@ def run_training_stage(
     if holdout_callback is not None:
         holdout_callback.attach_trainer(trainer)
 
-    trainer.train()
+    resume_arg: bool | str = False
+    if cfg.auto_resume and _has_existing_checkpoint(args.output_dir):
+        resume_arg = True
+        _log_progress(
+            f"Auto-resume: existing checkpoint found in '{args.output_dir}'."
+        )
+    trainer.train(resume_from_checkpoint=resume_arg)
     return trainer
+
+
+def _has_existing_checkpoint(output_dir: str) -> bool:
+    """Return True when ``output_dir`` already contains a Trainer checkpoint."""
+    base = Path(output_dir)
+    if not base.exists():
+        return False
+    for child in base.iterdir():
+        if child.is_dir() and child.name.startswith("checkpoint-"):
+            return True
+    return False

@@ -246,8 +246,8 @@ def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
 
 def test_h100_base_leaves_model_dtype_to_config_default() -> None:
     """H100 runtime bases should not force model-load precision."""
-    large = load_experiment_spec("runs/base/h100-large.toml")
-    small = load_experiment_spec("runs/base/h100-small.toml")
+    large = load_experiment_spec("runs/profiles/h100-large.toml")
+    small = load_experiment_spec("runs/profiles/h100-small.toml")
 
     assert "CODLLM_TORCH_DTYPE" not in large.env
     assert "CODLLM_TORCH_DTYPE" not in small.env
@@ -255,8 +255,8 @@ def test_h100_base_leaves_model_dtype_to_config_default() -> None:
 
 def test_h100_base_uses_high_throughput_dataloader_settings() -> None:
     """H100 runtime bases should request enough input pipeline capacity."""
-    large = load_experiment_spec("runs/base/h100-large.toml")
-    small = load_experiment_spec("runs/base/h100-small.toml")
+    large = load_experiment_spec("runs/profiles/h100-large.toml")
+    small = load_experiment_spec("runs/profiles/h100-small.toml")
 
     for spec in (large, small):
         assert spec.env["CODLLM_DATALOADER_NUM_WORKERS"] == "16"

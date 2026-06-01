@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "codllm_base"
 description = "simple run to check baseline model performance"
 force_reprocess = false

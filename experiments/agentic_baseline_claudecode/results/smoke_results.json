@@ -1,0 +1,65 @@
+{
+  "metrics": {
+    "n": 5,
+    "exact_match": 3,
+    "exact_match_accuracy": 0.6,
+    "chapter_accuracy": 1.0,
+    "category_accuracy": 1.0,
+    "no_answer": 0,
+    "valid_predictions": 5,
+    "avg_tool_calls": 1.6,
+    "max_tool_calls": 2
+  },
+  "predictions": [
+    {
+      "cod": "pneumonia",
+      "predicted": "J18.900",
+      "gold": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": ["J18.000", "J18.100"],
+      "num_tool_calls": 1,
+      "reasoning": "The CoD string 'pneumonia' is given without any qualifier (no organism, anatomical pattern, or associated condition). The masterlist entry J18.900 'Pneumonia, unspecified' under category 'Pneumonia, organism unspecified' is the exact match for this generic, unqualified term. In the historical 1700-1950 period before reliable bacteriology, most pneumonia diagnoses on death records were clinical/unspecified, making this the most appropriate code."
+    },
+    {
+      "cod": "enterocolitis",
+      "predicted": "A09.900",
+      "gold": "A09.940",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": ["A09.000", "A09.920"],
+      "num_tool_calls": 2,
+      "reasoning": "The term 'enterocolitis' (inflammation of both small intestine and colon) is unspecified as to cause. Without qualifiers (e.g., 'Clostridium difficile', 'ulcerative', 'necrotising neonatal'), it cannot be assigned to A04.700, K51.002, or P77.000. A09.900 (Gastroenteritis and colitis of unspecified origin) is the most appropriate broad bucket covering combined entero+colitis of unspecified origin, which fits historical (1700-1950) usage where bacteriological etiology was rarely identified."
+    },
+    {
+      "cod": "levenloze zoon",
+      "predicted": "P95.001",
+      "gold": "P95.000",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": ["P95.000", "Z37.100"],
+      "num_tool_calls": 2,
+      "reasoning": "'Levenloze zoon' is Dutch for 'lifeless son', the standard civil registry term for a stillborn male infant. It indicates the child was born dead, with no specific cause given. P95.001 (Stillbirth) is the exact ICD-10h match for this term."
+    },
+    {
+      "cod": "Cancer pylori",
+      "predicted": "C16.401",
+      "gold": "C16.401",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": ["C16.400", "C16.301"],
+      "num_tool_calls": 1,
+      "reasoning": "'Cancer pylori' is Latin for 'cancer of the pylorus' (the lower stomach outlet). The masterlist contains an exact match: C16.401 'Cancer, pylorus' under malignant neoplasm of stomach. This terminology was common in 18th-19th century medical records before more specific staging existed."
+    },
+    {
+      "cod": "meningitis",
+      "predicted": "G03.900",
+      "gold": "G03.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": ["A17.000", "A39.000"],
+      "num_tool_calls": 2,
+      "reasoning": "The bare term 'meningitis' without any organism, anatomical, or epidemiological qualifier maps to the unspecified meningitis code G03.900. While historically many meningitis deaths were tuberculous (A17.000) or meningococcal/cerebrospinal (A39.000), assigning a specific etiology without textual evidence would be over-coding. G03.900 is the appropriate default when only 'meningitis' is recorded."
+    }
+  ]
+}

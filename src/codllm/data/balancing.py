@@ -181,8 +181,19 @@ def select_floor_upsample_targets(
     label_column: str,
     floor: int = 10,
     decay: float = 0.1,
+    singlecod_only: bool = False,
+    label_separator: str = ",",
 ) -> dict[Any, int]:
-    """Select per-class target counts by enforcing a minimum sample floor."""
+    """Select per-class target counts by enforcing a minimum sample floor.
+
+    When ``singlecod_only`` is True, compound multi-CoD labels (label strings
+    containing ``label_separator``) are excluded from the target selection.
+    This prevents the floor mechanism from amplifying real but rare compound
+    combinations as if they were rare single-CoD codes - the original intent
+    of the floor was rare ICD10h *code* protection, not rare *combination*
+    protection. With this flag on, training stays close to the natural
+    multi-CoD distribution observed in val/test.
+    """
     if floor < 0:
         raise ValueError("floor must be non-negative.")
     if floor == 0:
@@ -190,7 +201,14 @@ def select_floor_upsample_targets(
     if decay < 0 or decay > 1:
         raise ValueError("decay must be between 0 and 1.")
 
-    class_counts = df[label_column].value_counts()
+    if singlecod_only:
+        labels = df[label_column].astype(str)
+        mask = ~labels.str.contains(label_separator, na=False, regex=False)
+        eligible = df.loc[mask]
+    else:
+        eligible = df
+
+    class_counts = eligible[label_column].value_counts()
     targets: dict[Any, int] = {}
     for label, count in class_counts.items():
         original = int(count)

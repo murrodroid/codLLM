@@ -74,8 +74,69 @@ def resolve_run_output_dir(base_output_dir: str) -> Path:
         ) from exc
 
 
+def _safe_model_name(hf_model: str) -> str:
+    """Return a filesystem-safe slug for a HuggingFace model id."""
+    base = hf_model.split("/")[-1] if "/" in hf_model else hf_model
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", base).strip("_.-")
+    return cleaned or "model"
+
+
+def _looks_like_run_dir(path: Path) -> bool:
+    """Return True when path's basename matches the run-* pattern."""
+    return LOCAL_RUN_DIR_PATTERN.match(path.name) is not None
+
+
+def _latest_existing_run_dir(base: Path) -> Path | None:
+    """Return the highest-numbered run-NNNN dir under base, or None."""
+    if not base.exists():
+        return None
+    candidates: list[tuple[int, Path]] = []
+    for child in base.iterdir():
+        if not child.is_dir():
+            continue
+        match = LOCAL_RUN_DIR_PATTERN.match(child.name)
+        if match is None:
+            continue
+        try:
+            candidates.append((int(match.group(1)), child))
+        except ValueError:
+            continue
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return candidates[-1][1]
+
+
 def prepare_run_output_dir(cfg: Config) -> Path:
-    """Mutate config output_dir to a run-scoped checkpoint root."""
+    """Mutate config output_dir to a run-scoped checkpoint root.
+
+    Resolution rules:
+      * cfg.output_dir already pointing at a ``run-*`` directory -> use as-is
+        (supports caller-specified resume targets).
+      * cfg.per_size_output_dir=True -> insert a model-name subdir below the
+        configured base before allocating a run id, so size-sweep runs do not
+        collide on disk and resume can find the prior run.
+      * cfg.auto_resume=True -> reuse the latest run-NNNN under the configured
+        base when one exists; otherwise allocate a fresh one.
+    """
+    base_path = Path(cfg.output_dir)
+    if _looks_like_run_dir(base_path) and base_path.exists():
+        cfg.output_dir = str(base_path)
+        os.environ["CODLLM_RUN_ID"] = base_path.name.removeprefix("run-")
+        return base_path
+
+    if cfg.per_size_output_dir:
+        base_path = base_path / _safe_model_name(cfg.hf_model)
+        base_path.mkdir(parents=True, exist_ok=True)
+        cfg.output_dir = str(base_path)
+
+    if cfg.auto_resume:
+        existing = _latest_existing_run_dir(base_path)
+        if existing is not None:
+            cfg.output_dir = str(existing)
+            os.environ["CODLLM_RUN_ID"] = existing.name.removeprefix("run-")
+            return existing
+
     run_dir = resolve_run_output_dir(cfg.output_dir)
     cfg.output_dir = str(run_dir)
     os.environ["CODLLM_RUN_ID"] = run_dir.name.removeprefix("run-")

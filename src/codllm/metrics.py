@@ -1,28 +1,23 @@
 from collections.abc import Mapping as MappingABC
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
 MetricArtifactLogger = Callable[..., None]
 
 
-@dataclass(frozen=True)
-class MetricSampleMetadata:
-    """Per-sample metadata for one evaluation pass."""
-
-    source_ids: tuple[str, ...]
-
-
 _METRIC_ARTIFACT_SCOPE: ContextVar[str | None] = ContextVar(
     "codllm_metric_artifact_scope",
     default=None,
 )
-_METRIC_SAMPLE_METADATA: ContextVar[MetricSampleMetadata | None] = ContextVar(
-    "codllm_metric_sample_metadata",
+_METRIC_SOURCE_IDS_SCOPE: ContextVar[list[str] | None] = ContextVar(
+    "codllm_metric_source_ids",
     default=None,
 )
+_PER_SOURCE_METRIC_PREFIX = "source_"
+_HIERARCHY_METRIC_PREFIXES: tuple[str, ...] = ("chapter_", "block_")
+_PER_SOURCE_AGGREGATE_EXCLUDED = frozenset({"historic_strings_en_2024"})
 _CORE_LOGGED_METRICS = frozenset(
     {
         "accuracy",
@@ -99,29 +94,32 @@ def current_metric_artifact_scope() -> str | None:
     return _METRIC_ARTIFACT_SCOPE.get()
 
 
-def set_metric_sample_metadata(
-    metadata: MetricSampleMetadata | None,
-) -> Token[MetricSampleMetadata | None]:
-    """Set per-sample metadata for metrics in the current evaluation context."""
-    return _METRIC_SAMPLE_METADATA.set(metadata)
+def set_metric_source_ids(
+    source_ids: list[str] | None,
+) -> Token[list[str] | None]:
+    """Set source ids parallel to the rows of the dataset currently being evaluated."""
+    return _METRIC_SOURCE_IDS_SCOPE.set(source_ids)
 
 
-def reset_metric_sample_metadata(token: Token[MetricSampleMetadata | None]) -> None:
-    """Reset metric sample metadata to a previous context value."""
-    _METRIC_SAMPLE_METADATA.reset(token)
+def reset_metric_source_ids(token: Token[list[str] | None]) -> None:
+    """Reset the metric source ids to a previous context value."""
+    _METRIC_SOURCE_IDS_SCOPE.reset(token)
 
 
-def current_metric_sample_metadata() -> MetricSampleMetadata | None:
-    """Return per-sample metadata for the current evaluation context."""
-    return _METRIC_SAMPLE_METADATA.get()
+def current_metric_source_ids() -> list[str] | None:
+    """Return the source ids registered for the current evaluation, if any."""
+    return _METRIC_SOURCE_IDS_SCOPE.get()
 
 
-def metric_sample_metadata_from_dataset(dataset: Any) -> MetricSampleMetadata | None:
-    """Extract metric sample metadata attached to a tokenized dataset."""
-    source_ids = getattr(dataset, "metric_source_ids", None)
-    if source_ids is None:
-        return None
-    return MetricSampleMetadata(source_ids=tuple(str(value) for value in source_ids))
+def _sanitize_source_key(source_id: str) -> str:
+    """Make a source_id safe to embed in a metric key."""
+    cleaned = []
+    for character in source_id:
+        if character.isalnum() or character in {"_", "-"}:
+            cleaned.append(character)
+        else:
+            cleaned.append("_")
+    return "".join(cleaned).strip("_") or "unknown"
 
 
 def filter_metrics_for_logging(
@@ -142,7 +140,12 @@ def filter_metrics_for_logging(
         raise ValueError("metric logging mode must be one of: all, core, standard.")
     if save_metric:
         allowed.add(save_metric.strip().lower())
-    return {key: value for key, value in metrics.items() if key in allowed}
+    extra_prefixes = (_PER_SOURCE_METRIC_PREFIX, *_HIERARCHY_METRIC_PREFIXES)
+    return {
+        key: value
+        for key, value in metrics.items()
+        if key in allowed or key.startswith(extra_prefixes)
+    }
 
 
 def _normalize_decoded_text(text: str) -> str:
@@ -646,6 +649,92 @@ def _subset_by_indices(values: list[Any], indices: list[int]) -> list[Any]:
     return [values[index] for index in indices]
 
 
+def _hierarchy_truncated_codes(
+    code_sets: list[set[str]],
+    length: int,
+) -> list[set[str]]:
+    """Return code sets truncated to the first `length` characters of each code."""
+    return [
+        {code[:length] for code in codes if code}
+        for codes in code_sets
+    ]
+
+
+def _hierarchy_metrics(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    *,
+    multi_label: bool,
+) -> dict[str, float]:
+    """Compute accuracy/F1 metrics at chapter (1 char) and block (3 chars) levels.
+
+    ICD10h codes are tree-structured (`^[A-Z]\\d{2}\\.\\d{3}$`); predicting J18.0
+    when the gold is J18.9 is much closer than predicting K76.4. Reporting at
+    coarser levels gives a more honest picture of model quality for downstream
+    historian users.
+    """
+    result: dict[str, float] = {}
+    for prefix, length in (("chapter", 1), ("block", 3)):
+        truncated_predictions = _hierarchy_truncated_codes(predictions, length)
+        truncated_labels = _hierarchy_truncated_codes(labels, length)
+        truncated_matches = [
+            prediction == label
+            for prediction, label in zip(truncated_predictions, truncated_labels)
+        ]
+        bucket_metrics = _prediction_metric_set(
+            truncated_predictions,
+            truncated_labels,
+            truncated_matches,
+            multi_label=multi_label,
+        )
+        result.update(_prefixed_metrics(bucket_metrics, prefix))
+    return result
+
+
+def _per_source_metrics(
+    predictions: list[set[str]],
+    labels: list[set[str]],
+    matches: list[bool],
+    source_ids: list[str] | None,
+    *,
+    multi_label: bool,
+    label_universe: set[str] | None = None,
+    excluded_sources: frozenset[str] = _PER_SOURCE_AGGREGATE_EXCLUDED,
+) -> dict[str, float]:
+    """Compute the standard metric set for each source_id slice of predictions.
+
+    Sources listed in ``excluded_sources`` are skipped entirely so the W&B
+    Compare-runs view does not surface them as comparable data points.
+    historic_strings_en_2024 is the canonical example: it is the masterlist's
+    English-translated reference, not historical messy archive text, so its
+    accuracy is mechanically inflated and should not be plotted alongside the
+    five real archival sources.
+    """
+    if source_ids is None or len(source_ids) != len(predictions):
+        return {}
+
+    indices_by_source: dict[str, list[int]] = {}
+    for index, source in enumerate(source_ids):
+        indices_by_source.setdefault(str(source), []).append(index)
+
+    result: dict[str, float] = {}
+    for source, indices in indices_by_source.items():
+        if source in excluded_sources:
+            continue
+        bucket_metrics = _prediction_metric_set(
+            _subset_by_indices(predictions, indices),
+            _subset_by_indices(labels, indices),
+            _subset_by_indices(matches, indices),
+            multi_label=multi_label,
+            label_universe=label_universe,
+        )
+        sanitized = _sanitize_source_key(source)
+        prefix = f"{_PER_SOURCE_METRIC_PREFIX}{sanitized}"
+        result[f"{prefix}_count"] = float(len(indices))
+        result.update(_prefixed_metrics(bucket_metrics, prefix))
+    return result
+
+
 def _seen_unseen_string_metrics(
     predictions: list[set[str]],
     labels: list[set[str]],
@@ -699,7 +788,7 @@ def _cross_source_label_metrics(
     predictions: list[set[str]],
     labels: list[set[str]],
     matches: list[bool],
-    source_ids: tuple[str, ...],
+    source_ids: Sequence[str],
     train_label_sources: Mapping[str, set[str]],
     *,
     multi_label: bool,
@@ -863,6 +952,23 @@ def build_exact_match_accuracy_metric(
             multi_label=multi_label,
             label_universe=train_classes,
         )
+        result.update(
+            _hierarchy_metrics(
+                predicted_code_sets,
+                label_code_sets,
+                multi_label=multi_label,
+            )
+        )
+        result.update(
+            _per_source_metrics(
+                predicted_code_sets,
+                label_code_sets,
+                matches,
+                current_metric_source_ids(),
+                multi_label=multi_label,
+                label_universe=train_classes,
+            )
+        )
         input_strings = (
             _decode_token_id_strings(
                 tokenizer,
@@ -885,14 +991,14 @@ def build_exact_match_accuracy_metric(
                     label_universe=train_classes,
                 )
             )
-        sample_metadata = current_metric_sample_metadata()
-        if train_label_sources is not None and sample_metadata is not None:
+        source_ids = current_metric_source_ids()
+        if train_label_sources is not None and source_ids is not None:
             result.update(
                 _cross_source_label_metrics(
                     predicted_code_sets,
                     label_code_sets,
                     matches,
-                    sample_metadata.source_ids,
+                    source_ids,
                     train_label_sources,
                     multi_label=multi_label,
                     label_universe=train_classes,
@@ -968,6 +1074,22 @@ def build_sequence_classification_metric(
             matches,
             multi_label=False,
         )
+        result.update(
+            _hierarchy_metrics(
+                predicted_code_sets,
+                label_code_sets,
+                multi_label=False,
+            )
+        )
+        result.update(
+            _per_source_metrics(
+                predicted_code_sets,
+                label_code_sets,
+                matches,
+                current_metric_source_ids(),
+                multi_label=False,
+            )
+        )
         input_strings = (
             (
                 _decode_token_id_strings(
@@ -993,14 +1115,14 @@ def build_sequence_classification_metric(
                     multi_label=False,
                 )
             )
-        sample_metadata = current_metric_sample_metadata()
-        if train_label_sources is not None and sample_metadata is not None:
+        source_ids = current_metric_source_ids()
+        if train_label_sources is not None and source_ids is not None:
             result.update(
                 _cross_source_label_metrics(
                     predicted_code_sets,
                     label_code_sets,
                     matches,
-                    sample_metadata.source_ids,
+                    source_ids,
                     train_label_sources,
                     multi_label=False,
                 )

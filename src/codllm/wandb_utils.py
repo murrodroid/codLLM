@@ -55,6 +55,42 @@ _STANDARD_TRANSFORMERS_SETUP_CONFIG_KEYS = (
 )
 
 
+_WANDB_RUN_ID_SIDECAR_NAME = "wandb_run_id.txt"
+
+
+def _wandb_run_id_sidecar_path(cfg: Config) -> Path:
+    """Return the path used to persist the W&B run id for a given run dir."""
+    return Path(cfg.output_dir) / _WANDB_RUN_ID_SIDECAR_NAME
+
+
+def _read_wandb_run_id_sidecar(cfg: Config) -> str | None:
+    """Return the saved W&B run id for this run dir, when one exists."""
+    path = _wandb_run_id_sidecar_path(cfg)
+    if not path.exists():
+        return None
+    try:
+        run_id = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return run_id or None
+
+
+def _write_wandb_run_id_sidecar(cfg: Config, run_id: str | None) -> None:
+    """Persist the active W&B run id so resumed jobs can rejoin the chart."""
+    if not run_id:
+        return
+    path = _wandb_run_id_sidecar_path(cfg)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        if existing == run_id:
+            return
+        path.write_text(f"{run_id}\n", encoding="utf-8")
+    except OSError:
+        # Sidecar is a convenience for resume; never fail training over it.
+        return
+
+
 def has_wandb_credentials() -> bool:
     """Return True when W&B credentials are available via env or netrc."""
     if os.getenv("WANDB_API_KEY"):
@@ -756,12 +792,18 @@ def log_wandb_run_metadata(
         mode = os.getenv("WANDB_MODE")
         if mode in {"online", "offline", "disabled"}:
             init_kwargs["mode"] = mode
+        existing_run_id = _read_wandb_run_id_sidecar(cfg)
+        if existing_run_id:
+            init_kwargs["id"] = existing_run_id
+            init_kwargs["resume"] = "allow"
         wandb.init(
             **{key: value for key, value in init_kwargs.items() if value is not None}
         )
 
     if getattr(wandb, "run", None) is None:
         return
+
+    _write_wandb_run_id_sidecar(cfg, getattr(wandb.run, "id", None))
 
     # Define epoch as a step metric so eval metrics can be plotted against it
     wandb.define_metric("epoch")

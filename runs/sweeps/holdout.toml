@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "holdout"
 description = "Sweep to test holdout of different datasets"
 force_reprocess = false

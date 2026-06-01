@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "agro_pretraining"
 description = "Sweep masterlist pretraining duration while holding the fine-tuning setup fixed."
 force_reprocess = false

@@ -13,7 +13,7 @@ class TokenizedSeq2SeqDataset(Dataset):
     def __init__(
         self,
         features: dict[str, list[Any]],
-        metric_source_ids: list[str] | None = None,
+        source_ids: list[str] | None = None,
     ) -> None:
         if not features:
             raise ValueError("Tokenized features must not be empty.")
@@ -22,9 +22,11 @@ class TokenizedSeq2SeqDataset(Dataset):
             raise ValueError("Tokenized feature lengths are inconsistent.")
         self.features = features
         self.length = lengths.pop()
-        if metric_source_ids is not None and len(metric_source_ids) != self.length:
-            raise ValueError("Metric source-id length must match tokenized features.")
-        self.metric_source_ids = metric_source_ids
+        if source_ids is not None and len(source_ids) != self.length:
+            raise ValueError("source_ids length must match tokenized feature length.")
+        self.source_ids: list[str] | None = (
+            list(source_ids) if source_ids is not None else None
+        )
 
     def __len__(self) -> int:
         """Return number of rows."""
@@ -67,10 +69,10 @@ def _tokenize_dataframe(
         truncation=True,
     )
     model_inputs["labels"] = labels["input_ids"]
-    metric_source_ids = None
+    source_ids: list[str] | None = None
     if "source_id" in dataframe.columns:
-        metric_source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
-    return TokenizedSeq2SeqDataset(model_inputs, metric_source_ids=metric_source_ids)
+        source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
+    return TokenizedSeq2SeqDataset(model_inputs, source_ids=source_ids)
 
 
 def prepare_training_dataset(
@@ -146,10 +148,10 @@ def _tokenize_dataframe_for_sequence_classification(
         truncation=True,
     )
     model_inputs["labels"] = [int(label2id[label]) for label in labels]
-    metric_source_ids = None
+    source_ids: list[str] | None = None
     if "source_id" in dataframe.columns:
-        metric_source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
-    return TokenizedSeq2SeqDataset(model_inputs, metric_source_ids=metric_source_ids)
+        source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
+    return TokenizedSeq2SeqDataset(model_inputs, source_ids=source_ids)
 
 
 def prepare_sequence_classification_dataset(

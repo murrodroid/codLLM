@@ -1,0 +1,62 @@
+{
+  "belgium": {
+    "total_rows": 42116,
+    "rows_with_at_least_one_code": 42116,
+    "distribution": {
+      "1": 35287,
+      "2": 6318,
+      "3": 484,
+      "4": 24,
+      "5": 2,
+      "6": 1
+    }
+  },
+  "amsterdam": {
+    "total_rows": 580315,
+    "rows_with_at_least_one_code": 580315,
+    "distribution": {
+      "1": 471598,
+      "2": 97203,
+      "3": 11307,
+      "4": 183,
+      "5": 23,
+      "6": 1
+    }
+  },
+  "copenhagen": {
+    "total_rows": 547230,
+    "rows_with_at_least_one_code": 502149,
+    "distribution": {
+      "0": 45081,
+      "1": 502149
+    }
+  },
+  "ipswich": {
+    "total_rows": 42911,
+    "rows_with_at_least_one_code": 39304,
+    "distribution": {
+      "0": 3607,
+      "1": 22669,
+      "2": 13850,
+      "3": 2441,
+      "4": 332,
+      "5": 11,
+      "6": 1
+    }
+  },
+  "madrid": {
+    "total_rows": 366543,
+    "rows_with_at_least_one_code": 366543,
+    "distribution": {
+      "1": 347814,
+      "2": 18729
+    }
+  },
+  "historic_strings": {
+    "total_rows": 3307,
+    "rows_with_at_least_one_code": 3307,
+    "distribution": {
+      "1": 3307
+    }
+  }
+}

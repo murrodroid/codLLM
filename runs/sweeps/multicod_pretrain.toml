@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "multicod_pretraining"
 description = "Sweep synthetic multi-COD masterlist pretraining for multi-COD fine-tuning."
 force_reprocess = false

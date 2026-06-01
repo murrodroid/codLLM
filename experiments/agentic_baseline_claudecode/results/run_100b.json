@@ -1,0 +1,1710 @@
+{
+  "metrics": {
+    "n": 100,
+    "accuracy": 0.54,
+    "exact_match": 54,
+    "no_answer": 4,
+    "valid_predictions": 96,
+    "chapter_accuracy": 0.9583333333333334,
+    "category_accuracy": 0.7083333333333334,
+    "unique_classes": 96,
+    "avg_elapsed_s": 133.03364667654037,
+    "total_elapsed_s": 13303.364667654037,
+    "total_cost_usd": 12.50731475,
+    "avg_cost_usd": 0.1250731475,
+    "macro_precision": 0.3463541666666667,
+    "macro_recall": 0.34052579365079366,
+    "macro_f1": 0.3360042735042735,
+    "wallclock_s": 5120.2
+  },
+  "predictions": [
+    {
+      "parquet_idx": 32114,
+      "cod": "Scarlatina",
+      "gold": "A38.002",
+      "predicted": "A38.002",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A38.000",
+        "A38.003"
+      ],
+      "reasoning": "Scarlatina is the Latin/medical term for scarlet fever, a streptococcal infection common in the pre-antibiotic era and a leading cause of childhood mortality 1700–1950. The masterlist contains a direct entry 'Scarlatina' at A38.002. No complications are indicated in the term, so the uncomplicated form is preferred over A38.003.",
+      "num_turns": 2,
+      "elapsed_s": 15.3,
+      "cost_usd": 0.1041,
+      "error": null
+    },
+    {
+      "parquet_idx": 29726,
+      "cod": "insuficiencia aortica",
+      "gold": "I35.100",
+      "predicted": "I35.100",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I06.100",
+        "I35.900"
+      ],
+      "reasoning": "'Insuficiencia aortica' is Spanish for aortic (valve) insufficiency/regurgitation. With no qualifier indicating rheumatic or congenital origin, the nonrheumatic/unspecified code I35.100 'Aortic (valve) insufficiency' is the most direct match. Historically much aortic insufficiency was rheumatic, so I06.100 is a reasonable alternative if rheumatic etiology is implied by context.",
+      "num_turns": 2,
+      "elapsed_s": 16.79,
+      "cost_usd": 0.1225,
+      "error": null
+    },
+    {
+      "parquet_idx": 21255,
+      "cod": "gastro enteritis",
+      "gold": "A09.940",
+      "predicted": "A09.900",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.940",
+        "A09.040"
+      ],
+      "reasoning": "The CoD is the generic, unqualified term 'gastroenteritis'. The masterlist entry A09.900 is exactly 'Gastroenteritis and colitis of unspecified origin', matching the term verbatim with no extra qualifier (acute, infectious, neonatal). A09.940 would only be preferred if 'acute' were specified, and A09.040 only if an infectious origin were stated.",
+      "num_turns": 2,
+      "elapsed_s": 17.75,
+      "cost_usd": 0.1267,
+      "error": null
+    },
+    {
+      "parquet_idx": 50289,
+      "cod": "arterio esclerosis",
+      "gold": "I38.001",
+      "predicted": "I70.900",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I70.901",
+        "I25.000"
+      ],
+      "reasoning": "'Arterio esclerosis' is Spanish for arteriosclerosis/atherosclerosis with no specified anatomical site. The masterlist entry I70.900 (Generalised and unspecified atherosclerosis) is the direct unspecified match. Site-specific variants (aorta, renal, extremities, cerebral) are not warranted without more information.",
+      "num_turns": 3,
+      "elapsed_s": 22.82,
+      "cost_usd": 0.1295,
+      "error": null
+    },
+    {
+      "parquet_idx": 8453,
+      "cod": "Tuberculosis pulmonum (Tub. pulm., T p.)",
+      "gold": "A16.904",
+      "predicted": "A16.200",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A16.904",
+        "A16.905"
+      ],
+      "reasoning": "'Tuberculosis pulmonum' is Latin for tuberculosis of the lung; the abbreviations 'Tub. pulm.' and 'T p.' confirm pulmonary TB. A16.200 ('Tuberculosis of lung, without mention of bacteriological or histological confirmation') is the most anatomically precise match, since 1700–1950 records lack lab confirmation. A16.904 (literal 'Pulmonary tuberculosis' under the unspecified-respiratory A16.9 rubric) is a close alternative but less anatomically specific.",
+      "num_turns": 3,
+      "elapsed_s": 24.32,
+      "cost_usd": 0.1491,
+      "error": null
+    },
+    {
+      "parquet_idx": 67713,
+      "cod": "pneumonia crouposa",
+      "gold": "J18.100",
+      "predicted": "J18.100",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J13.000",
+        "J18.900"
+      ],
+      "reasoning": "'Pneumonia crouposa' is medical Latin for croupous pneumonia, the historical name for lobar pneumonia (fibrinous lobar consolidation). The masterlist entry J18.100 'Lobar pneumonia, unspecified' is a direct match. Without organism identification stated, J18.1 is preferred over J13 (S. pneumoniae-specific), even though pneumococcus was the typical pathogen in 1700–1950.",
+      "num_turns": 3,
+      "elapsed_s": 18.86,
+      "cost_usd": 0.14,
+      "error": null
+    },
+    {
+      "parquet_idx": 35976,
+      "cod": "Abort",
+      "gold": "O06.000",
+      "predicted": "O06.901",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": [
+        "O03.901",
+        "O06.900"
+      ],
+      "reasoning": "'Abort' is the German/Danish/Dutch term for abortion or miscarriage, common in 18th–20th century death records. With no qualifier indicating spontaneous, medical, or induced, the unspecified abortion code is the appropriate match. O06.901 ('Abortion, unspecified') is the literal masterlist entry for a bare 'abortion' term.",
+      "num_turns": 2,
+      "elapsed_s": 19.85,
+      "cost_usd": 0.1322,
+      "error": null
+    },
+    {
+      "parquet_idx": 8051,
+      "cod": "variolae haemorrhagia",
+      "gold": "B03.000",
+      "predicted": "B03.001",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "B03.000",
+        "B03.002"
+      ],
+      "reasoning": "Variolae haemorrhagia is Latin for hemorrhagic smallpox, historically called 'black pox' because of the dark cutaneous and mucosal hemorrhages characteristic of this fulminant form. The masterlist entry B03.001 'Blackpox' is the direct synonym. The generic B03.000 'Smallpox no mention of vaccination' is a reasonable but less specific fallback.",
+      "num_turns": 2,
+      "elapsed_s": 15.48,
+      "cost_usd": 0.1053,
+      "error": null
+    },
+    {
+      "parquet_idx": 63661,
+      "cod": "Phthisis",
+      "gold": "A16.901",
+      "predicted": "A16.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A16.903",
+        "A16.202"
+      ],
+      "reasoning": "'Phthisis' is the classical/historical term for tuberculosis, most commonly pulmonary tuberculosis ('consumption'). The masterlist contains an exact entry where the description is the bare word 'Phthisis' mapped to A16.901 (Respiratory tuberculosis unspecified, without mention of bacteriological or histological confirmation). Without further qualifier (e.g. 'pulmonary', 'pneumonic', 'laryngeal'), the unspecified respiratory TB code is the safest match.",
+      "num_turns": 2,
+      "elapsed_s": 12.4,
+      "cost_usd": 0.1021,
+      "error": null
+    },
+    {
+      "parquet_idx": 6232,
+      "cod": "meningitis tuberculosa",
+      "gold": "A17.000",
+      "predicted": "A17.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A17.100",
+        "A16.200"
+      ],
+      "reasoning": "'Meningitis tuberculosa' is the Latin form of tuberculous meningitis, which maps exactly to ICD-10h A17.000 (Tuberculosis of nervous system — Tuberculous meningitis). The masterlist confirms this entry with no DoNotUse/NotForUnderlying flags. The closest alternative, A17.100 (meningeal tuberculoma), describes a focal tuberculous mass rather than diffuse meningeal inflammation.",
+      "num_turns": 2,
+      "elapsed_s": 13.0,
+      "cost_usd": 0.0974,
+      "error": null
+    },
+    {
+      "parquet_idx": 54811,
+      "cod": "levenloze zoon",
+      "gold": "P95.000",
+      "predicted": "P95.001",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "Z37.100",
+        "P96.900"
+      ],
+      "reasoning": "'Levenloze zoon' is Dutch for 'lifeless son', a standard term in Dutch civil/parish registers (1700–1950) for a stillborn male child. P95.001 'Foetal death of unspecified cause' (HistCat: Stillbirth) is the direct match for an unspecified stillbirth. Z37.100 (Single stillbirth) describes the mother's delivery outcome and is flagged NotForUnderlying and female-specific, so it is unsuitable as the underlying cause for the deceased child.",
+      "num_turns": 3,
+      "elapsed_s": 21.89,
+      "cost_usd": 0.0923,
+      "error": null
+    },
+    {
+      "parquet_idx": 64235,
+      "cod": "gastro enteritis acuta",
+      "gold": "A09.008",
+      "predicted": "A09.940",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.040",
+        "A09.900"
+      ],
+      "reasoning": "Latin 'gastro enteritis acuta' = 'acute gastroenteritis' with no origin stated. The masterlist contains a verbatim match at A09.940 ('Gastroenteritis (acute), unspecified origin'). The 'stated infectious origin' counterpart (A09.040) is not appropriate because the source term does not specify an infectious aetiology — historical death certificates pre-bacteriology rarely did.",
+      "num_turns": 2,
+      "elapsed_s": 17.49,
+      "cost_usd": 0.1214,
+      "error": null
+    },
+    {
+      "parquet_idx": 11256,
+      "cod": "rheumatism stomach",
+      "gold": "K31.901",
+      "predicted": "K29.701",
+      "correct": false,
+      "confidence": "low",
+      "alternatives": [
+        "M79.000",
+        "R10.101"
+      ],
+      "reasoning": "‘Rheumatism stomach’ is a historical vernacular term in which ‘rheumatism’ generically denoted inflammation/pain; applied to the stomach it most plausibly maps to gastritis. With no acute/chronic qualifier, K29.701 (Stomach inflammation, unspecified) is the best fit. Generic M79.000 (Rheumatism, unspecified) ignores the explicit anatomical localisation, and R10.101 (gastralgia) covers pain only.",
+      "num_turns": 7,
+      "elapsed_s": 44.94,
+      "cost_usd": 0.2587,
+      "error": null
+    },
+    {
+      "parquet_idx": 62968,
+      "cod": "Tuberculosis pulmonum et renum (Tub. pulm. et renalis, Tub. renum et pulm.)",
+      "gold": "A16.905",
+      "predicted": "A19.100",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": [
+        "A16.904",
+        "A18.101"
+      ],
+      "reasoning": "The Latin term explicitly describes TB at two organ systems (lungs + kidneys), with the variants showing both sites are equally weighted. A19.100 'Acute miliary tuberculosis of multiple sites' is the masterlist code that captures multi-organ TB — clinically, TB spread from lungs to kidneys reflects haematogenous dissemination. No single-site code (A16.x pulmonary or A18.101 renal) fully captures the dual-organ description.",
+      "num_turns": 3,
+      "elapsed_s": 60.18,
+      "cost_usd": 0.2332,
+      "error": null
+    },
+    {
+      "parquet_idx": 58193,
+      "cod": "febris continua gastrica",
+      "gold": "A01.003",
+      "predicted": "A01.003",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A01.000",
+        "A01.001"
+      ],
+      "reasoning": "Latin 'febris continua gastrica' = 'continuous gastric fever', a well-known historical synonym for typhoid (enteric) fever, which classically presents with sustained ('continua') fever and gastrointestinal involvement. The masterlist has a literal match at A01.003 'Gastric fever' under Typhoid fever. Pre-antibiotic era context strongly supports typhoid as the underlying disease.",
+      "num_turns": 3,
+      "elapsed_s": 15.89,
+      "cost_usd": 0.1138,
+      "error": null
+    },
+    {
+      "parquet_idx": 52741,
+      "cod": "morbilli / pneumonie",
+      "gold": "B05.200",
+      "predicted": "B05.200",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "B05.202",
+        "B05.900"
+      ],
+      "reasoning": "'Morbilli' is the Latin term for measles, and 'pneumonie' is pneumonia. The masterlist contains a precise match: B05.200 'Measles complicated by pneumonia'. Measles-associated pneumonia was a frequent and often fatal complication in the pre-vaccine era, making this an unambiguous classification.",
+      "num_turns": 2,
+      "elapsed_s": 10.88,
+      "cost_usd": 0.103,
+      "error": null
+    },
+    {
+      "parquet_idx": 66497,
+      "cod": "enterocolitis",
+      "gold": "A09.940",
+      "predicted": "A09.900",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": [
+        "K52.950",
+        "A09.940"
+      ],
+      "reasoning": "Unqualified 'enterocolitis' = inflammation of small intestine and colon without specified cause. A09.9 covers 'Gastroenteritis and colitis of unspecified origin' and is the natural umbrella in the masterlist for the bare term. In the 1700–1950 period such cases were typically infectious diarrhoeal disease, but without modifier the unspecified-origin code is most appropriate. Specific entries (Clostridium A04.700, ulcerative K51.002, necrotising newborn P77.000) require explicit qualifiers absent here.",
+      "num_turns": 4,
+      "elapsed_s": 30.98,
+      "cost_usd": 0.1482,
+      "error": null
+    },
+    {
+      "parquet_idx": 33020,
+      "cod": "sarampion",
+      "gold": "B05.900",
+      "predicted": "B05.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "B05.901",
+        "B05.200"
+      ],
+      "reasoning": "Sarampión is Spanish for measles. With no mention of complications (encephalitis, pneumonia, otitis, etc.), the unspecified/no-complication code B05.900 is the most appropriate match. Measles was a very common childhood cause of death in pre-vaccine eras (1700–1950), making this a clinically plausible coding.",
+      "num_turns": 2,
+      "elapsed_s": 11.54,
+      "cost_usd": 0.1,
+      "error": null
+    },
+    {
+      "parquet_idx": 29632,
+      "cod": "tuberculosis",
+      "gold": "A16.905",
+      "predicted": "A16.905",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A16.904",
+        "A16.900"
+      ],
+      "reasoning": "The masterlist contains an exact synonym entry for 'Tuberculosis' at A16.905 (Respiratory tuberculosis unspecified, without mention of bacteriological or histological confirmation). Without further qualification, historical TB death records (1700–1950, almost entirely pre-antibiotic and pre-bacteriological-confirmation) overwhelmingly refer to pulmonary/respiratory TB, so the unspecified-respiratory branch is the most plausible target.",
+      "num_turns": 2,
+      "elapsed_s": 13.22,
+      "cost_usd": 0.0679,
+      "error": null
+    },
+    {
+      "parquet_idx": 39975,
+      "cod": "stuipen",
+      "gold": "R56.800",
+      "predicted": "R56.800",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R56.801",
+        "R56.000"
+      ],
+      "reasoning": "'Stuipen' is Dutch for convulsions/seizures, a very common entry in historical Dutch death registers (especially for infants). Without explicit age context, the unspecified convulsions code R56.800 is the safest match. R56.801 (infantile convulsions) is a strong alternative if the record is known to concern a child, which is statistically the case for 'stuipen' in 18th–19th century Dutch records.",
+      "num_turns": 2,
+      "elapsed_s": 13.66,
+      "cost_usd": 0.105,
+      "error": null
+    },
+    {
+      "parquet_idx": 34769,
+      "cod": "Kronisk hjertesygdom (Chronisk Hjertesygdom)",
+      "gold": "I51.900",
+      "predicted": "I51.900",
+      "correct": true,
+      "confidence": "medium",
+      "alternatives": [
+        "I25.900",
+        "I51.600"
+      ],
+      "reasoning": "Danish 'Kronisk hjertesygdom' = 'Chronic heart disease', a generic, ill-defined cardiac diagnosis. The masterlist has I51.900 'Heart disease, unspecified' under 'Complications and ill-defined descriptions of heart disease', which fits this vague historical term best. 'Chronic' here just means long-standing — without evidence of ischemic etiology, I25.900 would be too specific.",
+      "num_turns": 5,
+      "elapsed_s": 28.3,
+      "cost_usd": 0.1954,
+      "error": null
+    },
+    {
+      "parquet_idx": 60333,
+      "cod": "zwakte",
+      "gold": "R53.001",
+      "predicted": "R53.003",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "R53.002",
+        "R54.001"
+      ],
+      "reasoning": "'Zwakte' is Dutch for 'weakness' or 'debility' — a vague but very common cause-of-death entry in historical Dutch civil registers. Without qualifiers like 'ouderdoms-' (old age) or 'aangeboren' (congenital), the most direct match in the masterlist is R53.003 'Debility' under 'Malaise and fatigue'. R53.002 'Constitutional weakness/debility' is a near-equivalent alternative.",
+      "num_turns": 4,
+      "elapsed_s": 26.0,
+      "cost_usd": 0.1643,
+      "error": null
+    },
+    {
+      "parquet_idx": 18709,
+      "cod": "longontsteking",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.000",
+        "J18.100"
+      ],
+      "reasoning": "'Longontsteking' is the standard Dutch term for pneumonia (literally 'lung inflammation'), with no further specification of organism, anatomic distribution, or etiology. Given the historical context (1700–1950, often pre-bacteriological), the appropriate match is the unspecified pneumonia code. J18.900 'Pneumonia, unspecified' is the canonical generic-pneumonia bucket in the masterlist.",
+      "num_turns": 3,
+      "elapsed_s": 16.51,
+      "cost_usd": 0.1342,
+      "error": null
+    },
+    {
+      "parquet_idx": 33354,
+      "cod": "bronquitis cronica",
+      "gold": "J41.000",
+      "predicted": "J42.000",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "J41.000",
+        "J40.000"
+      ],
+      "reasoning": "'Bronquitis cronica' is Spanish for 'chronic bronchitis' with no further specification (not described as simple, mucopurulent, asthmatic, or emphysematous). The masterlist entry J42.000 'Unspecified chronic bronchitis' is the direct match. More specific codes under J41 require a subtype that the source term does not provide.",
+      "num_turns": 3,
+      "elapsed_s": 14.36,
+      "cost_usd": 0.1286,
+      "error": null
+    },
+    {
+      "parquet_idx": 40851,
+      "cod": "Cancer ventriculi (C. ventr., C. v.)",
+      "gold": "C16.901",
+      "predicted": "C16.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "C16.900",
+        "C16.907"
+      ],
+      "reasoning": "Latin 'cancer ventriculi' = cancer of the stomach (ventriculus = stomach in medical Latin). No anatomical subsite (cardia, fundus, body, pylorus) is specified, so the unspecified-site row is correct. Among the C16.9 entries, the description 'Cancer, stomach' (C16.901) maps most directly to the source term.",
+      "num_turns": 4,
+      "elapsed_s": 26.45,
+      "cost_usd": 0.1076,
+      "error": null
+    },
+    {
+      "parquet_idx": 13247,
+      "cod": "Tæring",
+      "gold": "P96.904",
+      "predicted": "A16.200",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A16.906",
+        "A16.901"
+      ],
+      "reasoning": "'Tæring' is the standard Danish historical term for consumption/phthisis, which in pre-1950 death records almost invariably refers to pulmonary tuberculosis without bacteriological confirmation. The masterlist explicitly maps 'Consumption' (A16.906) and 'Phthisis' (A16.901) under the parent code A16.2 (Tuberculosis of lung, without mention of bacteriological or histological confirmation), which is the canonical underlying-cause code for unspecified consumption.",
+      "num_turns": 3,
+      "elapsed_s": 27.8,
+      "cost_usd": 0.1635,
+      "error": null
+    },
+    {
+      "parquet_idx": 62697,
+      "cod": "Gangræna (Gangræn, Gangraena)$Alderdomssvækkelse  (Alderssvækkelse, Senil svækkelse)",
+      "gold": "R02.000",
+      "predicted": "I70.201",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "R02.002",
+        "R54.001"
+      ],
+      "reasoning": "The Danish/Latin entry combines 'Gangræna' (gangrene) with 'Alderdomssvækkelse / Senil svækkelse' (senile debility / old-age weakness). The masterlist has an exact descriptor 'Senile gangrene' under I70.201 (atherosclerosis of arteries of the extremities), which is the historical clinical entity for gangrene in the elderly due to arterial insufficiency — capturing both components of the entry in a single specific code.",
+      "num_turns": 6,
+      "elapsed_s": 35.81,
+      "cost_usd": 0.1991,
+      "error": null
+    },
+    {
+      "parquet_idx": 56461,
+      "cod": "marasmus senilis",
+      "gold": "R54.001",
+      "predicted": "R54.002",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "R54.001",
+        "R54.000"
+      ],
+      "reasoning": "'Marasmus senilis' is Latin for senile wasting, used in 18th–19th century death records as a synonym for death from old-age decay/decrepitude, not for protein-energy malnutrition. The R54 Senility group (HistCat 'Old age') contains the precise descriptor 'Senile decay' (R54.002), which is the closest semantic match. E41 'Nutritional marasmus' refers to the modern pediatric malnutrition concept and would be anachronistic for an elderly historical death.",
+      "num_turns": 4,
+      "elapsed_s": 20.78,
+      "cost_usd": 0.143,
+      "error": null
+    },
+    {
+      "parquet_idx": 11546,
+      "cod": "Bronchitis",
+      "gold": "J40.000",
+      "predicted": "J40.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J40.009",
+        "J20.900"
+      ],
+      "reasoning": "The term 'Bronchitis' has no qualifier indicating acute, chronic, or duration. The masterlist entry J40.000 is explicitly 'Bronchitis, not specified as acute or chronic', which is the canonical code for this exact unqualified term. Other candidates (J20.900 acute, J42.000 chronic) require information not present in the input.",
+      "num_turns": 2,
+      "elapsed_s": 15.83,
+      "cost_usd": 0.1157,
+      "error": null
+    },
+    {
+      "parquet_idx": 32512,
+      "cod": "Phthisis 2 months",
+      "gold": "A16.901",
+      "predicted": "A16.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A16.903",
+        "A16.202"
+      ],
+      "reasoning": "Phthisis is the classic historical term for tuberculosis, most commonly pulmonary/respiratory TB. The masterlist lists 'Phthisis' verbatim as the ICD10h_DESCRIPTION for A16.901 (respiratory tuberculosis, unspecified). The '2 months' refers to illness duration and does not change the code. A more specific 'pulmonary' variant (A16.903) is not chosen because the input does not explicitly say pulmonary.",
+      "num_turns": 2,
+      "elapsed_s": 15.27,
+      "cost_usd": 0.1058,
+      "error": null
+    },
+    {
+      "parquet_idx": 16812,
+      "cod": "bronquitis",
+      "gold": "J40.009",
+      "predicted": "J40.009",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J40.000",
+        "J20.900"
+      ],
+      "reasoning": "'Bronquitis' is Spanish for 'bronchitis'. With no qualifier (acute, chronic, age, duration), the best match is the unspecified bronchitis code J40.009 ('Bronchitis, unspecified no age or duration'). J40 is specifically for bronchitis not specified as acute or chronic, which fits an unqualified historical CoD entry.",
+      "num_turns": 2,
+      "elapsed_s": 12.26,
+      "cost_usd": 0.0561,
+      "error": null
+    },
+    {
+      "parquet_idx": 13889,
+      "cod": "Causa ignota (Ignota, Causa mortis ignota)",
+      "gold": "R99.001",
+      "predicted": "R99.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R99.000",
+        "R99.090"
+      ],
+      "reasoning": "Latin 'Causa ignota' / 'Causa mortis ignota' literally means 'cause unknown' / 'cause of death unknown'. The certifier is explicitly stating the cause is unknown rather than describing an unclear or ill-defined illness. R99.001 'Stated unknown' fits this case precisely; R99.000 'Cause of death unclear' is the close fallback for ambiguous wording.",
+      "num_turns": 4,
+      "elapsed_s": 25.21,
+      "cost_usd": 0.1977,
+      "error": null
+    },
+    {
+      "parquet_idx": 11265,
+      "cod": "Carcinome gastrique",
+      "gold": "C76.201",
+      "predicted": "C16.907",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "C16.900",
+        "C16.901"
+      ],
+      "reasoning": "'Carcinome gastrique' is French for 'gastric carcinoma' — a malignant epithelial neoplasm of the stomach with no anatomical sub-site specified (cardia, fundus, body, etc.). The masterlist has a dedicated entry C16.907 'Carcinoma, stomach' under C16.9 (Stomach, unspecified), which exactly matches the term's specificity.",
+      "num_turns": 3,
+      "elapsed_s": 15.29,
+      "cost_usd": 0.1326,
+      "error": null
+    },
+    {
+      "parquet_idx": 45355,
+      "cod": "Cancer hepatis",
+      "gold": "C22.901",
+      "predicted": "C22.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "C22.900",
+        "C22.001"
+      ],
+      "reasoning": "'Cancer hepatis' is Latin for cancer of the liver, with no specification of cell type or histology. C22.901 is the masterlist entry for 'Cancer, liver unspecified' under malignant neoplasm of liver/intrahepatic bile ducts, which directly matches both the term 'cancer' and the unspecified site within the liver.",
+      "num_turns": 2,
+      "elapsed_s": 13.52,
+      "cost_usd": 0.0609,
+      "error": null
+    },
+    {
+      "parquet_idx": 40525,
+      "cod": "Diarré (Diarrhoea, Diarrhé)",
+      "gold": "A09.002",
+      "predicted": "A09.910",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.900",
+        "A09.911"
+      ],
+      "reasoning": "The term is unqualified 'diarrhoea' in three languages (Danish, English, French) with no specifier for cause, duration, or appearance. The masterlist entry A09.910 'Diarrhoea (acute), unspecified origin' is the closest literal match — historical death registrations citing only 'diarrhoea' overwhelmingly denote acute episodes of unknown aetiology (the chronic form rarely killed on its own in the 1700–1950 era). The umbrella A09.900 is the next-best fallback if a non-acute reading is preferred.",
+      "num_turns": 5,
+      "elapsed_s": 39.33,
+      "cost_usd": 0.2515,
+      "error": null
+    },
+    {
+      "parquet_idx": 15197,
+      "cod": "Senile Decay",
+      "gold": "R54.002",
+      "predicted": "R54.002",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R54.000",
+        "R54.007"
+      ],
+      "reasoning": "The masterlist contains an exact, verbatim match: ICD10h R54.002 with description 'Senile decay' under category R54 'Senility'. No flags (DoNotUse, NotForUnderlying, GenderSpecific) are set. 'Senile decay' is a common 19th–early 20th century term for non-specific decline attributed to old age, perfectly fitting the R54 Senility group.",
+      "num_turns": 3,
+      "elapsed_s": 16.46,
+      "cost_usd": 0.124,
+      "error": null
+    },
+    {
+      "parquet_idx": 61775,
+      "cod": "Selvmord ved hængning (Hængt sig)$Sygdom (formodet bevæggrund: Sygdom)",
+      "gold": "X70.000",
+      "predicted": "X70.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "X70.002",
+        "X70.001"
+      ],
+      "reasoning": "Danish 'Selvmord ved hængning (Hængt sig)' translates directly to 'Suicide by hanging (Hanged himself)'. The masterlist contains an exact match at X70.000 (Intentional self-harm by hanging — 'Suicide hanging'). The trailing note about presumed motive ('Sygdom' = illness) is contextual and does not change the underlying mechanism of death.",
+      "num_turns": 2,
+      "elapsed_s": 12.97,
+      "cost_usd": 0.1036,
+      "error": null
+    },
+    {
+      "parquet_idx": 42140,
+      "cod": "hydrocephalus acutus",
+      "gold": "G91.900",
+      "predicted": "A17.901",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": [
+        "A17.000",
+        "G91.900"
+      ],
+      "reasoning": "'Hydrocephalus acutus' (acute hydrocephalus) is a well-established historical term, dating to Whytt (1768), for tubercular hydrocephalus / tuberculous meningitis in children — a leading pre-antibiotic cause of childhood death. The ICD-10h masterlist explicitly maps 'Tubercular hydrocephalus' to A17.901 under Tuberculosis of the nervous system, which directly matches the archaic clinical concept. The 'acutus' qualifier distinguishes it from chronic/congenital hydrocephalus (true ventricular dilatation).",
+      "num_turns": 3,
+      "elapsed_s": 31.12,
+      "cost_usd": 0.1597,
+      "error": null
+    },
+    {
+      "parquet_idx": 16516,
+      "cod": "typhus",
+      "gold": "A75.900",
+      "predicted": "A75.900",
+      "correct": true,
+      "confidence": "medium",
+      "alternatives": [
+        "A75.000",
+        "A01.000"
+      ],
+      "reasoning": "The unmodified term 'typhus' maps to ICD-10 A75 (rickettsial typhus fever); the unspecified code A75.900 is the appropriate choice when the type (epidemic, recrudescent, murine, scrub) is not given. In the pre-antibiotic period, epidemic louse-borne typhus (A75.0) was a major killer, but without context I keep the unspecified code.",
+      "num_turns": 3,
+      "elapsed_s": 22.94,
+      "cost_usd": 0.086,
+      "error": null
+    },
+    {
+      "parquet_idx": 3872,
+      "cod": "Apoplexy",
+      "gold": "I64.001",
+      "predicted": "I64.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I61.901",
+        "I21.904"
+      ],
+      "reasoning": "Historically, 'apoplexy' (unqualified) denoted sudden loss of consciousness or paralysis from a cerebrovascular event, without distinguishing hemorrhage from infarction. The masterlist explicitly lists 'Apoplexy' as the description for I64.001 (Stroke, NOS), making it the canonical mapping. Qualified variants (heart, haemorrhagic, pulmonary, uraemic) have their own codes and are not implied by the bare term.",
+      "num_turns": 2,
+      "elapsed_s": 16.1,
+      "cost_usd": 0.1071,
+      "error": null
+    },
+    {
+      "parquet_idx": 57272,
+      "cod": "pneumonia",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.000",
+        "J18.100"
+      ],
+      "reasoning": "The input is the bare term 'pneumonia' with no organism, lobe, or pattern qualifier. ICD-10h J18.900 ('Pneumonia, unspecified') is the exact masterlist entry for this generic case. Bronchopneumonia (J18.000) and lobar pneumonia (J18.100) require a qualifier that is absent here.",
+      "num_turns": 2,
+      "elapsed_s": 12.14,
+      "cost_usd": 0.047,
+      "error": null
+    },
+    {
+      "parquet_idx": 34602,
+      "cod": "sefticemia puerperal",
+      "gold": "O85.003",
+      "predicted": "O85.003",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "O85.000",
+        "O85.001"
+      ],
+      "reasoning": "'Sefticemia puerperal' is a misspelling of 'septicemia puerperal' (Spanish/Portuguese for puerperal septicaemia) — a bloodstream infection following childbirth, historically a leading cause of maternal mortality before antiseptic obstetrics. The masterlist contains an exact match at O85.003 'Puerperal septicaemia' under the O85 'Puerperal sepsis' parent.",
+      "num_turns": 2,
+      "elapsed_s": 14.27,
+      "cost_usd": 0.108,
+      "error": null
+    },
+    {
+      "parquet_idx": 18207,
+      "cod": "viruela",
+      "gold": "B03.000",
+      "predicted": "B03.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "B03.002",
+        "B03.001"
+      ],
+      "reasoning": "'Viruela' is the standard Spanish term for smallpox. With no further specification (e.g., vaccination status, hemorrhagic form, or pregnancy complication), the generic smallpox code B03.000 ('Smallpox no mention of vaccination') is the correct choice.",
+      "num_turns": 2,
+      "elapsed_s": 11.17,
+      "cost_usd": 0.0946,
+      "error": null
+    },
+    {
+      "parquet_idx": 3615,
+      "cod": "Catarrhus intestinalis acutus (Cat. intest. acut.)",
+      "gold": "A09.004",
+      "predicted": "A09.973",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.930",
+        "A09.920"
+      ],
+      "reasoning": "'Catarrhus intestinalis acutus' is Latin for 'acute intestinal catarrh', which maps directly to the masterlist entry 'Bowel catarrh (acute)' (A09.973). The term 'intestinalis' specifies the bowel rather than the stomach+intestine (gastrointestinal), and no infectious origin is stated, placing it under A09.9 (unspecified origin). This is a common archaic clinical label for non-specific acute enteritis/diarrheal illness in 18th–early 20th century records.",
+      "num_turns": 3,
+      "elapsed_s": 24.39,
+      "cost_usd": 0.1635,
+      "error": null
+    },
+    {
+      "parquet_idx": 64975,
+      "cod": "Tuberculosis pulmonum (Tub. pulm., T p.)",
+      "gold": "A16.904",
+      "predicted": "A16.200",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A16.904",
+        "A16.906"
+      ],
+      "reasoning": "Latin 'Tuberculosis pulmonum' literally means tuberculosis of the lungs, i.e. pulmonary tuberculosis. Masterlist row 112 (A16.200) is the canonical entry for 'Tuberculosis of lung, without mention of bacteriological or histological confirmation' — appropriate for historical records pre-dating bacteriological confirmation. The abbreviations 'Tub. pulm.' and 'T p.' are the standard contractions of the same Latin phrase.",
+      "num_turns": 5,
+      "elapsed_s": 28.23,
+      "cost_usd": 0.1202,
+      "error": null
+    },
+    {
+      "parquet_idx": 58096,
+      "cod": "Hypertrophia prostatae  (Prostatahypertrofi)$Retentio urinae$Bronchopneumonia",
+      "gold": "N40.000",
+      "predicted": "N40.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "N40.001",
+        "J18.000"
+      ],
+      "reasoning": "The CoD chain (Latin/Danish) reads: prostatic hypertrophy → urinary retention → bronchopneumonia. The originating/underlying cause is the prostatic enlargement; urinary retention is its direct complication and bronchopneumonia is the terminal event (typical hypostatic/aspiration pneumonia in a bedridden elderly man with obstructive uropathy). N40.000 'Hyperplasia of prostate' matches exactly and is permitted as an underlying cause.",
+      "num_turns": 2,
+      "elapsed_s": 17.97,
+      "cost_usd": 0.1203,
+      "error": null
+    },
+    {
+      "parquet_idx": 23894,
+      "cod": "peritonitis circumscripta",
+      "gold": "K65.900",
+      "predicted": "K65.800",
+      "correct": false,
+      "confidence": "medium",
+      "alternatives": [
+        "K65.900",
+        "K65.000"
+      ],
+      "reasoning": "'Peritonitis circumscripta' is Latin for circumscribed/localized peritonitis — a specified form of peritonitis without an identified cause. K65.800 'Other peritonitis' best fits a specified type that isn't acute generalized (K65.000) or chronic (K65.801). K35.300 would require appendicitis as the source, which isn't stated.",
+      "num_turns": 2,
+      "elapsed_s": 25.3,
+      "cost_usd": 0.1302,
+      "error": null
+    },
+    {
+      "parquet_idx": 5954,
+      "cod": "meningitis",
+      "gold": "G03.900",
+      "predicted": "G03.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "G00.900",
+        "A17.000"
+      ],
+      "reasoning": "The term 'meningitis' alone has no etiologic qualifier (bacterial, viral, tuberculous, etc.), so the unspecified code G03.900 ('Meningitis, unspecified') is the correct choice. In historical records (1700–1950) the causative organism was typically unknown at the time of certification, making this the standard default. Tuberculous meningitis (A17.000) and bacterial meningitis unspecified (G00.900) are plausible alternatives only if surrounding context implied them.",
+      "num_turns": 2,
+      "elapsed_s": 15.18,
+      "cost_usd": 0.0612,
+      "error": null
+    },
+    {
+      "parquet_idx": 35499,
+      "cod": "debilidad congenita",
+      "gold": "P96.901",
+      "predicted": "P96.903",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "P96.901",
+        "P96.902"
+      ],
+      "reasoning": "'Debilidad congenita' is Spanish for 'congenital debility', a common historical CoD for weak/non-thriving newborns. The masterlist contains an exact descriptor match at P96.903 ('Congenital debility') under the perinatal P96.9 group. P96.901 ('Congenital weakness') and P96.902 ('Congenital asthenia') are near-synonyms, but the literal Spanish-to-English mapping favors 'debility'.",
+      "num_turns": 3,
+      "elapsed_s": 15.8,
+      "cost_usd": 0.1231,
+      "error": null
+    },
+    {
+      "parquet_idx": 38099,
+      "cod": "Pneumonia crouposa (Pneumonia croup., Pneum. croup.)",
+      "gold": "J05.000",
+      "predicted": "J18.100",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "J18.900",
+        "J13.000"
+      ],
+      "reasoning": "'Pneumonia crouposa' is the Latin/historical synonym for croupous (lobar) pneumonia, characterized by fibrinous consolidation of an entire lung lobe. This maps directly to the masterlist entry J18.100 'Lobar pneumonia, unspecified'. No organism is specified, so the unspecified lobar pneumonia code is the precise fit rather than the organism-specific J13–J15 codes.",
+      "num_turns": 4,
+      "elapsed_s": 21.12,
+      "cost_usd": 0.1547,
+      "error": null
+    },
+    {
+      "parquet_idx": 6757,
+      "cod": "Kræft i leveren (Leverkræft)",
+      "gold": "C22.901",
+      "predicted": "C22.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "C22.900",
+        "C22.001"
+      ],
+      "reasoning": "The Danish phrase 'Kræft i leveren (Leverkræft)' literally means 'Cancer in the liver (Liver cancer)' — a generic, unspecified liver cancer with no histology indicated. C22.901 is the masterlist entry for 'Cancer, liver unspecified' under C22.9, which exactly matches this generic terminology. C22.001 (liver cell carcinoma) would presume hepatocellular type, which the source does not state.",
+      "num_turns": 2,
+      "elapsed_s": 13.59,
+      "cost_usd": 0.1115,
+      "error": null
+    },
+    {
+      "parquet_idx": 18566,
+      "cod": "broncopneumonia",
+      "gold": "J18.000",
+      "predicted": "J18.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.900",
+        "J18.001"
+      ],
+      "reasoning": "'Broncopneumonia' is the Italian/Spanish/Portuguese spelling of bronchopneumonia (inflammation of the lungs originating in the bronchioles). The masterlist contains a direct, unambiguous entry: J18.000 'Bronchopneumonia, unspecified'. No qualifiers in the term suggest a specific organism, lobar form, or hypostatic form.",
+      "num_turns": 3,
+      "elapsed_s": 14.73,
+      "cost_usd": 0.1184,
+      "error": null
+    },
+    {
+      "parquet_idx": 30514,
+      "cod": "onbekend",
+      "gold": "R99.001",
+      "predicted": "R99.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R99.000",
+        "R99.090"
+      ],
+      "reasoning": "'Onbekend' is Dutch for 'unknown'. The masterlist has a dedicated code R99.001 specifically for cases where the cause of death is stated to be 'unknown', which is an exact semantic match. R99.000 ('Cause of death unclear') and R99.090 ('No cause given') are alternatives, but R99.001 is the most precise fit because the record explicitly states 'unknown' rather than being blank or merely unclear.",
+      "num_turns": 5,
+      "elapsed_s": 26.8,
+      "cost_usd": 0.1538,
+      "error": null
+    },
+    {
+      "parquet_idx": 23113,
+      "cod": "bronquitis catarral",
+      "gold": "J42.001",
+      "predicted": "J42.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J40.009",
+        "J20.900"
+      ],
+      "reasoning": "'Bronquitis catarral' is Spanish for 'catarrhal bronchitis', which has an exact, explicit entry in the masterlist (J42.001 under 'Unspecified chronic bronchitis'). Historically, 'catarrhal bronchitis' described inflammation of the bronchi with mucous discharge, often understood as a chronic/recurrent condition rather than a specific acute infection.",
+      "num_turns": 2,
+      "elapsed_s": 14.01,
+      "cost_usd": 0.1129,
+      "error": null
+    },
+    {
+      "parquet_idx": 63193,
+      "cod": "meningitis",
+      "gold": "G03.900",
+      "predicted": "G03.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "G00.900",
+        "A39.000"
+      ],
+      "reasoning": "The term 'meningitis' is given without any organism, anatomical qualifier, or associated disease, so the unspecified code G03.900 ('Meningitis, unspecified') is the best fit. More specific codes (tuberculous A17.000, meningococcal A39.000, bacterial unspecified G00.900) would require evidence of cause; in the 1700–1950 historical context, etiology was rarely identified at the time of death certification.",
+      "num_turns": 2,
+      "elapsed_s": 13.27,
+      "cost_usd": 0.0585,
+      "error": null
+    },
+    {
+      "parquet_idx": 39707,
+      "cod": "heredo sifilitis",
+      "gold": "A50.900",
+      "predicted": "A50.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A50.000",
+        "A50.200"
+      ],
+      "reasoning": "'Heredo sifilitis' is an archaic Romance-language form (Spanish/Italian) of 'hereditary syphilis', the historical term for congenital syphilis — syphilis transmitted from an infected mother to her fetus. Since the record gives no further detail on early vs late stage or symptomatic vs latent presentation, the unspecified congenital syphilis code A50.900 is the most appropriate match.",
+      "num_turns": 2,
+      "elapsed_s": 13.69,
+      "cost_usd": 0.1032,
+      "error": null
+    },
+    {
+      "parquet_idx": 33493,
+      "cod": "Bronchopneumonia$Infiltratio pulmonum (Infiltratio pulm.)",
+      "gold": "J18.000",
+      "predicted": "J18.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.900",
+        "A16.201"
+      ],
+      "reasoning": "The primary term 'Bronchopneumonia' maps directly to J18.000 (Bronchopneumonia, unspecified). The paired Latin term 'Infiltratio pulmonum' (lung infiltration) is here used as a clinical/synonymous descriptor of the same pneumonic process — the pneumonic infiltrate observed in bronchopneumonia — rather than indicating a distinct diagnosis. With both terms pointing to the same entity, J18.000 is the cleanest fit.",
+      "num_turns": 7,
+      "elapsed_s": 30.71,
+      "cost_usd": 0.1855,
+      "error": null
+    },
+    {
+      "parquet_idx": 31026,
+      "cod": "meningitis toxicronica",
+      "gold": "G03.900",
+      "predicted": "G03.100",
+      "correct": false,
+      "confidence": "low",
+      "alternatives": [
+        "G03.800",
+        "A17.000"
+      ],
+      "reasoning": "The term decomposes as 'meningitis [toxica] chronica' — chronic meningitis, possibly with a toxic qualifier. 'Cronica' is the unambiguous component, and ICD-10h has no specific code for toxic meningitis, so the closest match is G03.1 'Chronic meningitis'. In the pre-antibiotic era this category most often captured non-tuberculous slow-course meningeal inflammations not otherwise specified.",
+      "num_turns": 8,
+      "elapsed_s": 63.12,
+      "cost_usd": 0.4499,
+      "error": null
+    },
+    {
+      "parquet_idx": 43124,
+      "cod": "Abort",
+      "gold": "O06.000",
+      "predicted": "O06.901",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "O03.901",
+        "O05.900"
+      ],
+      "reasoning": "'Abort' is the German/Danish/Dutch term for abortion or miscarriage. With no qualifier indicating spontaneous vs. induced or any complication, the unspecified-abortion entry (O06.901, 'Abortion, unspecified') is the safest bucket. In historical 1700–1950 records, bare 'Abort' typically refers to pregnancy loss without further detail.",
+      "num_turns": 3,
+      "elapsed_s": 19.86,
+      "cost_usd": 0.0961,
+      "error": null
+    },
+    {
+      "parquet_idx": 48668,
+      "cod": "Enteritis",
+      "gold": "A09.009",
+      "predicted": "A09.920",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.020",
+        "K52.931"
+      ],
+      "reasoning": "Plain 'Enteritis' with no qualifiers maps most directly to A09.920 ('Enteritis (acute), unspecified origin'), an exact descriptive match in the masterlist. In historical records (pre-antibiotic era), enteritis as an underlying cause of death was overwhelmingly acute and of unstated etiology, often a synonym for fatal infantile diarrhoea. A chronic non-infective interpretation (K52.931) is far less plausible without explicit modifiers like 'chronic' or 'non-infective'.",
+      "num_turns": 3,
+      "elapsed_s": 25.02,
+      "cost_usd": 0.1716,
+      "error": null
+    },
+    {
+      "parquet_idx": 48061,
+      "cod": "morbus brightii",
+      "gold": "N05.904",
+      "predicted": "N05.904",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "N05.905",
+        "N05.906"
+      ],
+      "reasoning": "'Morbus Brightii' is Latin for Bright's disease, the 19th-century eponym for nephritis/glomerulonephritis with proteinuria and oedema. The masterlist contains an exact match at N05.904 ('Bright's disease') under N05.9 Unspecified nephritic syndrome. Without further specification (acute vs. chronic, with/without renal failure), the unspecified Bright's disease entry is the most faithful mapping.",
+      "num_turns": 3,
+      "elapsed_s": 21.84,
+      "cost_usd": 0.1261,
+      "error": null
+    },
+    {
+      "parquet_idx": 44218,
+      "cod": "Hængning",
+      "gold": "Y20.000",
+      "predicted": "Y20.000",
+      "correct": true,
+      "confidence": "medium",
+      "alternatives": [
+        "X70.000",
+        "W76.000"
+      ],
+      "reasoning": "'Hængning' is Danish for 'hanging'. The bare term carries no qualifier of intent (no suicide/accident/assault marker), so Y20.000 'Hanging, undetermined intent' is the best fit. Suicide by hanging (X70.000) is the most common historical context for this term, but assigning intent without textual evidence would over-interpret the source.",
+      "num_turns": 3,
+      "elapsed_s": 19.73,
+      "cost_usd": 0.1462,
+      "error": null
+    },
+    {
+      "parquet_idx": 22377,
+      "cod": "hartverlamming",
+      "gold": "I46.900",
+      "predicted": "I46.900",
+      "correct": true,
+      "confidence": "medium",
+      "alternatives": [
+        "I46.100",
+        "I50.900"
+      ],
+      "reasoning": "Dutch 'hartverlamming' literally translates to 'heart paralysis' (cf. German Herzlähmung), a frequent historical death-register term denoting that the heart simply stopped — i.e. cardiac arrest with no further specification. I46.9 (Cardiac arrest, unspecified) captures this generic acute cardiac cessation better than heart failure (I50.x), which implies a chronic/progressive process, or I46.1 which requires the term 'sudden' to be explicit.",
+      "num_turns": 6,
+      "elapsed_s": 30.43,
+      "cost_usd": 0.1774,
+      "error": null
+    },
+    {
+      "parquet_idx": 41630,
+      "cod": "Morbus cordis (Mb. cordis, Mb. cord.)",
+      "gold": "I51.900",
+      "predicted": "I51.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I25.901",
+        "I09.900"
+      ],
+      "reasoning": "'Morbus cordis' is Latin for 'disease of the heart' — a generic, unspecified diagnosis commonly used on historical death certificates when the underlying cardiac condition was not differentiated. The masterlist entry I51.900 'Heart disease, unspecified' (and its variant I51.901 'Lesión organica del corazón') is the direct equivalent under 'Complications and ill-defined descriptions of heart disease'.",
+      "num_turns": 3,
+      "elapsed_s": 12.73,
+      "cost_usd": 0.0669,
+      "error": null
+    },
+    {
+      "parquet_idx": 48069,
+      "cod": "catarrhus intestinalis",
+      "gold": "A09.004",
+      "predicted": "A09.973",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.930",
+        "K52.933"
+      ],
+      "reasoning": "Latin 'catarrhus intestinalis' = intestinal/bowel catarrh, a historical term for inflammation of the intestinal mucosa with diarrhea. The masterlist entry A09.973 'Bowel catarrh (acute)' is a near-exact match — 'intestinalis' specifically indicates the bowel (not stomach), and acute is the default reading when no chronicity is stated, which is also more typical for fatal historical cases. Origin (infectious vs. non-infectious) is unspecified, matching the A09.9 group.",
+      "num_turns": 3,
+      "elapsed_s": 18.43,
+      "cost_usd": 0.136,
+      "error": null
+    },
+    {
+      "parquet_idx": 35494,
+      "cod": "lues congenita",
+      "gold": "A50.900",
+      "predicted": "A50.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A50.200",
+        "A50.000"
+      ],
+      "reasoning": "'Lues congenita' is the Latin/historical term for congenital syphilis ('lues' = syphilis). The CoD provides no qualifier for early vs. late, symptomatic vs. latent, or organ involvement, so the unspecified code A50.900 (Congenital syphilis, unspecified) is the best match. In historical records (pre-antibiotic era), this diagnosis was relatively common in infants and stillbirths.",
+      "num_turns": 2,
+      "elapsed_s": 12.39,
+      "cost_usd": 0.0987,
+      "error": null
+    },
+    {
+      "parquet_idx": 11508,
+      "cod": "tuberculosis pulmonum",
+      "gold": "A16.200",
+      "predicted": "A16.200",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A16.904",
+        "A16.202"
+      ],
+      "reasoning": "Latin 'tuberculosis pulmonum' translates literally to 'tuberculosis of the lungs'. A16.200 is 'Tuberculosis of lung, without mention of bacteriological or histological confirmation', matching the term exactly with no qualifiers indicating confirmation. In the pre-antibiotic era covered by this dataset, bacteriological confirmation was rare, making this the appropriate default.",
+      "num_turns": 4,
+      "elapsed_s": 18.94,
+      "cost_usd": 0.0912,
+      "error": null
+    },
+    {
+      "parquet_idx": 65798,
+      "cod": "nephritis interstitialis chronica",
+      "gold": "N11.900",
+      "predicted": "N11.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "N11.800",
+        "N15.900"
+      ],
+      "reasoning": "Latin term meaning 'chronic interstitial nephritis'. The most direct ICD-10h match is N11.900, 'Chronic tubulo-interstitial nephritis, unspecified'. The term lacks any further qualifier (no obstruction, reflux, or other specification), so the unspecified subcategory of N11 is most appropriate.",
+      "num_turns": 3,
+      "elapsed_s": 26.04,
+      "cost_usd": 0.1491,
+      "error": null
+    },
+    {
+      "parquet_idx": 64709,
+      "cod": "marasmus senilis",
+      "gold": "R54.001",
+      "predicted": "R54.000",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "R54.002",
+        "R54.001"
+      ],
+      "reasoning": "'Marasmus senilis' is the Latin term used in 18th–19th century death registers for general wasting and decline in old age — essentially 'dying of old age' without a specific identifiable cause. This maps to R54 Senility (HistCat 'Old age') rather than E41 Nutritional marasmus, which refers to severe protein-energy malnutrition. The R54.000 'Senility' parent code captures the unspecified senile-decline meaning, with R54.002 'Senile decay' and R54.001 'Senile debility' as very close synonyms.",
+      "num_turns": 4,
+      "elapsed_s": 26.66,
+      "cost_usd": 0.1081,
+      "error": null
+    },
+    {
+      "parquet_idx": 51225,
+      "cod": "slepende darmontsteking",
+      "gold": "K52.300",
+      "predicted": "K52.932",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "K52.931",
+        "K52.951"
+      ],
+      "reasoning": "Dutch 'slepende darmontsteking' = 'chronic/lingering bowel inflammation'. The masterlist has a direct lay-term match at K52.932 'Bowel inflammation, chronic' under K52.9 (non-infective gastro-enteritis, unspecified). Historical death registers used 'darmontsteking' as everyday rather than medical-Latin vocabulary, making the lay-term mapping more faithful than the synonymous 'Enteritis, chronic'.",
+      "num_turns": 4,
+      "elapsed_s": 39.35,
+      "cost_usd": 0.2129,
+      "error": null
+    },
+    {
+      "parquet_idx": 20327,
+      "cod": "variolae",
+      "gold": "B03.000",
+      "predicted": "B03.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "B03.002",
+        "B03.001"
+      ],
+      "reasoning": "'Variolae' is Latin for smallpox (variola). The masterlist offers a base 'Smallpox' entry (B03.000) and variants for vaccinated/not-vaccinated status; since the term gives no vaccination information, the base code is appropriate.",
+      "num_turns": 2,
+      "elapsed_s": 11.18,
+      "cost_usd": 0.0446,
+      "error": null
+    },
+    {
+      "parquet_idx": 59933,
+      "cod": "apoplexia cerebri",
+      "gold": "I64.001",
+      "predicted": "I64.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I61.901",
+        "I61.900"
+      ],
+      "reasoning": "'Apoplexia cerebri' is Latin for cerebral apoplexy — a sudden stroke localized to the brain, without further specification of mechanism. The masterlist has a direct lexical match: I64.001 'Stroke, not specified as haemorrhage or infarction' carries the description 'Apoplexy'. The qualifier 'cerebri' only localizes to brain and does not commit to a hemorrhagic mechanism, so the unspecified-stroke code is the safest mapping.",
+      "num_turns": 3,
+      "elapsed_s": 23.58,
+      "cost_usd": 0.0927,
+      "error": null
+    },
+    {
+      "parquet_idx": 6990,
+      "cod": "miocarditis",
+      "gold": "I51.500",
+      "predicted": "I51.400",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I40.900",
+        "I09.000"
+      ],
+      "reasoning": "'Miocarditis' is a historical/Romance-language spelling of myocarditis (inflammation of the heart muscle). With no modifier indicating it is acute, rheumatic, or tied to a specific infection, the unspecified-myocarditis code I51.400 is the best fit. I40.900 (acute, unspecified) would be appropriate only if acuity were stated.",
+      "num_turns": 2,
+      "elapsed_s": 20.49,
+      "cost_usd": 0.109,
+      "error": null
+    },
+    {
+      "parquet_idx": 55036,
+      "cod": "albuminuria",
+      "gold": "R80.001",
+      "predicted": "R80.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "N05.903",
+        "N05.904"
+      ],
+      "reasoning": "The masterlist contains an explicit entry (ID 10662) mapping the archaic spelling 'Albuminaria' to R80.001 (Isolated proteinuria), which is the direct historical-term match. Although in 1700–1950 records 'albuminuria' was often clinically synonymous with Bright's disease/chronic nephritis, the masterlist authors deliberately chose the symptom code for this exact term, so I follow their convention.",
+      "num_turns": 5,
+      "elapsed_s": 35.51,
+      "cost_usd": 0.2004,
+      "error": null
+    },
+    {
+      "parquet_idx": 5672,
+      "cod": "Emollitio cerebri (Emollitiones cerebri)",
+      "gold": "G04.900",
+      "predicted": "G93.803",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I63.900",
+        "I64.001"
+      ],
+      "reasoning": "Emollitio cerebri is Latin for 'softening of the brain', a 19th-century pathological term. The ICD-10h masterlist contains a dedicated curated entry G93.803 ('Brain softening') under G93.8 'Other specified disorders of brain' that is a direct lexical match. The flags allow use as underlying cause. Modern equivalents (cerebral infarction I63.9, stroke/apoplexy I64.001) are plausible alternatives, but the dedicated historical-term entry is the intended target.",
+      "num_turns": 4,
+      "elapsed_s": 27.86,
+      "cost_usd": 0.1603,
+      "error": null
+    },
+    {
+      "parquet_idx": 31744,
+      "cod": "Morbus cordis (Mb. cordis, Mb. cord.)$Angina pectoris$Arteriosclerosis (Arteriosklerose, Sclerosis arterialis)",
+      "gold": "I51.900",
+      "predicted": "I25.100",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I25.000",
+        "I70.900"
+      ],
+      "reasoning": "The bundle 'heart disease + angina pectoris + arteriosclerosis' is the classic clinical-pathologic triad of atherosclerotic (ischemic) heart disease. I25.1 captures the etiologic link the bundle expresses — heart disease attributed to arteriosclerosis, with angina as its symptom. I25.0 (atherosclerotic cardiovascular disease, so described) and I70.900 (generalised atherosclerosis) are weaker fits because the term explicitly names heart disease and angina, not a generic CV/arterial process.",
+      "num_turns": 3,
+      "elapsed_s": 36.27,
+      "cost_usd": 0.1828,
+      "error": null
+    },
+    {
+      "parquet_idx": 20406,
+      "cod": "Meningitis tuberculosa (Meningitis tub., Tuberkuløs meningit.)",
+      "gold": "A17.000",
+      "predicted": "A17.000",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "A17.100",
+        "A16.200"
+      ],
+      "reasoning": "The term 'Meningitis tuberculosa' (Latin) and the Danish abbreviation 'Tuberkuløs meningit.' both unambiguously denote tuberculous meningitis — TB infection of the meninges. The masterlist contains an exact match at A17.000 'Tuberculous meningitis' with no DoNotUse/NotForUnderlying/GenderSpecific flags, making it the appropriate underlying-cause code.",
+      "num_turns": 2,
+      "elapsed_s": 24.36,
+      "cost_usd": 0.0433,
+      "error": null
+    },
+    {
+      "parquet_idx": 34805,
+      "cod": "esclerosis cerebral",
+      "gold": "G35.000",
+      "predicted": "I67.200",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "G35.000",
+        "G37.000"
+      ],
+      "reasoning": "'Esclerosis cerebral' is Spanish for 'cerebral sclerosis,' a historical diagnosis denoting cerebral arteriosclerosis/atherosclerosis — hardening of brain arteries, typically presenting as vascular dementia or stroke in elderly patients. In the 1700–1950 period, this was a routine CoD entry for such cases. Multiple sclerosis would be written as 'esclerosis múltiple/en placas,' so the unqualified 'cerebral' phrasing strongly favors the cerebrovascular reading. I67.200 (Cerebral atherosclerosis) is a direct masterlist match.",
+      "num_turns": 3,
+      "elapsed_s": 24.47,
+      "cost_usd": 0.1489,
+      "error": null
+    },
+    {
+      "parquet_idx": 22009,
+      "cod": "morbilli / pneumonia catarrhalis",
+      "gold": "B05.200",
+      "predicted": "B05.200",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "B05.202",
+        "B05.900"
+      ],
+      "reasoning": "'Morbilli' is the Latin term for measles, and 'pneumonia catarrhalis' refers to catarrhal pneumonia (bronchopneumonia). The combined diagnosis indicates measles with a pulmonary complication, which maps exactly to B05.200 'Measles complicated by pneumonia'. Before measles vaccination, pneumonia was the leading fatal complication of measles, making this clinically the most plausible reading.",
+      "num_turns": 3,
+      "elapsed_s": 11.72,
+      "cost_usd": 0.1081,
+      "error": null
+    },
+    {
+      "parquet_idx": 24389,
+      "cod": "Debilitas senilis (Debilitas in senilitate, Debilitas senectutis)",
+      "gold": "R54.005",
+      "predicted": "R54.001",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "R54.000",
+        "R54.002"
+      ],
+      "reasoning": "'Debilitas senilis' is Latin for 'senile debility' — weakness/decay due to old age. The masterlist contains an exact match at R54.001 with description 'Senile debility' under the Senility (R54) category, HistCat 'Old age'. The parenthetical Latin variants ('Debilitas in senilitate', 'Debilitas senectutis') all refer to the same concept of dying from old-age infirmity, a very common historical CoD attribution.",
+      "num_turns": 2,
+      "elapsed_s": 11.77,
+      "cost_usd": 0.1019,
+      "error": null
+    },
+    {
+      "parquet_idx": 56535,
+      "cod": "insuficiencia mitral",
+      "gold": "I05.900",
+      "predicted": "I34.000",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I05.100",
+        "I05.900"
+      ],
+      "reasoning": "'Insuficiencia mitral' is Spanish for mitral (valve) insufficiency. Following ICD-10 coding convention, mitral insufficiency NOS (without explicit rheumatic qualifier) maps to I34.0 'Mitral (valve) insufficiency' under nonrheumatic mitral valve disorders. While rheumatic etiology is clinically common in the historical era, the term itself is unspecified, so the default unspecified-etiology code applies.",
+      "num_turns": 2,
+      "elapsed_s": 20.7,
+      "cost_usd": 0.1249,
+      "error": null
+    },
+    {
+      "parquet_idx": 36239,
+      "cod": "Pneumonia (Pneumoni)",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.000",
+        "J18.100"
+      ],
+      "reasoning": "The CoD is the bare term 'Pneumonia' (with the Danish/Swedish spelling 'Pneumoni' as a parenthetical synonym). With no organism, anatomical pattern (lobar/broncho), or other qualifier, the masterlist's unspecified code J18.900 ('Pneumonia, unspecified') is the canonical fit. More specific codes like J18.000 (bronchopneumonia) or J18.100 (lobar) would require detail not present here.",
+      "num_turns": 3,
+      "elapsed_s": 36.47,
+      "cost_usd": 0.139,
+      "error": null
+    },
+    {
+      "parquet_idx": 26079,
+      "cod": "onbekend",
+      "gold": "R99.001",
+      "predicted": "R99.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R99.000",
+        "R99.090"
+      ],
+      "reasoning": "'Onbekend' is Dutch for 'unknown'. The masterlist contains an exact match at R99.001 with description 'Stated unknown' under R99 'Other ill-defined and unspecified causes of mortality', specifically intended for records where the cause of death is explicitly stated as unknown.",
+      "num_turns": 4,
+      "elapsed_s": 25.17,
+      "cost_usd": 0.1452,
+      "error": null
+    },
+    {
+      "parquet_idx": 31609,
+      "cod": "Pneumonia (Pneumoni)$Morbus cordis (Mb. cordis, Mb. cord.)",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I51.900",
+        "J18.000"
+      ],
+      "reasoning": "The record lists two causes separated by '$': pneumonia (Scandinavian 'Pneumoni') and Latin 'morbus cordis' (heart disease). Pneumonia is listed first and is the more specific/proximal diagnosis. With no organism, lobar vs. bronchopneumonia distinction, or other qualifier, this maps to J18.900 (Pneumonia, unspecified). In the pre-antibiotic era, undifferentiated pneumonia was overwhelmingly common and frequently fatal.",
+      "num_turns": 4,
+      "elapsed_s": 36.11,
+      "cost_usd": 0.2429,
+      "error": null
+    },
+    {
+      "parquet_idx": 21161,
+      "cod": "Pneumonia (Pneumoni)",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.000",
+        "J18.100"
+      ],
+      "reasoning": "The term provides no information about organism, lobe, or type — 'Pneumoni' is just Danish/Swedish/Latin for pneumonia. J18.900 'Pneumonia, unspecified' is the canonical catch-all when only the bare term is given. More specific codes (J18.000 bronchopneumonia, J18.100 lobar) would require a qualifier the source does not provide.",
+      "num_turns": 3,
+      "elapsed_s": 17.36,
+      "cost_usd": 0.085,
+      "error": null
+    },
+    {
+      "parquet_idx": 7390,
+      "cod": "carcinoma uteri",
+      "gold": "C55.001",
+      "predicted": "C55.007",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "C55.001",
+        "C53.907"
+      ],
+      "reasoning": "'Carcinoma uteri' is Latin for carcinoma of the uterus with no specific part indicated (neither cervix nor corpus). The masterlist row C55.007 is explicitly labelled 'Carcinoma, uterus' under 'Malignant neoplasm of uterus, part unspecified', a direct match. Cervix-specific (C53.907) or corpus-specific (C54.907) codes would over-specify what the historical record actually says.",
+      "num_turns": 4,
+      "elapsed_s": 20.29,
+      "cost_usd": 0.1234,
+      "error": null
+    },
+    {
+      "parquet_idx": 21907,
+      "cod": "Pneumonia (Pneumoni)",
+      "gold": "J18.900",
+      "predicted": "J18.900",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "J18.000",
+        "J18.100"
+      ],
+      "reasoning": "The term 'Pneumonia' with the parenthetical Scandinavian variant 'Pneumoni' is a generic, unspecified pneumonia diagnosis with no indication of organism (viral, bacterial, fungal), anatomical pattern (lobar, broncho-, hypostatic), or context (e.g. measles/influenza complication). Masterlist row J18.900 'Pneumonia, unspecified' is the exact catch-all match. In a 1700–1950 historical context, organism identification was rarely available, so unspecified is clinically appropriate.",
+      "num_turns": 3,
+      "elapsed_s": 17.47,
+      "cost_usd": 0.0841,
+      "error": null
+    },
+    {
+      "parquet_idx": 39686,
+      "cod": "Vieillesse",
+      "gold": "R54.005",
+      "predicted": "R54.005",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "R54.000",
+        "R54.007"
+      ],
+      "reasoning": "Vieillesse is French for 'old age', a frequent historical CoD attribution before causes of death were medically investigated. R54.005 is the literal translation 'Old age' in the R54 Senility category, making it the closest semantic match. R54.000 (Senility generic) is a reasonable alternative if the convention favors the category head.",
+      "num_turns": 3,
+      "elapsed_s": 18.05,
+      "cost_usd": 0.1206,
+      "error": null
+    },
+    {
+      "parquet_idx": 9803,
+      "cod": "endocarditis acuta",
+      "gold": "I33.900",
+      "predicted": "I33.901",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I33.000",
+        "I01.100"
+      ],
+      "reasoning": "'Endocarditis acuta' is Latin for 'acute endocarditis' with no qualifier (infective, rheumatic, ulcerative). The masterlist entry I33.901 'Acute endocarditis, unspecified' is the closest literal match. More specific codes like I33.001 (infective) or I01.100 (rheumatic) would require an etiological qualifier that the source term does not provide.",
+      "num_turns": 2,
+      "elapsed_s": 14.89,
+      "cost_usd": 0.1088,
+      "error": null
+    },
+    {
+      "parquet_idx": 5173,
+      "cod": "diabetes mellitus",
+      "gold": "E13.900",
+      "predicted": "E14.900",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "E14.901",
+        "E11.900"
+      ],
+      "reasoning": "The term 'diabetes mellitus' is given without specifying type or complications. In historical CoD records, the modern distinction between Type 1 (E10) and Type 2 (E11) was not made, so the unspecified category E14 is most appropriate. E14.900 corresponds to 'Unspecified diabetes mellitus, no mention of complications', the closest match to a bare 'diabetes mellitus' entry.",
+      "num_turns": 3,
+      "elapsed_s": 16.6,
+      "cost_usd": 0.0953,
+      "error": null
+    },
+    {
+      "parquet_idx": 63748,
+      "cod": "Apoplexia  (Apopleksi)",
+      "gold": "I64.001",
+      "predicted": "I64.001",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "I61.901",
+        "I21.904"
+      ],
+      "reasoning": "Apoplexia (Danish: Apopleksi) is the classic historical term for an acute cerebrovascular accident/stroke. The masterlist contains an exact-term entry 'Apoplexy' at I64.001 (stroke, not specified as haemorrhage or infarction), which is the appropriate code when no qualifier (haemorrhagic, pulmonary, cardiac) is given. Pre-imaging-era certifiers could not distinguish ischaemic vs haemorrhagic strokes, so the unspecified stroke code is the standard target.",
+      "num_turns": 2,
+      "elapsed_s": 16.17,
+      "cost_usd": 0.0531,
+      "error": null
+    },
+    {
+      "parquet_idx": 66899,
+      "cod": "Cancer ventriculi (C. ventr., C. v.)",
+      "gold": "C16.901",
+      "predicted": "C16.901",
+      "correct": true,
+      "confidence": "high",
+      "alternatives": [
+        "C16.900",
+        "C16.907"
+      ],
+      "reasoning": "'Cancer ventriculi' is medical Latin for cancer of the stomach (ventriculus = stomach), with C. ventr./C. v. as standard 19th–20th c. clinical abbreviations. No subsite is specified, so the unspecified-stomach block C16.9 is appropriate; the term-level entry C16.901 'Cancer, stomach' matches the wording exactly.",
+      "num_turns": 4,
+      "elapsed_s": 22.12,
+      "cost_usd": 0.1135,
+      "error": null
+    },
+    {
+      "parquet_idx": 51564,
+      "cod": "Emphysema (Emphysem, Emfysem)",
+      "gold": "J43.900",
+      "predicted": null,
+      "correct": false,
+      "confidence": "",
+      "alternatives": [],
+      "reasoning": "",
+      "num_turns": 0,
+      "elapsed_s": 600.0,
+      "cost_usd": 0.0,
+      "error": "timeout after 600s"
+    },
+    {
+      "parquet_idx": 17553,
+      "cod": "Meningitis 1 month",
+      "gold": "G03.900",
+      "predicted": null,
+      "correct": false,
+      "confidence": "",
+      "alternatives": [],
+      "reasoning": "",
+      "num_turns": 0,
+      "elapsed_s": 600.0,
+      "cost_usd": 0.0,
+      "error": "timeout after 600s"
+    },
+    {
+      "parquet_idx": 25942,
+      "cod": "Cholerine (Kolerine)$Atrophia (Atrofi)",
+      "gold": "A09.001",
+      "predicted": null,
+      "correct": false,
+      "confidence": "",
+      "alternatives": [],
+      "reasoning": "",
+      "num_turns": 0,
+      "elapsed_s": 4713.8,
+      "cost_usd": 0.0,
+      "error": "claude exit 1: "
+    },
+    {
+      "parquet_idx": 21047,
+      "cod": "Gastroenteritis acuta",
+      "gold": "A09.008",
+      "predicted": "A09.940",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A09.040",
+        "A09.900"
+      ],
+      "reasoning": "'Gastroenteritis acuta' is Latin for 'acute gastroenteritis' with no specification of infectious origin. The masterlist entry A09.940 'Gastroenteritis (acute), unspecified origin' is the most direct match. A09.040 (same description but 'stated infectious origin') would only apply if the record explicitly noted infection, which it does not.",
+      "num_turns": 2,
+      "elapsed_s": 22.74,
+      "cost_usd": 0.1216,
+      "error": null
+    },
+    {
+      "parquet_idx": 67846,
+      "cod": "pneumonia catarrhalis",
+      "gold": "J18.900",
+      "predicted": null,
+      "correct": false,
+      "confidence": "",
+      "alternatives": [],
+      "reasoning": "",
+      "num_turns": 0,
+      "elapsed_s": 600.0,
+      "cost_usd": 0.0,
+      "error": "timeout after 600s"
+    },
+    {
+      "parquet_idx": 3510,
+      "cod": "Degeneratio cordis (Degen. cordis, Deg. cordis)",
+      "gold": "I51.500",
+      "predicted": "I51.509",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I51.500",
+        "I51.501"
+      ],
+      "reasoning": "'Degeneratio cordis' is Latin for 'degeneration of the heart', a non-specific historical cardiac diagnosis common in 19th–early 20th century records. The masterlist contains a direct match under I51.5 'Myocardial degeneration'. Without modifiers indicating fatty (I51.500) or senile (I51.501) subtypes, the unspecified variant I51.509 is the most accurate mapping.",
+      "num_turns": 2,
+      "elapsed_s": 24.73,
+      "cost_usd": 0.1182,
+      "error": null
+    },
+    {
+      "parquet_idx": 13943,
+      "cod": "Mors subitanea in tussis convulsiva",
+      "gold": "A37.900",
+      "predicted": "A37.901",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "A37.900",
+        "R96.101"
+      ],
+      "reasoning": "Tussis convulsiva = whooping cough/pertussis (Latin). 'Mors subitanea' (sudden death) qualifies the course as complicated rather than the cause being unknown — so this maps to A37.901 'Whooping cough, unspecified — with complications' rather than A37.900 (unspecified) or R96.x (sudden death, cause unknown). Bacterial subspecies (B. pertussis vs parapertussis) is not stated, so the unspecified branch is correct.",
+      "num_turns": 3,
+      "elapsed_s": 4725.51,
+      "cost_usd": 0.2098,
+      "error": null
+    },
+    {
+      "parquet_idx": 56770,
+      "cod": "degeneratio cordis",
+      "gold": "I51.500",
+      "predicted": "I51.509",
+      "correct": false,
+      "confidence": "high",
+      "alternatives": [
+        "I51.500",
+        "I51.501"
+      ],
+      "reasoning": "Latin 'degeneratio cordis' literally means 'degeneration of the heart', a generic 18th–early 20th century clinical label for myocardial degeneration without specifying fatty or senile etiology. The masterlist offers I51.500 (fatty heart), I51.501 (senile), and I51.509 (unspecified); since the term carries no qualifier, the unspecified variant is the best fit.",
+      "num_turns": 4,
+      "elapsed_s": 31.53,
+      "cost_usd": 0.1442,
+      "error": null
+    }
+  ]
+}

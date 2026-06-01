@@ -185,8 +185,11 @@ Checked-in specs:
 
 | Spec | Purpose |
 | --- | --- |
-| `runs/base/h100-small.toml` | H100 runtime base for `google/flan-t5-small` |
-| `runs/base/h100-large.toml` | H100 runtime base for `google/flan-t5-large` |
+| `runs/profiles/h100-small.toml` | H100 runtime profile for `google/flan-t5-small` |
+| `runs/profiles/h100-base.toml` | H100 runtime profile for `google/flan-t5-base` |
+| `runs/profiles/h100-large.toml` | H100 runtime profile for `google/flan-t5-large` |
+| `runs/profiles/h100-xl.toml` | H100 runtime profile for `google/flan-t5-xl` |
+| `runs/single/size_sweep_{small,base,large,xl}.toml` | Identical-contract size-sweep baselines (effective batch 32 across sizes) |
 | `runs/single/base_small.toml` | Current single-run baseline with multi-COD, balancing, and pretraining enabled |
 | `runs/sweeps/pretraining.toml` | Masterlist pretraining on/off |
 | `runs/sweeps/multicod_pretrain.toml` | Synthetic multi-COD masterlist pretraining ratio |
@@ -286,8 +289,8 @@ All runtime behavior is owned by `Config` in `src/codllm/settings/schema.py` and
 ### Model Size and Task
 
 - `CODLLM_HF_MODEL` selects a Hugging Face model id or local checkpoint path.
-- `runs/base/h100-small.toml` uses `google/flan-t5-small`.
-- `runs/base/h100-large.toml` uses `google/flan-t5-large`.
+- `runs/profiles/h100-small.toml` uses `google/flan-t5-small`.
+- `runs/profiles/h100-large.toml` uses `google/flan-t5-large`.
 - `CODLLM_MODEL_TASK=seq2seq` is the default and supports single-label and multi-COD targets.
 - `CODLLM_MODEL_TASK=sequence_classification` uses `AutoModelForSequenceClassification` and currently requires
   `CODLLM_MAX_LABEL_COUNT=1`.

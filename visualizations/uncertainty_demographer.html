@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Uncertainty estimation — for the historian</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper:        #FAF7F2;
+      --ink:          #1B2546;
+      --ink-soft:     #4A5168;
+      --ink-faint:    #8A8B95;
+      --rule:         #E5DEC8;
+      --accent:       #A87C4F;
+      --accent-soft:  #C9A472;
+      --green:        #6B8E5A;
+      --green-soft:   #C5D4B7;
+      --tint-1:       #ECE5D3;
+      --tint-2:       #D8E0EA;
+      --tint-3:       #DDE8D0;
+      --max-w: 1180px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+      font-weight: 400;
+      line-height: 1.55;
+      letter-spacing: 0.005em;
+      background-image:
+        radial-gradient(1200px 600px at 80% -200px, #F1EBDF 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 90%, #F1EBDF 0%, transparent 55%);
+      background-attachment: fixed;
+    }
+    main { max-width: var(--max-w); margin: 0 auto; padding: 64px 56px 88px; }
+
+    /* Masthead */
+    header.masthead {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 32px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 56px;
+    }
+    .masthead .kicker {
+      margin: 0 0 14px 0;
+      font-weight: 600;
+      font-size: 11.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .masthead h1 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 56px;
+      line-height: 1.04;
+      letter-spacing: -0.012em;
+      color: var(--ink);
+    }
+    .masthead h1 em { font-style: italic; font-weight: 500; color: var(--accent); }
+    .masthead .colophon {
+      font-size: 13px;
+      color: var(--ink-faint);
+      text-align: right;
+      max-width: 280px;
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    /* Hero sentence */
+    .hero {
+      margin: 0 0 56px;
+      padding: 36px 44px;
+      background: #FFFFFF;
+      border-left: 4px solid var(--accent);
+      border-radius: 4px 14px 14px 4px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 28px;
+      line-height: 1.32;
+      color: var(--ink);
+      letter-spacing: -0.005em;
+      box-shadow: 0 24px 40px -28px rgba(27, 37, 70, 0.18);
+    }
+    .hero strong { color: var(--accent); font-weight: 700; font-style: italic; }
+    .hero .small {
+      display: block;
+      margin-top: 12px;
+      font-family: "Manrope", sans-serif;
+      font-size: 13px;
+      font-style: normal;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: var(--ink-faint);
+      text-transform: uppercase;
+    }
+
+    /* Three scenarios */
+    .scenarios {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 22px;
+      margin-bottom: 64px;
+    }
+    @media (max-width: 900px) { .scenarios { grid-template-columns: 1fr; } }
+
+    .scenario {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 32px 28px 28px;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.18);
+    }
+    .scenario::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 6px;
+      background: var(--tint, var(--rule));
+    }
+
+    .scenario.featured {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+      transform: translateY(-12px);
+    }
+    .scenario.featured::before { background: var(--accent); height: 8px; }
+
+    .scenario .label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 6px;
+    }
+    .scenario.featured .label { color: var(--accent-soft); }
+
+    .scenario h3 {
+      margin: 0 0 18px;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 26px;
+      letter-spacing: -0.005em;
+      line-height: 1.15;
+    }
+    .scenario.featured h3 { color: var(--paper); }
+
+    .scenario .stat {
+      margin: 0 0 18px;
+    }
+    .scenario .stat .num {
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 56px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .scenario.featured .stat .num { color: var(--paper); }
+    .scenario .stat .what {
+      display: block;
+      margin-top: 6px;
+      font-size: 12.5px;
+      color: var(--ink-soft);
+      letter-spacing: 0.02em;
+      line-height: 1.5;
+    }
+    .scenario.featured .stat .what { color: #C5C7D1; }
+
+    .scenario hr {
+      border: none;
+      border-top: 1px dashed var(--rule);
+      margin: 22px 0 18px;
+    }
+    .scenario.featured hr { border-top-color: rgba(250, 247, 242, 0.18); }
+
+    .scenario .kv {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px 14px;
+      font-size: 13px;
+      align-items: baseline;
+    }
+    .scenario .kv dt { color: var(--ink-soft); margin: 0; font-weight: 500; }
+    .scenario.featured .kv dt { color: #C5C7D1; }
+    .scenario .kv dd {
+      margin: 0;
+      font-weight: 600;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .scenario.featured .kv dd { color: var(--paper); }
+
+    /* Curve */
+    .curve-card {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      padding: 36px 44px 32px;
+      box-shadow:
+        0 1px 0 rgba(27, 37, 70, 0.02),
+        0 24px 40px -28px rgba(27, 37, 70, 0.18);
+    }
+    .curve-card h2 {
+      margin: 0 0 6px;
+      font-family: "Cormorant Garamond", serif;
+      font-weight: 600;
+      font-size: 26px;
+      letter-spacing: -0.005em;
+    }
+    .curve-card .lede {
+      margin: 0 0 26px;
+      font-size: 14px;
+      color: var(--ink-soft);
+      max-width: 620px;
+    }
+    .curve-card svg { display: block; width: 100%; height: auto; }
+    .curve-card .axis { stroke: var(--rule); stroke-width: 1; }
+    .curve-card .grid-line { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2,4; opacity: 0.6; }
+    .curve-card .axis-text { font-family: "Manrope", sans-serif; font-size: 11px; fill: var(--ink-faint); font-weight: 500; }
+    .curve-card .axis-title { font-family: "Manrope", sans-serif; font-size: 12px; fill: var(--ink-soft); font-weight: 600; letter-spacing: 0.04em; }
+    .curve-card .curve { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+    .curve-card .curve-shadow { fill: var(--accent); opacity: 0.07; }
+    .curve-card .anchor-dot { fill: var(--ink); stroke: white; stroke-width: 2; }
+    .curve-card .anchor-dot.featured { fill: var(--accent); }
+    .curve-card .anchor-label { font-family: "Manrope", sans-serif; font-size: 11.5px; font-weight: 600; fill: var(--ink); }
+    .curve-card .anchor-sub { font-family: "Manrope", sans-serif; font-size: 10px; fill: var(--ink-faint); font-weight: 500; }
+
+    footer.colophon {
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--rule);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      letter-spacing: 0.04em;
+    }
+    footer.colophon .right { font-style: italic; max-width: 720px; text-align: right; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div>
+        <p class="kicker">codLLM · How much can the model do on its own?</p>
+        <h1>Flag the unsure cases.<br><em>The rest is essentially perfect.</em></h1>
+      </div>
+      <p class="colophon">Validated on 13,828 held-out historical death records that the model never saw during training.</p>
+    </header>
+
+    <p class="hero">
+      Let the model code everything on its own and it gets <strong>98.5%</strong> right.
+      Have a coder review just the model's least-confident <strong>10%</strong> of cases —
+      and the auto-coded remainder reaches <strong>99.98%</strong> accuracy.
+      <span class="small">Two errors out of 12,446 auto-coded records · 90% labour savings</span>
+    </p>
+
+    <section class="scenarios">
+
+      <article class="scenario" style="--tint: var(--tint-1);">
+        <p class="label">Scenario A · Hands-off</p>
+        <h3>Let the model do everything</h3>
+        <div class="stat">
+          <span class="num">98.5%</span>
+          <span class="what">of records coded correctly with no human review at all</span>
+        </div>
+        <hr>
+        <dl class="kv">
+          <dt>Records auto-coded</dt><dd>13,828 / 13,828</dd>
+          <dt>Records flagged for review</dt><dd>0</dd>
+          <dt>Errors slipping through</dt><dd>213</dd>
+          <dt>Labour saved vs manual</dt><dd>100%</dd>
+        </dl>
+      </article>
+
+      <article class="scenario featured">
+        <p class="label">Scenario B · Recommended</p>
+        <h3>Review the model's 10% least-confident cases</h3>
+        <div class="stat">
+          <span class="num">99.98%</span>
+          <span class="what">accuracy on the 90% the model coded on its own</span>
+        </div>
+        <hr>
+        <dl class="kv">
+          <dt>Records auto-coded</dt><dd>12,446</dd>
+          <dt>Records flagged for review</dt><dd>1,382</dd>
+          <dt>Errors slipping through</dt><dd>2</dd>
+          <dt>Labour saved vs manual</dt><dd>90%</dd>
+        </dl>
+      </article>
+
+      <article class="scenario" style="--tint: var(--tint-3);">
+        <p class="label">Scenario C · Belt &amp; braces</p>
+        <h3>Review the model's 25% least-confident cases</h3>
+        <div class="stat">
+          <span class="num">100%</span>
+          <span class="what">accuracy on the 75% the model coded on its own</span>
+        </div>
+        <hr>
+        <dl class="kv">
+          <dt>Records auto-coded</dt><dd>10,371</dd>
+          <dt>Records flagged for review</dt><dd>3,457</dd>
+          <dt>Errors slipping through</dt><dd>0</dd>
+          <dt>Labour saved vs manual</dt><dd>75%</dd>
+        </dl>
+      </article>
+
+    </section>
+
+    <article class="curve-card">
+      <h2>The full tradeoff</h2>
+      <p class="lede">As you flag a larger share of the model's least-confident predictions for review, the auto-coded remainder gets cleaner. The curve is steep early — the first 1% you flag catches 41% of all errors — and flattens fast. Past the 25% mark there is nothing left for a coder to find.</p>
+      <svg viewBox="0 0 980 360" role="img" aria-label="Tradeoff curve: review rate vs auto-coded accuracy">
+        <!-- chart geometry -->
+        <!-- We'll use coords: x=80..940, y=40..300 plotting accuracy 98.45%..100% over review rate 0%..50% -->
+        <!-- Y-axis grid lines at 98.5, 99.0, 99.5, 100.0 -->
+        <!-- 98.5 = y 280, 100 = y 50 (mapping 98.4..100 to 280..40) -->
+
+        <!-- Light background area -->
+        <path d="M 80 280
+                 L 80 280
+                 L 88 240
+                 L 96 220
+                 L 120 188
+                 L 175 145
+                 L 235 90
+                 L 290 65
+                 L 345 50
+                 L 400 50
+                 L 940 50
+                 L 940 300
+                 L 80 300 Z" class="curve-shadow"></path>
+
+        <!-- grid lines -->
+        <line class="grid-line" x1="80" y1="50"  x2="940" y2="50"></line>
+        <line class="grid-line" x1="80" y1="125" x2="940" y2="125"></line>
+        <line class="grid-line" x1="80" y1="200" x2="940" y2="200"></line>
+        <line class="grid-line" x1="80" y1="275" x2="940" y2="275"></line>
+
+        <!-- y-axis labels -->
+        <text class="axis-text" x="74" y="54"  text-anchor="end">100.0%</text>
+        <text class="axis-text" x="74" y="129" text-anchor="end">99.5%</text>
+        <text class="axis-text" x="74" y="204" text-anchor="end">99.0%</text>
+        <text class="axis-text" x="74" y="279" text-anchor="end">98.5%</text>
+
+        <!-- x-axis line -->
+        <line class="axis" x1="80" y1="300" x2="940" y2="300"></line>
+
+        <!-- x-axis ticks/labels (0%, 1%, 2%, 5%, 10%, 25%, 50%) -->
+        <!-- map 0..50% to x 80..940; so 1% = 80 + (1/50)*860 = 97.2; 2% -> 114.4; 5% -> 166; 10% -> 252; 25% -> 510; 50% -> 940 -->
+        <line class="axis" x1="80"  y1="300" x2="80"  y2="305"></line>
+        <line class="axis" x1="97"  y1="300" x2="97"  y2="305"></line>
+        <line class="axis" x1="114" y1="300" x2="114" y2="305"></line>
+        <line class="axis" x1="166" y1="300" x2="166" y2="305"></line>
+        <line class="axis" x1="252" y1="300" x2="252" y2="305"></line>
+        <line class="axis" x1="510" y1="300" x2="510" y2="305"></line>
+        <line class="axis" x1="940" y1="300" x2="940" y2="305"></line>
+
+        <text class="axis-text" x="80"  y="320" text-anchor="middle">0%</text>
+        <text class="axis-text" x="97"  y="320" text-anchor="middle">1%</text>
+        <text class="axis-text" x="114" y="320" text-anchor="middle">2%</text>
+        <text class="axis-text" x="166" y="320" text-anchor="middle">5%</text>
+        <text class="axis-text" x="252" y="320" text-anchor="middle">10%</text>
+        <text class="axis-text" x="510" y="320" text-anchor="middle">25%</text>
+        <text class="axis-text" x="940" y="320" text-anchor="middle">50%</text>
+
+        <text class="axis-title" x="510" y="346" text-anchor="middle">Share of records flagged for human review (sorted by lowest model confidence first)</text>
+        <text class="axis-title" x="20" y="170" transform="rotate(-90 20 170)" text-anchor="middle">Accuracy on auto-coded remainder</text>
+
+        <!-- The curve itself: stepped through measured operating points
+             0%   -> 98.46% -> y = 280
+             1%   -> 99.08% -> y ≈ 188
+             2%   -> 99.53% -> y ≈ 121
+             5%   -> 99.91% -> y ≈ 64
+             10%  -> 99.98% -> y ≈ 53
+             15%  -> 99.99% -> y ≈ 51
+             25%  -> 100.00% -> y = 50
+             50%  -> 100.00% -> y = 50
+        -->
+        <path d="M 80 280
+                 C 88 250, 92 220, 97 188
+                 C 105 155, 110 135, 114 121
+                 C 130 95, 150 75, 166 64
+                 C 200 56, 230 53, 252 53
+                 C 350 51, 450 50, 510 50
+                 L 940 50"
+              class="curve"></path>
+
+        <!-- anchor dots for the three scenarios -->
+        <!-- Scenario A: 0%, 98.5% -->
+        <circle class="anchor-dot" cx="80" cy="280" r="6"></circle>
+        <text class="anchor-label" x="92" y="282">98.5%</text>
+        <text class="anchor-sub" x="92" y="295">Hands-off</text>
+
+        <!-- Scenario B (featured): 10%, 99.98% -->
+        <circle class="anchor-dot featured" cx="252" cy="53" r="8"></circle>
+        <text class="anchor-label" x="266" y="50" style="fill: var(--accent); font-weight:700">99.98%</text>
+        <text class="anchor-sub" x="266" y="64" style="fill: var(--accent)">Review 10% — recommended</text>
+
+        <!-- Scenario C: 25%, 100% -->
+        <circle class="anchor-dot" cx="510" cy="50" r="6"></circle>
+        <text class="anchor-label" x="524" y="46">100%</text>
+        <text class="anchor-sub" x="524" y="60">Review 25% — every error caught</text>
+
+      </svg>
+    </article>
+
+    <footer class="colophon">
+      <span>codLLM · Validated on 13,828 records held out of training</span>
+      <span class="right">"Confidence" here is the model's own assessment of how likely its prediction is. The lowest-confidence cases concentrate the errors: the bottom 10% by confidence contains 99% of all the model's mistakes.</span>
+    </footer>
+  </main>
+</body>
+</html>

@@ -249,6 +249,9 @@ class DataHandler:
                 "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
                 "balance_floor": self.cfg.balance_floor,
                 "balance_floor_decay": self.cfg.balance_floor_decay,
+                "balance_floor_singlecod_only": (
+                    self.cfg.balance_floor_singlecod_only
+                ),
                 "base_perturbations": list(self.cfg.base_perturbations),
                 "base_perturbation_mean": self.cfg.base_perturbation_mean,
                 "base_perturbation_variance": self.cfg.base_perturbation_variance,
@@ -876,6 +879,8 @@ class DataHandler:
                 label_column=label_column,
                 floor=self.cfg.balance_floor,
                 decay=self.cfg.balance_floor_decay,
+                singlecod_only=self.cfg.balance_floor_singlecod_only,
+                label_separator=self.cfg.label_separator,
             )
             perturbation_fns = _resolve_perturbation_functions(
                 self.cfg.balance_perturbations
