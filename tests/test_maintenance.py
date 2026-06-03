@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from types import SimpleNamespace
 
 import pytest
 
+import codllm.maintenance.status as status_module
 from codllm.config import Config
 from codllm.maintenance import (
     build_clear_cache_plan,
@@ -18,6 +20,7 @@ from codllm.maintenance import (
     clear_generated_caches,
     write_git_snapshot,
 )
+from codllm.maintenance.status import _parse_quota_output
 
 
 def test_dataset_cache_report_and_clear_respect_dry_run_and_locks(
@@ -209,6 +212,69 @@ def test_maintenance_status_reports_capacity_and_known_categories(
     assert categories["raw datasets"] == len("raw\n")
     assert categories["processed datasets and split caches"] == len(b"processed")
     assert categories["model weights and run outputs"] == len(b"weights")
+
+
+def test_quota_parser_handles_dtu_zhome_and_work3_outputs() -> None:
+    """Quota parsing should handle DTU home and scratch quota command formats."""
+    zhome = _parse_quota_output("You are using 12.34 GB of 30.00 GB.")
+    work3 = _parse_quota_output(
+        """
+          user/group     ||           size          ||    chunk files
+             name |  id  ||    used    |    hard    ||  used   |  hard
+        --------------|------||------------|------------||---------|---------
+          s123456 |54321 ||  158.75 GiB|  400.00 GiB||  119758 |  2000000
+        """
+    )
+
+    assert zhome == (12_340_000_000, 30_000_000_000)
+    assert work3 == (int(158.75 * 1024**3), 400 * 1024**3)
+
+
+def test_maintenance_status_attaches_dtu_work3_quota(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Maintenance status should attach DTU quota data for /work3 roots."""
+    _git(tmp_path, "init")
+    original_run = status_module.subprocess.run
+    original_which = status_module.shutil.which
+
+    def fake_which(command: str) -> str | None:
+        if command == "getquota_work3.sh":
+            return f"/usr/bin/{command}"
+        return original_which(command)
+
+    def fake_run(command, **kwargs):
+        if command == ["getquota_work3.sh"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="s234805 |54321 || 390.00 GiB| 400.00 GiB|| 119758 | 2000000\n",
+                stderr="",
+            )
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(status_module.shutil, "which", fake_which)
+    monkeypatch.setattr(status_module.subprocess, "run", fake_run)
+
+    cfg = Config(
+        data_processed_dir=str(tmp_path / "data/processed"),
+        output_dir=str(tmp_path / "runs"),
+    )
+
+    report = build_maintenance_status(
+        cfg,
+        repo_dir=tmp_path,
+        environ={"RUN_STORAGE_DIR": "/work3/s234805/codllm"},
+    )
+
+    run_storage = next(root for root in report.roots if root.name == "HPC run storage")
+
+    assert run_storage.path == Path("/work3/s234805/codllm")
+    assert run_storage.quota is not None
+    assert run_storage.quota.source == "getquota_work3.sh"
+    assert run_storage.quota.used_bytes == 390 * 1024**3
+    assert run_storage.quota.limit_bytes == 400 * 1024**3
+    assert run_storage.quota.free_bytes == 10 * 1024**3
 
 
 def test_hpc_environment_report_warns_for_unset_and_outside_paths(

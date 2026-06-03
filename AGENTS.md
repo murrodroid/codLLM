@@ -25,9 +25,11 @@
     `uv run invoke maintenance.data-cache`. To clear those caches, use
     `uv run invoke maintenance.clear-data-cache --yes`; without `--yes` it only prints a dry run. Use `--locks` only
     when no jobs are building or reading dataset caches.
-  * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports filesystem capacity for the
-    workspace, profile/home, and configured HPC storage roots, plus known codLLM usage by code, raw data, processed
-    data, model outputs, generated jobs/logs, and runtime caches.
+  * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports shared filesystem capacity for
+    the workspace, profile/home, and configured HPC storage roots, DTU quota lines when `getquota_zhome.sh`,
+    `getquota_work1.sh`, or `getquota_work3.sh` are available, plus known codLLM usage by code, raw data, processed
+    data, model outputs, generated jobs/logs, and runtime caches. Treat `filesystem_*` values as shared capacity only;
+    capacity failures on DTU HPC usually correspond to the separate `quota:` line.
   * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks accept HPC context via
     `--profile <profile>` and user shortcuts such as `--lucas` or `--user lucas`. User shortcuts default to the
     `h100-10h` profile; profiles with known notification emails auto-resolve `$USER` storage placeholders, so Lucas's
@@ -77,7 +79,9 @@ uv cache paths. It must not delete source code, checked-in TOML specs, raw datas
 generic profile cache roots that are not clearly owned by codLLM.
 Maintenance tasks that inspect or clear generated storage should use `--profile <profile>` or `--lucas`/`--user lucas`
 when targeting HPC paths. Known profile emails are used to replace `$USER`/`${USER}` in LSF storage fields, which avoids
-using a local login name when inspecting Lucas's `/work3/s234805` storage from outside the cluster.
+using a local login name when inspecting Lucas's `/work3/s234805` storage from outside the cluster. On DTU HPC, status
+output labels shared filesystem capacity as `filesystem_*` and reports user quota separately when the DTU quota scripts
+are installed; do not interpret shared filesystem totals as available user quota.
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.

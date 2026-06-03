@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 from typing import Mapping
@@ -18,8 +19,19 @@ from codllm.maintenance.datasets import build_dataset_cache_report
 
 
 @dataclass(frozen=True)
+class StorageQuotaReport:
+    """User quota usage for one storage area when exposed by the HPC environment."""
+
+    source: str
+    used_bytes: int | None
+    limit_bytes: int | None
+    free_bytes: int | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class StorageRootReport:
-    """Disk capacity for one filesystem root relevant to codLLM."""
+    """Filesystem capacity and optional user quota for one root."""
 
     name: str
     path: Path
@@ -27,6 +39,7 @@ class StorageRootReport:
     total_bytes: int
     used_bytes: int
     free_bytes: int
+    quota: StorageQuotaReport | None
 
 
 @dataclass(frozen=True)
@@ -126,7 +139,7 @@ def _storage_roots(
     repo_dir: Path,
     environ: Mapping[str, str],
 ) -> tuple[StorageRootReport, ...]:
-    """Return capacity reports for workspace, home, and configured HPC roots."""
+    """Return filesystem and quota reports for workspace, home, and HPC roots."""
     candidates = [("workspace", repo_dir), ("home/profile", Path.home())]
     for key, label in (
         ("STORAGE_FOLDER", "HPC storage folder"),
@@ -138,6 +151,7 @@ def _storage_roots(
 
     reports: list[StorageRootReport] = []
     seen_roots: set[Path] = set()
+    quota_cache: dict[str, StorageQuotaReport | None] = {}
     for name, path in candidates:
         requested_path = path.expanduser().resolve(strict=False)
         capacity_path = _existing_parent(path).resolve(strict=False)
@@ -145,6 +159,7 @@ def _storage_roots(
             continue
         seen_roots.add(requested_path)
         usage = shutil.disk_usage(capacity_path)
+        quota = _quota_for_path(requested_path, quota_cache)
         reports.append(
             StorageRootReport(
                 name=name,
@@ -153,6 +168,7 @@ def _storage_roots(
                 total_bytes=usage.total,
                 used_bytes=usage.used,
                 free_bytes=usage.free,
+                quota=quota,
             )
         )
     return tuple(reports)
@@ -164,6 +180,142 @@ def _existing_parent(path: Path) -> Path:
     while not candidate.exists() and candidate != candidate.parent:
         candidate = candidate.parent
     return candidate
+
+
+def _quota_for_path(
+    path: Path,
+    quota_cache: dict[str, StorageQuotaReport | None],
+) -> StorageQuotaReport | None:
+    """Return DTU HPC quota information for a path when the relevant command exists."""
+    command = _quota_command_for_path(path)
+    if command is None:
+        return None
+    source = " ".join(command)
+    if source not in quota_cache:
+        quota_cache[source] = _quota_from_command(command)
+    return quota_cache[source]
+
+
+def _quota_command_for_path(path: Path) -> tuple[str, ...] | None:
+    """Return the DTU quota command for known storage roots."""
+    parts = path.expanduser().resolve(strict=False).parts
+    if len(parts) < 2:
+        return None
+    root_name = parts[1]
+    if root_name == "zhome":
+        return ("getquota_zhome.sh",)
+    if root_name in {"work1", "work3"}:
+        return (f"getquota_{root_name}.sh",)
+    return None
+
+
+def _quota_from_command(command: tuple[str, ...]) -> StorageQuotaReport | None:
+    """Run and parse one quota command if it is installed."""
+    if shutil.which(command[0]) is None:
+        return None
+    source = " ".join(command)
+    try:
+        result = subprocess.run(
+            list(command),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return StorageQuotaReport(
+            source=source,
+            used_bytes=None,
+            limit_bytes=None,
+            free_bytes=None,
+            error=str(exc),
+        )
+
+    output = "\n".join(
+        part.strip() for part in (result.stdout, result.stderr) if part.strip()
+    )
+    if result.returncode != 0:
+        return StorageQuotaReport(
+            source=source,
+            used_bytes=None,
+            limit_bytes=None,
+            free_bytes=None,
+            error=output or f"command exited with code {result.returncode}",
+        )
+
+    parsed = _parse_quota_output(output)
+    if parsed is None:
+        return StorageQuotaReport(
+            source=source,
+            used_bytes=None,
+            limit_bytes=None,
+            free_bytes=None,
+            error="could not parse command output",
+        )
+    used_bytes, limit_bytes = parsed
+    return StorageQuotaReport(
+        source=source,
+        used_bytes=used_bytes,
+        limit_bytes=limit_bytes,
+        free_bytes=max(limit_bytes - used_bytes, 0),
+    )
+
+
+def _parse_quota_output(output: str) -> tuple[int, int] | None:
+    """Parse supported DTU quota command output."""
+    simple_match = re.search(
+        r"using\s+"
+        r"(?P<used>[0-9]+(?:\.[0-9]+)?)\s*(?P<used_unit>[kmgtpe]?i?b?)"
+        r"\s+of\s+"
+        r"(?P<limit>[0-9]+(?:\.[0-9]+)?)\s*(?P<limit_unit>[kmgtpe]?i?b?)",
+        output,
+        flags=re.IGNORECASE,
+    )
+    if simple_match:
+        used_bytes = _parse_byte_value(
+            simple_match.group("used"),
+            simple_match.group("used_unit"),
+        )
+        limit_bytes = _parse_byte_value(
+            simple_match.group("limit"),
+            simple_match.group("limit_unit"),
+        )
+        return (used_bytes, limit_bytes)
+
+    table_match = re.search(
+        r"\|\|\s*"
+        r"(?P<used>[0-9]+(?:\.[0-9]+)?)\s*(?P<used_unit>[kmgtpe]i?b|[kmgtpe]b?)"
+        r"\s*\|\s*"
+        r"(?P<limit>[0-9]+(?:\.[0-9]+)?)\s*(?P<limit_unit>[kmgtpe]i?b|[kmgtpe]b?)"
+        r"\s*\|\|",
+        output,
+        flags=re.IGNORECASE,
+    )
+    if table_match:
+        used_bytes = _parse_byte_value(
+            table_match.group("used"),
+            table_match.group("used_unit"),
+        )
+        limit_bytes = _parse_byte_value(
+            table_match.group("limit"),
+            table_match.group("limit_unit"),
+        )
+        return (used_bytes, limit_bytes)
+    return None
+
+
+def _parse_byte_value(value: str, unit: str) -> int:
+    """Parse a quota byte value with decimal or binary units."""
+    normalized_unit = unit.strip().lower()
+    if normalized_unit in {"", "b"}:
+        multiplier = 1
+    else:
+        prefix = normalized_unit[0]
+        if prefix not in "kmgtpe":
+            return int(float(value))
+        base = 1024 if "i" in normalized_unit else 1000
+        multiplier = base ** ("kmgtpe".index(prefix) + 1)
+    return int(float(value) * multiplier)
 
 
 def _git_tracked_size(repo_dir: Path) -> int:

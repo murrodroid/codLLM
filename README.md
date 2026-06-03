@@ -156,6 +156,10 @@ resolved as `/work3/s234805` and run storage as `/work3/s234805/codllm`. Profile
 auto-resolve `$USER` storage placeholders, so `--profile h100-10h` resolves to Lucas's work folder even when run from a
 local machine whose shell user is not `s234805`.
 
+On DTU HPC, `maintenance.status` prints shared filesystem capacity as `filesystem_*` values and, when the DTU quota
+scripts are available, prints a separate `quota:` line from `getquota_zhome.sh`, `getquota_work1.sh`, or
+`getquota_work3.sh`. Capacity errors are usually quota errors, so use the `quota:` line for the enforced user limit.
+
 ## Repository Layout
 
 ```text
@@ -339,10 +343,12 @@ uv run invoke maintenance.git-snapshot
 
 `maintenance.git-snapshot` writes a local `logs/git/` status and recent-commit record. `logs/` is ignored by git, so
 cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
-`maintenance.status` shows disk capacity for the workspace, profile/home, and configured HPC storage roots, then breaks
-known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs, runtime
-caches, and Python/tool caches. For Lucas's H100 profiles, `maintenance.status --profile h100-10h` and
-`maintenance.status --lucas` report the managed HPC roots under `/work3/s234805/codllm`.
+`maintenance.status` shows shared filesystem capacity for the workspace, profile/home, and configured HPC storage roots,
+then breaks known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs,
+runtime caches, and Python/tool caches. For Lucas's H100 profiles, `maintenance.status --profile h100-10h` and
+`maintenance.status --lucas` report the managed HPC roots under `/work3/s234805/codllm`. On DTU login nodes, quota
+lines come from the DTU quota scripts; the `filesystem_*` totals are shared filesystem capacity and do not represent the
+per-user limit that kills jobs.
 
 ## Training Options
 

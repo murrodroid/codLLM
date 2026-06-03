@@ -713,10 +713,28 @@ def _print_maintenance_status(report: MaintenanceStatusReport) -> None:
         )
         print(
             f"  {root.name}: {root.path} "
-            f"used={format_bytes(root.used_bytes)} "
-            f"free={format_bytes(root.free_bytes)} "
-            f"total={format_bytes(root.total_bytes)}"
+            f"filesystem_used={format_bytes(root.used_bytes)} "
+            f"filesystem_free={format_bytes(root.free_bytes)} "
+            f"filesystem_total={format_bytes(root.total_bytes)}"
             f"{capacity_note}"
+        )
+        if root.quota is None:
+            continue
+        if root.quota.error is not None:
+            print(
+                f"    quota: unavailable source={root.quota.source} "
+                f"error={root.quota.error}"
+            )
+            continue
+        if root.quota.used_bytes is None or root.quota.limit_bytes is None:
+            print(f"    quota: unavailable source={root.quota.source}")
+            continue
+        quota_free = root.quota.free_bytes or 0
+        print(
+            f"    quota: used={format_bytes(root.quota.used_bytes)} "
+            f"free={format_bytes(quota_free)} "
+            f"limit={format_bytes(root.quota.limit_bytes)} "
+            f"source={root.quota.source}"
         )
     print("Known codLLM storage:")
     for category in report.categories:

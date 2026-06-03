@@ -28,6 +28,7 @@ from codllm.maintenance.hpc import (
 from codllm.maintenance.status import (
     MaintenanceStatusReport,
     StorageCategoryReport,
+    StorageQuotaReport,
     StorageRootReport,
     build_maintenance_status,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "MaintenanceCacheEntry",
     "MaintenanceStatusReport",
     "StorageCategoryReport",
+    "StorageQuotaReport",
     "StorageRootReport",
     "build_clear_cache_plan",
     "build_dataset_cache_report",
