@@ -11,7 +11,12 @@ from codllm.experiments import (
     load_lsf_profiles,
     prepare_lsf_submission,
 )
-from tasks import _build_run_dependencies, _profile_for_lsf_user, _select_runs
+from tasks import (
+    _build_run_dependencies,
+    _maintenance_runtime_env,
+    _profile_for_lsf_user,
+    _select_runs,
+)
 
 
 def test_experiment_spec_inherits_env_and_expands_cartesian_sweep(
@@ -286,12 +291,69 @@ def test_profile_for_lsf_user_sets_notification_email() -> None:
         cores=2,
         memory="2GB",
         email="old@example.com",
+        storage_folder="/work3/$USER",
+        run_storage_dir="/scratch/${USER}/codllm",
     )
 
     updated = _profile_for_lsf_user(profile, "elias")
 
     assert updated.email == "s234854@dtu.dk"
+    assert updated.storage_folder == "/work3/s234854"
+    assert updated.run_storage_dir == "/scratch/s234854/codllm"
     assert profile.email == "old@example.com"
+    assert profile.storage_folder == "/work3/$USER"
+
+
+def test_maintenance_runtime_env_resolves_lucas_hpc_storage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Maintenance tasks should resolve user aliases to explicit HPC accounts."""
+    profiles_path = tmp_path / "profiles.toml"
+    profiles_path.write_text(
+        """
+[h100-10h]
+queue = "gpu"
+wall_time = "00:30"
+cores = 2
+memory = "2GB"
+storage_folder = "/work3/$USER"
+email = "s234805@dtu.dk"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_OUTPUT_DIR", raising=False)
+    monkeypatch.setenv("VIRTUAL_ENV", "/local/.venv")
+
+    env = _maintenance_runtime_env(
+        profile=None,
+        profiles=str(profiles_path),
+        user=None,
+        lucas=True,
+        elias=False,
+    )
+
+    assert env["STORAGE_FOLDER"] == "/work3/s234805"
+    assert env["RUN_STORAGE_DIR"] == "/work3/s234805/codllm"
+    assert env["UV_CACHE_DIR"] == "/work3/s234805/codllm/cache/uv"
+    assert env["HF_HOME"] == "/work3/s234805/codllm/cache/huggingface"
+    assert env["CODLLM_DATA_PROCESSED_DIR"] == "/work3/s234805/codllm/data/processed"
+    assert env["CODLLM_OUTPUT_DIR"] == "/work3/s234805/codllm/runs"
+    assert "VIRTUAL_ENV" not in env
+
+    inferred_env = _maintenance_runtime_env(
+        profile="h100-10h",
+        profiles=str(profiles_path),
+        user=None,
+        lucas=False,
+        elias=False,
+    )
+
+    assert inferred_env["STORAGE_FOLDER"] == "/work3/s234805"
+    assert inferred_env["RUN_STORAGE_DIR"] == "/work3/s234805/codllm"
 
 
 def test_select_runs_zero_selects_all_sweep_runs(tmp_path: Path) -> None:

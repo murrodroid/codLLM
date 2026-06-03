@@ -28,6 +28,10 @@
   * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports filesystem capacity for the
     workspace, profile/home, and configured HPC storage roots, plus known codLLM usage by code, raw data, processed
     data, model outputs, generated jobs/logs, and runtime caches.
+  * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks accept HPC context via
+    `--profile <profile>` and user shortcuts such as `--lucas` or `--user lucas`. User shortcuts default to the
+    `h100-10h` profile; profiles with known notification emails auto-resolve `$USER` storage placeholders, so Lucas's
+    H100 profiles resolve to `/work3/s234805` and `/work3/s234805/codllm`.
   * To clear broad generated caches and outputs, use `uv run invoke maintenance.clear-cache --standard` for generated
     paths unused for 14+ days, or `uv run invoke maintenance.clear-cache --aggressive` for all maintenance-managed
     generated paths. Both modes dry-run unless `--yes` is passed. These policies still protect raw data, source code,
@@ -71,6 +75,9 @@ clearing. Broad cache cleanup may delete processed-data caches, prepared split c
 generated LSF submissions, logs, Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and
 uv cache paths. It must not delete source code, checked-in TOML specs, raw datasets, arbitrary files under `models/`, or
 generic profile cache roots that are not clearly owned by codLLM.
+Maintenance tasks that inspect or clear generated storage should use `--profile <profile>` or `--lucas`/`--user lucas`
+when targeting HPC paths. Known profile emails are used to replace `$USER`/`${USER}` in LSF storage fields, which avoids
+using a local login name when inspecting Lucas's `/work3/s234805` storage from outside the cluster.
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.

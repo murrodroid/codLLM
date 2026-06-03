@@ -115,6 +115,7 @@ Inspect cache usage:
 
 ```bash
 uv run invoke maintenance.data-cache
+uv run invoke maintenance.data-cache --profile h100-10h
 ```
 
 Clear processed-data and prepared-split caches with a dry run first:
@@ -131,6 +132,7 @@ For broader cleanup, inspect storage first:
 
 ```bash
 uv run invoke maintenance.status
+uv run --no-sync invoke maintenance.status --lucas
 ```
 
 Then run one of the broad cache policies:
@@ -147,6 +149,12 @@ remove processed-data caches, prepared split caches, local run/checkpoint direct
 Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It still protects
 raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots that are
 not clearly owned by codLLM.
+
+Maintenance cache and status tasks accept the same LSF profile context used by HPC submission. Pass `--profile h100-10h`
+to inspect that profile's storage layout, or pass `--lucas` to use the default H100 profile with Lucas's DTU work folder
+resolved as `/work3/s234805` and run storage as `/work3/s234805/codllm`. Profiles with a known notification email also
+auto-resolve `$USER` storage placeholders, so `--profile h100-10h` resolves to Lucas's work folder even when run from a
+local machine whose shell user is not `s234805`.
 
 ## Repository Layout
 
@@ -323,7 +331,8 @@ Use the maintenance checks before long HPC runs or before pushing a branch:
 
 ```bash
 uv run invoke maintenance.status
-uv run --no-sync invoke maintenance.hpc-env
+uv run --no-sync invoke maintenance.status --profile h100-10h
+uv run --no-sync invoke maintenance.hpc-env --lucas
 uv run invoke maintenance.git-hygiene
 uv run invoke maintenance.git-snapshot
 ```
@@ -332,7 +341,8 @@ uv run invoke maintenance.git-snapshot
 cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
 `maintenance.status` shows disk capacity for the workspace, profile/home, and configured HPC storage roots, then breaks
 known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs, runtime
-caches, and Python/tool caches.
+caches, and Python/tool caches. For Lucas's H100 profiles, `maintenance.status --profile h100-10h` and
+`maintenance.status --lucas` report the managed HPC roots under `/work3/s234805/codllm`.
 
 ## Training Options
 

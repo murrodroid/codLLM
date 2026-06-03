@@ -23,6 +23,7 @@ class StorageRootReport:
 
     name: str
     path: Path
+    capacity_path: Path
     total_bytes: int
     used_bytes: int
     free_bytes: int
@@ -138,15 +139,17 @@ def _storage_roots(
     reports: list[StorageRootReport] = []
     seen_roots: set[Path] = set()
     for name, path in candidates:
-        root = _existing_parent(path).resolve(strict=False)
-        if root in seen_roots:
+        requested_path = path.expanduser().resolve(strict=False)
+        capacity_path = _existing_parent(path).resolve(strict=False)
+        if requested_path in seen_roots:
             continue
-        seen_roots.add(root)
-        usage = shutil.disk_usage(root)
+        seen_roots.add(requested_path)
+        usage = shutil.disk_usage(capacity_path)
         reports.append(
             StorageRootReport(
                 name=name,
-                path=root,
+                path=requested_path,
+                capacity_path=capacity_path,
                 total_bytes=usage.total,
                 used_bytes=usage.used,
                 free_bytes=usage.free,

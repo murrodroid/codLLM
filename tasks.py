@@ -46,6 +46,10 @@ LSF_USER_EMAILS = {
     "lucas": "s234805@dtu.dk",
     "elias": "s234854@dtu.dk",
 }
+LSF_USER_ACCOUNTS = {
+    "lucas": "s234805",
+    "elias": "s234854",
+}
 
 
 @task
@@ -146,11 +150,18 @@ def maintenance_data_cache(
     ctx: Context,
     config: str | None = None,
     sweep_index: int = 1,
+    profile: str | None = None,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
 ) -> None:
     """Inspect processed-data and prepared-split cache usage."""
     del ctx
-    with _config_environment(config, sweep_index):
-        report = build_dataset_cache_report(config_from_env())
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    with _temporary_environ(runtime_env):
+        with _config_environment(config, sweep_index):
+            report = build_dataset_cache_report(config_from_env())
     _print_dataset_cache_report(report)
 
 
@@ -159,6 +170,11 @@ def maintenance_clear_data_cache(
     ctx: Context,
     config: str | None = None,
     sweep_index: int = 1,
+    profile: str | None = None,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
     processed: bool = True,
     splits: bool = True,
     locks: bool = False,
@@ -167,15 +183,17 @@ def maintenance_clear_data_cache(
 ) -> None:
     """Clear processed-data caches, dry-running unless --yes is provided."""
     del ctx
-    with _config_environment(config, sweep_index):
-        actions = clear_dataset_caches(
-            config_from_env(),
-            processed=processed,
-            splits=splits,
-            locks=locks,
-            temporary=temporary,
-            execute=yes,
-        )
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    with _temporary_environ(runtime_env):
+        with _config_environment(config, sweep_index):
+            actions = clear_dataset_caches(
+                config_from_env(),
+                processed=processed,
+                splits=splits,
+                locks=locks,
+                temporary=temporary,
+                execute=yes,
+            )
     _print_dataset_cache_actions(actions, executed=yes)
     if not yes:
         print("Dry run only. Re-run with --yes to delete these cache paths.")
@@ -186,6 +204,11 @@ def maintenance_clear_cache(
     ctx: Context,
     config: str | None = None,
     sweep_index: int = 1,
+    profile: str | None = None,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
     standard: bool = False,
     aggressive: bool = False,
     days: int = 14,
@@ -198,17 +221,19 @@ def maintenance_clear_cache(
     if standard and aggressive:
         raise Exit("Use either --standard or --aggressive, not both.", code=2)
     mode = "aggressive" if aggressive else "standard"
-    with _config_environment(config, sweep_index):
-        actions = clear_generated_caches(
-            config_from_env(),
-            repo_dir=Path.cwd(),
-            environ=os.environ,
-            mode=mode,
-            retention_days=days,
-            locks=locks,
-            include_env_caches=include_env_caches,
-            execute=yes,
-        )
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    with _temporary_environ(runtime_env):
+        with _config_environment(config, sweep_index):
+            actions = clear_generated_caches(
+                config_from_env(),
+                repo_dir=Path.cwd(),
+                environ=os.environ,
+                mode=mode,
+                retention_days=days,
+                locks=locks,
+                include_env_caches=include_env_caches,
+                execute=yes,
+            )
     _print_maintenance_cache_actions(
         actions,
         executed=yes,
@@ -220,10 +245,19 @@ def maintenance_clear_cache(
 
 
 @task(name="hpc-env")
-def maintenance_hpc_env(ctx: Context, strict: bool = False) -> None:
+def maintenance_hpc_env(
+    ctx: Context,
+    profile: str | None = None,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
+    strict: bool = False,
+) -> None:
     """Inspect HPC cache/storage environment hygiene."""
-    uv_cache = ctx.run("uv cache dir", hide=True).stdout.strip()
-    report = build_hpc_environment_report(os.environ, uv_cache_dir=uv_cache)
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    uv_cache = ctx.run("uv cache dir", env=runtime_env, hide=True).stdout.strip()
+    report = build_hpc_environment_report(runtime_env, uv_cache_dir=uv_cache)
     _print_hpc_environment_report(report)
     if strict and report.has_issues:
         raise Exit("HPC environment hygiene check failed.", code=1)
@@ -260,15 +294,22 @@ def maintenance_status(
     ctx: Context,
     config: str | None = None,
     sweep_index: int = 1,
+    profile: str | None = None,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
 ) -> None:
     """Show storage capacity and known codLLM storage usage by category."""
     del ctx
-    with _config_environment(config, sweep_index):
-        report = build_maintenance_status(
-            config_from_env(),
-            repo_dir=Path.cwd(),
-            environ=os.environ,
-        )
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    with _temporary_environ(runtime_env):
+        with _config_environment(config, sweep_index):
+            report = build_maintenance_status(
+                config_from_env(),
+                repo_dir=Path.cwd(),
+                environ=os.environ,
+            )
     _print_maintenance_status(report)
 
 
@@ -420,6 +461,30 @@ def _config_environment(config: str | None, sweep_index: int) -> Iterator[None]:
         yield
 
 
+def _maintenance_runtime_env(
+    profile: str | None,
+    profiles: str,
+    user: str | None,
+    lucas: bool,
+    elias: bool,
+) -> dict[str, str]:
+    """Return environment values for maintenance, optionally using an HPC profile."""
+    selected_user = _resolve_lsf_user_alias(user, lucas, elias)
+    if profile is None and selected_user is None:
+        return os.environ.copy()
+    profile_name = profile or "h100-10h"
+    lsf_profile = load_lsf_profile(profile_name, profiles)
+    if selected_user is not None:
+        lsf_profile = _profile_for_lsf_user(lsf_profile, selected_user)
+    else:
+        lsf_profile = _profile_with_inferred_lsf_user(lsf_profile)
+    env = os.environ.copy()
+    env.update(_hpc_runtime_env_defaults(lsf_profile))
+    if env.get("VIRTUAL_ENV") and env["VIRTUAL_ENV"] != env["UV_PROJECT_ENVIRONMENT"]:
+        env.pop("VIRTUAL_ENV", None)
+    return env
+
+
 def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
     """Return login-node defaults that mirror the generated LSF script."""
     storage_folder = os.environ.get("STORAGE_FOLDER") or os.path.expandvars(
@@ -435,6 +500,19 @@ def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
     defaults = {
         "STORAGE_FOLDER": storage_folder,
         "RUN_STORAGE_DIR": run_storage_dir,
+        "HF_HOME": str(Path(run_storage_dir) / "cache/huggingface"),
+        "HF_HUB_CACHE": str(Path(run_storage_dir) / "cache/huggingface/hub"),
+        "TRANSFORMERS_CACHE": str(
+            Path(run_storage_dir) / "cache/huggingface/transformers"
+        ),
+        "HF_DATASETS_CACHE": str(Path(run_storage_dir) / "cache/hf_datasets"),
+        "TORCH_HOME": str(Path(run_storage_dir) / "cache/torch"),
+        "WANDB_DIR": str(Path(run_storage_dir) / "cache/wandb"),
+        "WANDB_CACHE_DIR": str(Path(run_storage_dir) / "cache/wandb/cache"),
+        "XDG_CACHE_HOME": str(Path(run_storage_dir) / "cache/xdg"),
+        "UV_CACHE_DIR": str(Path(run_storage_dir) / "cache/uv"),
+        "UV_PROJECT_ENVIRONMENT": str(Path(run_storage_dir) / ".venv"),
+        "UV_PYTHON_INSTALL_DIR": str(Path(run_storage_dir) / "python"),
         "CODLLM_OUTPUT_DIR": str(Path(run_storage_dir) / "runs"),
         "CODLLM_DATA_RAW_DIR": str(project_dir / "data/raw"),
         "CODLLM_DATA_PROCESSED_DIR": str(Path(run_storage_dir) / "data/processed"),
@@ -483,12 +561,51 @@ def _profile_for_lsf_user(profile: LsfProfile, user: str) -> LsfProfile:
     normalized_user = user.strip().lower()
     try:
         email = LSF_USER_EMAILS[normalized_user]
+        account = LSF_USER_ACCOUNTS[normalized_user]
     except KeyError as exc:
         allowed = ", ".join(sorted(LSF_USER_EMAILS))
         raise Exit(
             f"Unknown LSF user '{user}'. Use one of: {allowed}.", code=2
         ) from exc
-    return replace(profile, email=email)
+    return replace(
+        profile,
+        email=email,
+        storage_folder=_replace_shell_user(profile.storage_folder, account),
+        run_storage_dir=_replace_shell_user(profile.run_storage_dir, account)
+        if profile.run_storage_dir is not None
+        else None,
+    )
+
+
+def _profile_with_inferred_lsf_user(profile: LsfProfile) -> LsfProfile:
+    """Return a profile with storage placeholders resolved from its email when possible."""
+    if profile.email is None:
+        return profile
+    for user, email in LSF_USER_EMAILS.items():
+        if profile.email.strip().lower() == email:
+            return _profile_for_lsf_user(profile, user)
+    return profile
+
+
+def _resolve_lsf_user_alias(
+    user: str | None,
+    lucas: bool,
+    elias: bool,
+) -> str | None:
+    """Resolve --user and shortcut user flags for maintenance tasks."""
+    selected = [
+        name for name, enabled in (("lucas", lucas), ("elias", elias)) if enabled
+    ]
+    if user is not None and user.strip() != "":
+        selected.append(user.strip())
+    if len(selected) > 1:
+        raise Exit("Use only one of --user, --lucas, or --elias.", code=2)
+    return selected[0] if selected else None
+
+
+def _replace_shell_user(value: str, account: str) -> str:
+    """Replace shell USER placeholders with one explicit HPC account."""
+    return value.replace("${USER}", account).replace("$USER", account)
 
 
 def _print_submission(submission: GeneratedSubmission) -> None:
@@ -589,11 +706,17 @@ def _print_maintenance_status(report: MaintenanceStatusReport) -> None:
     """Print storage roots and known codLLM usage categories."""
     print("Storage roots:")
     for root in report.roots:
+        capacity_note = (
+            f" capacity_at={root.capacity_path}"
+            if root.capacity_path != root.path
+            else ""
+        )
         print(
             f"  {root.name}: {root.path} "
             f"used={format_bytes(root.used_bytes)} "
             f"free={format_bytes(root.free_bytes)} "
             f"total={format_bytes(root.total_bytes)}"
+            f"{capacity_note}"
         )
     print("Known codLLM storage:")
     for category in report.categories:
