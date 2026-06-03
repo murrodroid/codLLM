@@ -5,6 +5,7 @@ api_keys.py
 .DS_Store
 data/cache/
 jobs/generated/
+logs/
 .claude/
 
 # Secrets

@@ -21,6 +21,15 @@
   * To list configured LSF profiles, use `uv run invoke hpc.profiles`.
   * To inspect uv/cache paths before HPC work, source `hpc/env.sh` and run `bash hpc/storage-check.sh`.
     If invoke is already installed, `uv run --no-sync invoke hpc.storage` provides the same check.
+  * To inspect processed-data and prepared-split caches, use
+    `uv run invoke maintenance.data-cache`. To clear those caches, use
+    `uv run invoke maintenance.clear-data-cache --yes`; without `--yes` it only prints a dry run. Use `--locks` only
+    when no jobs are building or reading dataset caches.
+  * To check generated-output git hygiene before pushing, use `uv run invoke maintenance.git-hygiene`. To write a
+    local git status/recent-commit snapshot, use `uv run invoke maintenance.git-snapshot`; snapshots are written under
+    ignored `logs/git/`.
+  * To inspect HPC cache/storage environment hygiene through the maintenance package, use
+    `uv run --no-sync invoke maintenance.hpc-env`.
   * To prebuild processed-data and prepared-split caches for an experiment spec on HPC, use
     `uv run invoke hpc.build --config <path> --profile <profile>`. Use the same profile intended for `hpc.submit`.
     By default this builds all expanded runs; pass `--sweep-index <n>` to build one run.
@@ -43,12 +52,15 @@ writes run-scoped outputs.
 Experiment orchestration is handled separately from model code. Human-editable experiment specs live under
 `runs/**/*.toml`, LSF resource profiles live in `hpc/lsf_profiles.toml`, and `tasks.py` exposes the
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
-`jobs/generated/` and are intentionally ignored by git. Prefer adding or editing TOML specs and LSF profiles over adding
-new handwritten shell scripts in `jobs/`.
+`jobs/generated/` and logs under `logs/` are intentionally ignored by git. Prefer adding or editing TOML specs and LSF
+profiles over adding new handwritten shell scripts in `jobs/`.
 Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
 prepared split content.
+Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
+Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
+clearing.
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.

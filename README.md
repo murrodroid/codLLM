@@ -111,6 +111,22 @@ fields, and label settings. Prepared split caches live beside the processed file
 Those split caches include split-time transformations such as hold-out removal, multi-COD synthesis, balancing, and
 masterlist injection.
 
+Inspect cache usage:
+
+```bash
+uv run invoke maintenance.data-cache
+```
+
+Clear processed-data and prepared-split caches with a dry run first:
+
+```bash
+uv run invoke maintenance.clear-data-cache
+uv run invoke maintenance.clear-data-cache --yes
+```
+
+The cache clearer never targets raw datasets. Lock files are kept by default; pass `--locks` only when no training or
+cache-build jobs are active.
+
 ## Repository Layout
 
 ```text
@@ -123,6 +139,7 @@ codLLM/
 |-- src/codllm/
 |   |-- training/                   # Training CLI, stages, Trainer setup, W&B logging
 |   |-- inference/                  # Inference CLI, IO, generation, decoding
+|   |-- maintenance/                # Dataset cache, HPC env, and git hygiene helpers
 |   |-- settings/                   # Config dataclasses, env parsing, option types
 |   |-- input/                      # Source mappings, raw loaders, harmonization, multi-COD
 |   |-- data/                       # DataHandler, caches, splits, balancing, tokenization
@@ -280,6 +297,17 @@ HPC defaults:
 - model outputs: `$RUN_STORAGE_DIR/runs`
 - generated scripts/env files/manifests: `jobs/generated/`
 - logs: `logs/`
+
+Use the maintenance checks before long HPC runs or before pushing a branch:
+
+```bash
+uv run --no-sync invoke maintenance.hpc-env
+uv run invoke maintenance.git-hygiene
+uv run invoke maintenance.git-snapshot
+```
+
+`maintenance.git-snapshot` writes a local `logs/git/` status and recent-commit record. `logs/` is ignored by git, so
+cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
 
 ## Training Options
 

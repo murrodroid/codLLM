@@ -179,6 +179,8 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert '#BSUB -J "codllm-sweep[1-2]"' in script
     assert "module load cuda/12.2" in script
     assert "unset VIRTUAL_ENV" in script
+    assert 'XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_STORAGE_DIR/cache/xdg}"' in script
+    assert "XDG_CACHE_HOME_DIR" not in script
     assert "uv run --no-dev python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest

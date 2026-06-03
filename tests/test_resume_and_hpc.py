@@ -75,7 +75,9 @@ class TestTimeBudgetCallback:
     def _fake_args_state_control(self) -> tuple[Any, Any, TrainerControl]:
         # MagicMock stands in for TrainingArguments / TrainerState during pure
         # callback invocations - the callbacks don't read fields from them.
-        return MagicMock(spec=TrainingArguments), MagicMock(spec=TrainerState), TrainerControl()
+        args = MagicMock(spec=TrainingArguments)
+        args.output_dir = None
+        return args, MagicMock(spec=TrainerState), TrainerControl()
 
     def test_no_op_when_budget_disabled(self) -> None:
         callback = TimeBudgetCallback(max_runtime_seconds=0)
@@ -171,7 +173,6 @@ class TestWandbRunIdSidecar:
 
     def test_empty_id_does_not_create_file(self, tmp_path: Path) -> None:
         from codllm.wandb_utils import (
-            _read_wandb_run_id_sidecar,
             _wandb_run_id_sidecar_path,
             _write_wandb_run_id_sidecar,
         )
@@ -243,4 +244,3 @@ class TestPrepareRunOutputDirAutoResume:
         )
         resolved = prepare_run_output_dir(cfg)
         assert resolved == run_dir
-

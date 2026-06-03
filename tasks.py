@@ -22,6 +22,18 @@ from codllm.experiments import (
     load_lsf_profiles,
     prepare_lsf_submission,
 )
+from codllm.maintenance import (
+    DatasetCacheAction,
+    DatasetCacheReport,
+    GitHygieneReport,
+    HpcEnvironmentReport,
+    build_dataset_cache_report,
+    build_git_hygiene_report,
+    build_hpc_environment_report,
+    clear_dataset_caches,
+    format_bytes,
+    write_git_snapshot,
+)
 
 DEFAULT_EXPERIMENT_ROOT = Path("runs")
 DEFAULT_PROFILE_PATH = Path("hpc/lsf_profiles.toml")
@@ -118,36 +130,86 @@ def hpc_profiles(ctx: Context, profiles: str = str(DEFAULT_PROFILE_PATH)) -> Non
 @task(name="storage")
 def hpc_storage(ctx: Context) -> None:
     """Print uv/cache paths and warn when they are outside RUN_STORAGE_DIR."""
-    run_storage_dir = os.getenv("RUN_STORAGE_DIR")
-    paths = {
-        "RUN_STORAGE_DIR": run_storage_dir,
-        "UV_CACHE_DIR": os.getenv("UV_CACHE_DIR"),
-        "UV_PROJECT_ENVIRONMENT": os.getenv("UV_PROJECT_ENVIRONMENT"),
-        "UV_PYTHON_INSTALL_DIR": os.getenv("UV_PYTHON_INSTALL_DIR"),
-        "HF_HOME": os.getenv("HF_HOME"),
-        "TORCH_HOME": os.getenv("TORCH_HOME"),
-        "XDG_CACHE_HOME": os.getenv("XDG_CACHE_HOME"),
-        "VIRTUAL_ENV": os.getenv("VIRTUAL_ENV"),
-    }
     uv_cache = ctx.run("uv cache dir", hide=True).stdout.strip()
-    paths["uv cache dir"] = uv_cache
+    _print_hpc_environment_report(
+        build_hpc_environment_report(os.environ, uv_cache_dir=uv_cache)
+    )
 
-    for key, value in paths.items():
-        print(f"{key}={value or '<unset>'}")
 
-    if run_storage_dir is None:
-        print(
-            "WARNING: RUN_STORAGE_DIR is unset. Source hpc/env.sh before running uv on HPC."
+@task(name="data-cache")
+def maintenance_data_cache(
+    ctx: Context,
+    config: str | None = None,
+    sweep_index: int = 1,
+) -> None:
+    """Inspect processed-data and prepared-split cache usage."""
+    del ctx
+    with _config_environment(config, sweep_index):
+        report = build_dataset_cache_report(config_from_env())
+    _print_dataset_cache_report(report)
+
+
+@task(name="clear-data-cache")
+def maintenance_clear_data_cache(
+    ctx: Context,
+    config: str | None = None,
+    sweep_index: int = 1,
+    processed: bool = True,
+    splits: bool = True,
+    locks: bool = False,
+    temporary: bool = True,
+    yes: bool = False,
+) -> None:
+    """Clear processed-data caches, dry-running unless --yes is provided."""
+    del ctx
+    with _config_environment(config, sweep_index):
+        actions = clear_dataset_caches(
+            config_from_env(),
+            processed=processed,
+            splits=splits,
+            locks=locks,
+            temporary=temporary,
+            execute=yes,
         )
-        return
+    _print_dataset_cache_actions(actions, executed=yes)
+    if not yes:
+        print("Dry run only. Re-run with --yes to delete these cache paths.")
 
-    storage_root = Path(run_storage_dir).expanduser()
-    for key, value in paths.items():
-        if key == "RUN_STORAGE_DIR" or value is None:
-            continue
-        path = Path(value).expanduser()
-        if not _is_relative_to(path, storage_root):
-            print(f"WARNING: {key} is outside RUN_STORAGE_DIR: {value}")
+
+@task(name="hpc-env")
+def maintenance_hpc_env(ctx: Context, strict: bool = False) -> None:
+    """Inspect HPC cache/storage environment hygiene."""
+    uv_cache = ctx.run("uv cache dir", hide=True).stdout.strip()
+    report = build_hpc_environment_report(os.environ, uv_cache_dir=uv_cache)
+    _print_hpc_environment_report(report)
+    if strict and report.has_issues:
+        raise Exit("HPC environment hygiene check failed.", code=1)
+
+
+@task(name="git-hygiene")
+def maintenance_git_hygiene(ctx: Context, strict: bool = False) -> None:
+    """Check generated logs, jobs, caches, and run outputs before pushing."""
+    del ctx
+    report = build_git_hygiene_report(Path.cwd())
+    _print_git_hygiene_report(report)
+    if strict and report.has_issues:
+        raise Exit("Git hygiene check failed.", code=1)
+
+
+@task(name="git-snapshot")
+def maintenance_git_snapshot(
+    ctx: Context,
+    output_dir: str = "logs/git",
+    commits: int = 20,
+) -> None:
+    """Write git status and recent commits to an ignored local log file."""
+    del ctx
+    snapshot_path = write_git_snapshot(
+        Path.cwd(),
+        output_dir=output_dir,
+        max_commits=commits,
+    )
+    print(f"Wrote git snapshot: {snapshot_path}")
 
 
 @task(name="build")
@@ -285,6 +347,19 @@ def _build_run_dependencies(
             print(f"  classifier label vocabulary: {len(labels)} labels")
 
 
+@contextmanager
+def _config_environment(config: str | None, sweep_index: int) -> Iterator[None]:
+    """Apply one optional experiment run environment while resolving Config."""
+    if config is None:
+        yield
+        return
+
+    spec = load_experiment_spec(config)
+    run = _select_run(spec, sweep_index)
+    with _temporary_environ(run.env_with_runtime_metadata(spec)):
+        yield
+
+
 def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
     """Return login-node defaults that mirror the generated LSF script."""
     storage_folder = os.environ.get("STORAGE_FOLDER") or os.path.expandvars(
@@ -366,13 +441,61 @@ def _print_submission(submission: GeneratedSubmission) -> None:
     print(f"Submit with: {submission.bsub_command()}")
 
 
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    """Return True when path is below parent without requiring Python 3.9 fallback."""
-    try:
-        path.resolve().relative_to(parent.resolve())
-    except ValueError:
-        return False
-    return True
+def _print_dataset_cache_report(report: DatasetCacheReport) -> None:
+    """Print a human-readable dataset cache report."""
+    print(f"Data processed dir: {report.processed_dir}")
+    for entry in report.entries:
+        state = "present" if entry.exists else "missing"
+        print(
+            f"{entry.kind:>22}  {state:>7}  {format_bytes(entry.size_bytes):>10}  "
+            f"{entry.path}"
+        )
+    print(f"Total existing cache size: {format_bytes(report.total_size_bytes)}")
+
+
+def _print_dataset_cache_actions(
+    actions: tuple[DatasetCacheAction, ...],
+    *,
+    executed: bool,
+) -> None:
+    """Print planned or executed dataset cache cleanup actions."""
+    verb = "Deleted" if executed else "Would delete"
+    if not actions:
+        print("No matching dataset cache paths.")
+        return
+    for action in actions:
+        if not action.exists:
+            print(f"Missing {action.kind}: {action.path}")
+            continue
+        print(
+            f"{verb} {action.kind} ({format_bytes(action.size_bytes)}): {action.path}"
+        )
+
+
+def _print_hpc_environment_report(report: HpcEnvironmentReport) -> None:
+    """Print storage/cache path values and warnings."""
+    for key, value in report.paths.items():
+        print(f"{key}={value or '<unset>'}")
+    for issue in report.issues:
+        print(f"WARNING: {issue.message} {issue.value or '<unset>'}")
+
+
+def _print_git_hygiene_report(report: GitHygieneReport) -> None:
+    """Print generated-path git hygiene results."""
+    print(f"Repository: {report.repo_dir}")
+    for probe, ignored in report.ignored_probes.items():
+        state = "ignored" if ignored else "not ignored"
+        print(f"{state:>11}  {probe}")
+    if report.status_entries:
+        print("Generated/local-only git status entries:")
+        for entry in report.status_entries:
+            print(f"  {entry}")
+    if not report.issues:
+        print("Git hygiene check passed.")
+        return
+    print("Git hygiene warnings:")
+    for issue in report.issues:
+        print(f"  {issue.path}: {issue.message}")
 
 
 namespace = Collection()
@@ -390,5 +513,13 @@ hpc.add_task(hpc_profiles)
 hpc.add_task(hpc_storage)
 hpc.add_task(hpc_submit)
 namespace.add_collection(hpc)
+
+maintenance = Collection("maintenance")
+maintenance.add_task(maintenance_clear_data_cache)
+maintenance.add_task(maintenance_data_cache)
+maintenance.add_task(maintenance_git_hygiene)
+maintenance.add_task(maintenance_git_snapshot)
+maintenance.add_task(maintenance_hpc_env)
+namespace.add_collection(maintenance)
 
 ns = namespace
