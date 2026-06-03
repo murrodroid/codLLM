@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -27,10 +28,14 @@ from codllm.maintenance import (
     DatasetCacheReport,
     GitHygieneReport,
     HpcEnvironmentReport,
+    MaintenanceCacheAction,
+    MaintenanceStatusReport,
     build_dataset_cache_report,
     build_git_hygiene_report,
     build_hpc_environment_report,
+    build_maintenance_status,
     clear_dataset_caches,
+    clear_generated_caches,
     format_bytes,
     write_git_snapshot,
 )
@@ -176,6 +181,44 @@ def maintenance_clear_data_cache(
         print("Dry run only. Re-run with --yes to delete these cache paths.")
 
 
+@task(name="clear-cache")
+def maintenance_clear_cache(
+    ctx: Context,
+    config: str | None = None,
+    sweep_index: int = 1,
+    standard: bool = False,
+    aggressive: bool = False,
+    days: int = 14,
+    locks: bool = False,
+    include_env_caches: bool = True,
+    yes: bool = False,
+) -> None:
+    """Clear generated caches and outputs using standard or aggressive policy."""
+    del ctx
+    if standard and aggressive:
+        raise Exit("Use either --standard or --aggressive, not both.", code=2)
+    mode = "aggressive" if aggressive else "standard"
+    with _config_environment(config, sweep_index):
+        actions = clear_generated_caches(
+            config_from_env(),
+            repo_dir=Path.cwd(),
+            environ=os.environ,
+            mode=mode,
+            retention_days=days,
+            locks=locks,
+            include_env_caches=include_env_caches,
+            execute=yes,
+        )
+    _print_maintenance_cache_actions(
+        actions,
+        executed=yes,
+        mode=mode,
+        retention_days=days,
+    )
+    if not yes:
+        print("Dry run only. Re-run with --yes to delete these generated paths.")
+
+
 @task(name="hpc-env")
 def maintenance_hpc_env(ctx: Context, strict: bool = False) -> None:
     """Inspect HPC cache/storage environment hygiene."""
@@ -210,6 +253,23 @@ def maintenance_git_snapshot(
         max_commits=commits,
     )
     print(f"Wrote git snapshot: {snapshot_path}")
+
+
+@task(name="status")
+def maintenance_status(
+    ctx: Context,
+    config: str | None = None,
+    sweep_index: int = 1,
+) -> None:
+    """Show storage capacity and known codLLM storage usage by category."""
+    del ctx
+    with _config_environment(config, sweep_index):
+        report = build_maintenance_status(
+            config_from_env(),
+            repo_dir=Path.cwd(),
+            environ=os.environ,
+        )
+    _print_maintenance_status(report)
 
 
 @task(name="build")
@@ -472,6 +532,33 @@ def _print_dataset_cache_actions(
         )
 
 
+def _print_maintenance_cache_actions(
+    actions: tuple[MaintenanceCacheAction, ...],
+    *,
+    executed: bool,
+    mode: str,
+    retention_days: int,
+) -> None:
+    """Print planned or executed broad cache cleanup actions."""
+    if mode == "standard":
+        print(
+            f"Policy: standard, removing generated paths unused for {retention_days}+ days."
+        )
+    else:
+        print("Policy: aggressive, removing all maintenance-managed generated paths.")
+    if not actions:
+        print("No matching generated cache paths.")
+        return
+    verb = "Deleted" if executed else "Would delete"
+    for action in actions:
+        entry = action.entry
+        print(
+            f"{verb} {entry.kind} ({format_bytes(entry.size_bytes)}, "
+            f"age={_age_days(entry.last_activity_ns):.1f}d): {entry.path}"
+        )
+        print(f"  reason: {entry.reason}")
+
+
 def _print_hpc_environment_report(report: HpcEnvironmentReport) -> None:
     """Print storage/cache path values and warnings."""
     for key, value in report.paths.items():
@@ -498,6 +585,31 @@ def _print_git_hygiene_report(report: GitHygieneReport) -> None:
         print(f"  {issue.path}: {issue.message}")
 
 
+def _print_maintenance_status(report: MaintenanceStatusReport) -> None:
+    """Print storage roots and known codLLM usage categories."""
+    print("Storage roots:")
+    for root in report.roots:
+        print(
+            f"  {root.name}: {root.path} "
+            f"used={format_bytes(root.used_bytes)} "
+            f"free={format_bytes(root.free_bytes)} "
+            f"total={format_bytes(root.total_bytes)}"
+        )
+    print("Known codLLM storage:")
+    for category in report.categories:
+        print(
+            f"  {category.name}: {format_bytes(category.size_bytes)} "
+            f"({len(category.paths)} path(s))"
+        )
+
+
+def _age_days(last_activity_ns: int) -> float:
+    """Return age in days from a nanosecond timestamp."""
+    if last_activity_ns <= 0:
+        return 0.0
+    return max(0.0, (time.time_ns() - last_activity_ns) / 1_000_000_000 / 86400)
+
+
 namespace = Collection()
 namespace.add_task(sync)
 namespace.add_task(train)
@@ -515,11 +627,13 @@ hpc.add_task(hpc_submit)
 namespace.add_collection(hpc)
 
 maintenance = Collection("maintenance")
+maintenance.add_task(maintenance_clear_cache)
 maintenance.add_task(maintenance_clear_data_cache)
 maintenance.add_task(maintenance_data_cache)
 maintenance.add_task(maintenance_git_hygiene)
 maintenance.add_task(maintenance_git_snapshot)
 maintenance.add_task(maintenance_hpc_env)
+maintenance.add_task(maintenance_status)
 namespace.add_collection(maintenance)
 
 ns = namespace

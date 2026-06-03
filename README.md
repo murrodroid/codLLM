@@ -127,6 +127,27 @@ uv run invoke maintenance.clear-data-cache --yes
 The cache clearer never targets raw datasets. Lock files are kept by default; pass `--locks` only when no training or
 cache-build jobs are active.
 
+For broader cleanup, inspect storage first:
+
+```bash
+uv run invoke maintenance.status
+```
+
+Then run one of the broad cache policies:
+
+```bash
+uv run invoke maintenance.clear-cache --standard
+uv run invoke maintenance.clear-cache --standard --days 30 --yes
+uv run invoke maintenance.clear-cache --aggressive
+```
+
+`--standard` targets maintenance-managed generated paths unused for 14+ days by default. `--aggressive` targets all
+maintenance-managed generated paths regardless of age. Both modes dry-run unless `--yes` is passed. Broad cleanup may
+remove processed-data caches, prepared split caches, local run/checkpoint directories, generated LSF submissions, logs,
+Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It still protects
+raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots that are
+not clearly owned by codLLM.
+
 ## Repository Layout
 
 ```text
@@ -301,6 +322,7 @@ HPC defaults:
 Use the maintenance checks before long HPC runs or before pushing a branch:
 
 ```bash
+uv run invoke maintenance.status
 uv run --no-sync invoke maintenance.hpc-env
 uv run invoke maintenance.git-hygiene
 uv run invoke maintenance.git-snapshot
@@ -308,6 +330,9 @@ uv run invoke maintenance.git-snapshot
 
 `maintenance.git-snapshot` writes a local `logs/git/` status and recent-commit record. `logs/` is ignored by git, so
 cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
+`maintenance.status` shows disk capacity for the workspace, profile/home, and configured HPC storage roots, then breaks
+known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs, runtime
+caches, and Python/tool caches.
 
 ## Training Options
 

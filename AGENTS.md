@@ -25,6 +25,13 @@
     `uv run invoke maintenance.data-cache`. To clear those caches, use
     `uv run invoke maintenance.clear-data-cache --yes`; without `--yes` it only prints a dry run. Use `--locks` only
     when no jobs are building or reading dataset caches.
+  * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports filesystem capacity for the
+    workspace, profile/home, and configured HPC storage roots, plus known codLLM usage by code, raw data, processed
+    data, model outputs, generated jobs/logs, and runtime caches.
+  * To clear broad generated caches and outputs, use `uv run invoke maintenance.clear-cache --standard` for generated
+    paths unused for 14+ days, or `uv run invoke maintenance.clear-cache --aggressive` for all maintenance-managed
+    generated paths. Both modes dry-run unless `--yes` is passed. These policies still protect raw data, source code,
+    tracked experiment specs, and generic profile caches.
   * To check generated-output git hygiene before pushing, use `uv run invoke maintenance.git-hygiene`. To write a
     local git status/recent-commit snapshot, use `uv run invoke maintenance.git-snapshot`; snapshots are written under
     ignored `logs/git/`.
@@ -60,7 +67,10 @@ balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata 
 prepared split content.
 Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
 Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
-clearing.
+clearing. Broad cache cleanup may delete processed-data caches, prepared split caches, local run/checkpoint directories,
+generated LSF submissions, logs, Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and
+uv cache paths. It must not delete source code, checked-in TOML specs, raw datasets, arbitrary files under `models/`, or
+generic profile cache roots that are not clearly owned by codLLM.
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.

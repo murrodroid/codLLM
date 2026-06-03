@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
 from codllm.config import Config
 from codllm.maintenance import (
+    build_clear_cache_plan,
     build_dataset_cache_report,
     build_git_hygiene_report,
     build_hpc_environment_report,
+    build_maintenance_status,
     clear_dataset_caches,
+    clear_generated_caches,
     write_git_snapshot,
 )
 
@@ -79,6 +84,133 @@ def test_dataset_cache_clear_rejects_paths_outside_processed_dir(
         clear_dataset_caches(cfg, execute=False)
 
 
+def test_clear_cache_standard_filters_old_generated_paths_and_protects_raw_data(
+    tmp_path: Path,
+) -> None:
+    """Standard broad cleanup should only target old generated maintenance paths."""
+    raw_dir = tmp_path / "data/raw"
+    processed_dir = tmp_path / "data/processed"
+    old_run = tmp_path / "runs/run-0001"
+    fresh_run = tmp_path / "runs/run-0002"
+    old_job = tmp_path / "jobs/generated/old-job"
+    generic_xdg_child = tmp_path / ".cache/unrelated"
+    venv_pycache = tmp_path / ".venv/lib/python3.13/site-packages/pkg/__pycache__"
+    for path in (
+        raw_dir,
+        processed_dir,
+        old_run,
+        fresh_run,
+        old_job,
+        generic_xdg_child,
+        venv_pycache,
+    ):
+        path.mkdir(parents=True)
+    (raw_dir / "source.csv").write_text("raw\n", encoding="utf-8")
+    (processed_dir / "data.parquet").write_bytes(b"processed")
+    (processed_dir / "data.parquet.meta.json").write_text("{}\n", encoding="utf-8")
+    (old_run / "checkpoint-1").mkdir()
+    (old_run / "checkpoint-1/model.safetensors").write_bytes(b"weights")
+    (fresh_run / "checkpoint-1").mkdir()
+    (fresh_run / "checkpoint-1/model.safetensors").write_bytes(b"fresh")
+    (old_job / "submit.lsf").write_text("# job\n", encoding="utf-8")
+    (generic_xdg_child / "cache.bin").write_bytes(b"cache")
+    (venv_pycache / "module.pyc").write_bytes(b"pyc")
+
+    old_timestamp = time.time() - 21 * 24 * 60 * 60
+    _touch_tree(processed_dir, old_timestamp)
+    _touch_tree(old_run, old_timestamp)
+    _touch_tree(old_job, old_timestamp)
+    _touch_tree(generic_xdg_child, old_timestamp)
+    _touch_tree(tmp_path / ".venv", old_timestamp)
+
+    cfg = Config(
+        data_raw_dir=str(raw_dir),
+        data_processed_dir=str(processed_dir),
+        output_dir=str(tmp_path / "runs"),
+        processed_filename="data.parquet",
+    )
+    plan = build_clear_cache_plan(
+        cfg,
+        repo_dir=tmp_path,
+        environ={
+            "XDG_CACHE_HOME": str(tmp_path / ".cache"),
+            "VIRTUAL_ENV": str(tmp_path / ".venv"),
+        },
+        mode="standard",
+        retention_days=14,
+    )
+    planned_paths = {action.entry.path for action in plan}
+
+    assert processed_dir / "data.parquet" in planned_paths
+    assert old_run in planned_paths
+    assert old_job in planned_paths
+    assert fresh_run not in planned_paths
+    assert raw_dir / "source.csv" not in planned_paths
+    assert generic_xdg_child not in planned_paths
+    assert venv_pycache not in planned_paths
+
+
+def test_clear_cache_aggressive_deletes_generated_paths(tmp_path: Path) -> None:
+    """Aggressive broad cleanup should delete maintenance-managed generated paths."""
+    processed_dir = tmp_path / "data/processed"
+    run_dir = tmp_path / "runs/run-0001"
+    processed_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (processed_dir / "data.parquet").write_bytes(b"processed")
+    (run_dir / "trainer_state.json").write_text("{}\n", encoding="utf-8")
+    cfg = Config(
+        data_processed_dir=str(processed_dir),
+        output_dir=str(tmp_path / "runs"),
+        processed_filename="data.parquet",
+    )
+
+    actions = clear_generated_caches(
+        cfg,
+        repo_dir=tmp_path,
+        environ={},
+        mode="aggressive",
+        execute=True,
+    )
+
+    assert any(action.executed for action in actions)
+    assert not (processed_dir / "data.parquet").exists()
+    assert not run_dir.exists()
+
+
+def test_maintenance_status_reports_capacity_and_known_categories(
+    tmp_path: Path,
+) -> None:
+    """Maintenance status should summarize disk roots and known storage buckets."""
+    _git(tmp_path, "init")
+    tracked_file = tmp_path / "README.md"
+    tracked_file.write_text("tracked\n", encoding="utf-8")
+    _git(tmp_path, "add", "README.md")
+    raw_dir = tmp_path / "data/raw"
+    processed_dir = tmp_path / "data/processed"
+    run_dir = tmp_path / "runs/run-0001"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (raw_dir / "source.csv").write_text("raw\n", encoding="utf-8")
+    (processed_dir / "data.parquet").write_bytes(b"processed")
+    (run_dir / "model.safetensors").write_bytes(b"weights")
+    cfg = Config(
+        data_raw_dir=str(raw_dir),
+        data_processed_dir=str(processed_dir),
+        output_dir=str(tmp_path / "runs"),
+        processed_filename="data.parquet",
+    )
+
+    report = build_maintenance_status(cfg, repo_dir=tmp_path, environ={})
+    categories = {category.name: category.size_bytes for category in report.categories}
+
+    assert report.roots
+    assert categories["code and tracked specs"] == len("tracked\n")
+    assert categories["raw datasets"] == len("raw\n")
+    assert categories["processed datasets and split caches"] == len(b"processed")
+    assert categories["model weights and run outputs"] == len(b"weights")
+
+
 def test_hpc_environment_report_warns_for_unset_and_outside_paths(
     tmp_path: Path,
 ) -> None:
@@ -141,3 +273,10 @@ def test_write_git_snapshot_creates_local_log(tmp_path: Path) -> None:
 def _git(repo_dir: Path, *args: str) -> None:
     """Run one git command in a temporary test repository."""
     subprocess.run(["git", *args], cwd=repo_dir, check=True, capture_output=True)
+
+
+def _touch_tree(path: Path, timestamp: float) -> None:
+    """Set mtime/atime recursively for one test path."""
+    for child in path.rglob("*"):
+        os.utime(child, (timestamp, timestamp))
+    os.utime(path, (timestamp, timestamp))
