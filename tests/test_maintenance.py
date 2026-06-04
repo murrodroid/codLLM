@@ -73,6 +73,17 @@ def test_dataset_cache_report_and_clear_respect_dry_run_and_locks(
     assert processed_lock_path.exists()
     assert split_lock_path.exists()
 
+    lock_actions = clear_dataset_caches(
+        cfg,
+        processed=False,
+        splits=True,
+        locks=True,
+        execute=True,
+    )
+
+    assert any(action.kind == "prepared_splits_root" for action in lock_actions)
+    assert not splits_root.exists()
+
 
 def test_dataset_cache_clear_rejects_paths_outside_processed_dir(
     tmp_path: Path,

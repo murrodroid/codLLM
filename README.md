@@ -141,6 +141,7 @@ Then run one of the broad cache policies:
 uv run invoke maintenance.clear-cache --standard
 uv run invoke maintenance.clear-cache --standard --days 30 --yes
 uv run invoke maintenance.clear-cache --aggressive
+uv run invoke maintenance.clear-cache --aggressive --locks --lucas --yes
 ```
 
 `--standard` targets maintenance-managed generated paths unused for 14+ days by default. `--aggressive` targets all
@@ -149,6 +150,10 @@ remove processed-data caches, prepared split caches, local run/checkpoint direct
 Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It still protects
 raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots that are
 not clearly owned by codLLM.
+
+If `hpc.build` fails while creating a `data.splits/*.lock` file with `Disk quota exceeded`, check `maintenance.status`.
+When no cache-build or training jobs are active, use `--aggressive --locks --yes` so generated prepared-split roots and
+their lock files are removed before rebuilding.
 
 On DTU HPC, source `hpc/env.sh` before running maintenance commands so they inspect the active storage environment.
 When checking Lucas's storage from a shell that has not sourced the HPC env, pass `--lucas` to resolve the work folder as

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import time
 from contextlib import contextmanager
@@ -432,7 +433,10 @@ def _build_run_dependencies(
         print(f"  CODLLM_DATA_PROCESSED_DIR={cfg.data_processed_dir}")
         print(f"  CODLLM_OUTPUT_DIR={cfg.output_dir}")
         handler = DataHandler(cfg)
-        splits = handler.get_splits(force_reprocess=effective_force_reprocess)
+        try:
+            splits = handler.get_splits(force_reprocess=effective_force_reprocess)
+        except OSError as exc:
+            _raise_hpc_storage_exit(exc, cfg.data_processed_dir)
         print(
             "  prepared splits: "
             f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}"
@@ -443,12 +447,38 @@ def _build_run_dependencies(
             print(f"  holdout eval rows: {len(splits.holdout_eval)}")
 
         if cfg.pretrain_enabled:
-            pretrain_df = handler.get_pretraining_train_dataframe()
+            try:
+                pretrain_df = handler.get_pretraining_train_dataframe()
+            except OSError as exc:
+                _raise_hpc_storage_exit(exc, cfg.data_processed_dir)
             pretrain_rows = 0 if pretrain_df is None else len(pretrain_df)
             print(f"  pretraining dataframe rows: {pretrain_rows}")
         if cfg.model_task == "sequence_classification":
             labels = handler.get_masterlist_label_vocabulary()
             print(f"  classifier label vocabulary: {len(labels)} labels")
+
+
+def _raise_hpc_storage_exit(exc: OSError, data_processed_dir: str) -> None:
+    """Raise a clearer Invoke exit for HPC quota and storage failures."""
+    if exc.errno not in {errno.EDQUOT, errno.ENOSPC}:
+        raise exc
+
+    problem = (
+        "disk quota exceeded"
+        if exc.errno == errno.EDQUOT
+        else "no space left on device"
+    )
+    raise Exit(
+        f"HPC build could not write a dataset cache file: {problem}.\n"
+        f"Processed-data cache root: {data_processed_dir}\n"
+        "Check the enforced quota with:\n"
+        "  uv run --no-sync invoke maintenance.status --lucas\n"
+        "If no cache-build or training jobs are active, clear all managed generated data including locks with:\n"
+        "  uv run --no-sync invoke maintenance.clear-cache --aggressive --locks --lucas --yes\n"
+        "If quota is still full, inspect runtime dependency caches with:\n"
+        "  uv run --no-sync invoke maintenance.hpc-env --lucas",
+        code=1,
+    ) from exc
 
 
 @contextmanager

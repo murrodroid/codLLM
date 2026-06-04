@@ -132,15 +132,13 @@ def clear_dataset_caches(
     if locks:
         targets.append((handler.processed_lock_path, "processed_lock"))
     if splits and handler.prepared_splits_root.exists():
-        targets.extend(
-            (path, "prepared_splits_cache")
-            for path in sorted(handler.prepared_splits_root.iterdir())
-            if path.is_dir()
-        )
         if locks:
+            targets.append((handler.prepared_splits_root, "prepared_splits_root"))
+        else:
             targets.extend(
-                (path, "prepared_splits_lock")
-                for path in sorted(handler.prepared_splits_root.glob("*.lock"))
+                (path, "prepared_splits_cache")
+                for path in sorted(handler.prepared_splits_root.iterdir())
+                if path.is_dir()
             )
     if temporary:
         targets.extend(

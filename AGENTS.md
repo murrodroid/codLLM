@@ -37,7 +37,9 @@
   * To clear broad generated caches and outputs, use `uv run invoke maintenance.clear-cache --standard` for generated
     paths unused for 14+ days, or `uv run invoke maintenance.clear-cache --aggressive` for all maintenance-managed
     generated paths. Both modes dry-run unless `--yes` is passed. These policies still protect raw data, source code,
-    tracked experiment specs, and generic profile caches.
+    tracked experiment specs, and generic profile caches. Use `--locks` only when no jobs are building or reading
+    dataset caches; with `--aggressive --locks --yes`, prepared-split roots and their lock files are removed before the
+    next build regenerates them.
   * To check generated-output git hygiene before pushing, use `uv run invoke maintenance.git-hygiene`. To write a
     local git status/recent-commit snapshot, use `uv run invoke maintenance.git-snapshot`; snapshots are written under
     ignored `logs/git/`.

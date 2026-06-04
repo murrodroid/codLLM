@@ -1,6 +1,8 @@
+import errno
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import tasks as tasks_module
 from codllm.data import DataSplits
@@ -586,3 +588,50 @@ CODLLM_DATA_PROCESSED_DIR = "/explicit/processed"
     _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
 
     assert seen["processed_dir"] == "/explicit/processed"
+
+
+def test_build_run_dependencies_reports_quota_failures(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """hpc.build should translate dataset cache quota failures into maintenance guidance."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    run = spec.expanded_runs()[0]
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
+
+    class QuotaFailingHandler:
+        """Test double for a DataHandler that cannot create cache lock files."""
+
+        def __init__(self, cfg) -> None:
+            self.cfg = cfg
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            del force_reprocess
+            raise OSError(
+                errno.EDQUOT,
+                "Disk quota exceeded",
+                str(Path(self.cfg.data_processed_dir) / "data.splits/abc.lock"),
+            )
+
+    monkeypatch.setattr(tasks_module, "DataHandler", QuotaFailingHandler)
+
+    with pytest.raises(tasks_module.Exit) as exc_info:
+        _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
+
+    message = str(exc_info.value)
+    assert "disk quota exceeded" in message
+    assert "maintenance.clear-cache --aggressive --locks --lucas --yes" in message
