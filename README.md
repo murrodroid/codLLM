@@ -147,9 +147,10 @@ uv run invoke maintenance.clear-cache --aggressive --locks --lucas --yes
 `--standard` targets maintenance-managed generated paths unused for 14+ days by default. `--aggressive` targets all
 maintenance-managed generated paths regardless of age. Both modes dry-run unless `--yes` is passed. Broad cleanup may
 remove processed-data caches, prepared split caches, local run/checkpoint directories, generated LSF submissions, logs,
-Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It still protects
-raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots that are
-not clearly owned by codLLM.
+Python/tool caches, managed HPC runtime roots such as `$RUN_STORAGE_DIR/cache`, `$RUN_STORAGE_DIR/.venv`, and
+`$RUN_STORAGE_DIR/python`, and explicit runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It still
+protects raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots
+that are not clearly owned by codLLM.
 
 If `hpc.build` fails while creating a `data.splits/*.lock` file with `Disk quota exceeded`, check `maintenance.status`.
 When no cache-build or training jobs are active, use `--aggressive --locks --yes` so generated prepared-split roots and
@@ -162,6 +163,8 @@ When checking Lucas's storage from a shell that has not sourced the HPC env, pas
 On DTU HPC, `maintenance.status` prints shared filesystem capacity as `filesystem_*` values and, when the DTU quota
 scripts are available, prints a separate `quota:` line from `getquota_zhome.sh`, `getquota_work1.sh`, or
 `getquota_work3.sh`. Capacity errors are usually quota errors, so use the `quota:` line for the enforced user limit.
+The storage breakdown includes managed codLLM categories, total `$RUN_STORAGE_DIR`, uncategorized `$RUN_STORAGE_DIR`
+usage, and large siblings directly under `$STORAGE_FOLDER` that consume the same quota.
 
 ## Repository Layout
 
@@ -365,8 +368,9 @@ uv run invoke maintenance.git-snapshot
 cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
 `maintenance.status` shows shared filesystem capacity for the workspace, profile/home, and configured HPC storage roots,
 then breaks known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs,
-runtime caches, and Python/tool caches. With `hpc/env.sh` sourced, it reports the active managed HPC roots; `--lucas`
-is a shortcut for Lucas's `/work3/s234805/codllm` storage when the env is not already set. On DTU login nodes, quota
+runtime caches, Python/tool caches, total run storage, uncategorized run storage, and large siblings under the configured
+HPC storage folder. With `hpc/env.sh` sourced, it reports the active managed HPC roots; `--lucas` is a shortcut for
+Lucas's `/work3/s234805/codllm` storage when the env is not already set. On DTU login nodes, quota
 lines come from the DTU quota scripts; the `filesystem_*` totals are shared filesystem capacity and do not represent
 the per-user limit that kills jobs.
 

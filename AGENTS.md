@@ -27,8 +27,9 @@
     when no jobs are building or reading dataset caches.
   * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports shared filesystem capacity for
     the workspace, profile/home, and configured HPC storage roots, DTU quota lines when `getquota_zhome.sh`,
-    `getquota_work1.sh`, or `getquota_work3.sh` are available, plus known codLLM usage by code, raw data, processed
-    data, model outputs, generated jobs/logs, and runtime caches. Treat `filesystem_*` values as shared capacity only;
+    `getquota_work1.sh`, or `getquota_work3.sh` are available, plus storage usage by code, raw data, processed data,
+    model outputs, generated jobs/logs, runtime caches, managed HPC runtime roots, uncategorized run-storage usage, and
+    large siblings under the configured HPC storage folder. Treat `filesystem_*` values as shared capacity only;
     capacity failures on DTU HPC usually correspond to the separate `quota:` line.
   * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks should normally inspect the
     current environment after `hpc/env.sh` has been sourced on HPC. Use user shortcuts such as `--lucas` or
@@ -39,7 +40,8 @@
     generated paths. Both modes dry-run unless `--yes` is passed. These policies still protect raw data, source code,
     tracked experiment specs, and generic profile caches. Use `--locks` only when no jobs are building or reading
     dataset caches; with `--aggressive --locks --yes`, prepared-split roots and their lock files are removed before the
-    next build regenerates them.
+    next build regenerates them. Aggressive cleanup may also remove managed HPC runtime roots under `$RUN_STORAGE_DIR`,
+    including `cache/`, `.venv/`, and `python/`, because uv and the job bootstrap can regenerate them.
   * To check generated-output git hygiene before pushing, use `uv run invoke maintenance.git-hygiene`. To write a
     local git status/recent-commit snapshot, use `uv run invoke maintenance.git-snapshot`; snapshots are written under
     ignored `logs/git/`.
@@ -79,9 +81,10 @@ prepared split content.
 Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
 Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
 clearing. Broad cache cleanup may delete processed-data caches, prepared split caches, local run/checkpoint directories,
-generated LSF submissions, logs, Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and
-uv cache paths. It must not delete source code, checked-in TOML specs, raw datasets, arbitrary files under `models/`, or
-generic profile cache roots that are not clearly owned by codLLM.
+generated LSF submissions, logs, Python/tool caches, managed HPC runtime roots under `$RUN_STORAGE_DIR`, and explicit
+runtime caches such as Hugging Face, torch, W&B, and uv cache paths. It must not delete source code, checked-in TOML
+specs, raw datasets, arbitrary files under `models/`, or generic profile cache roots that are not clearly owned by
+codLLM.
 Maintenance tasks that inspect or clear generated storage should use the currently sourced HPC storage environment, or
 `--lucas`/`--user lucas` when inspecting Lucas's `/work3/s234805` storage from a shell where the env is not set. On DTU
 HPC, status output labels shared filesystem capacity as `filesystem_*` and reports user quota separately when the DTU

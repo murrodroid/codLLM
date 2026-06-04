@@ -26,6 +26,8 @@ MaintenanceCacheKind = Literal[
 
 ENV_CACHE_KEYS: tuple[str, ...] = (
     "UV_CACHE_DIR",
+    "UV_PROJECT_ENVIRONMENT",
+    "UV_PYTHON_INSTALL_DIR",
     "HF_HOME",
     "HF_HUB_CACHE",
     "TRANSFORMERS_CACHE",
@@ -34,6 +36,7 @@ ENV_CACHE_KEYS: tuple[str, ...] = (
     "WANDB_DIR",
     "WANDB_CACHE_DIR",
     "XDG_CACHE_HOME",
+    "PIP_CACHE_DIR",
 )
 
 
@@ -159,7 +162,7 @@ def _discover_generated_cache_entries(
             entries.append(_entry(path, kind, safe_roots, reason))
 
     if include_env_caches:
-        for path in _env_cache_paths(environ):
+        for path in _env_cache_paths(environ, locks=locks):
             if path.exists() or path.is_symlink():
                 entries.append(
                     _entry(path, "env_cache", safe_roots, "runtime dependency cache")
@@ -248,23 +251,47 @@ def _run_dirs(output_root: Path) -> tuple[Path, ...]:
     return tuple(sorted(run_dirs))
 
 
-def _env_cache_paths(environ: Mapping[str, str]) -> tuple[Path, ...]:
+def _env_cache_paths(environ: Mapping[str, str], *, locks: bool) -> tuple[Path, ...]:
     """Return explicit runtime cache roots from the current environment."""
     paths: list[Path] = []
-    active_virtual_env = environ.get("VIRTUAL_ENV")
     for key in ENV_CACHE_KEYS:
         value = environ.get(key)
         if value is None or value.strip() == "":
             continue
         path = Path(value).expanduser().resolve(strict=False)
-        if active_virtual_env and path == Path(active_virtual_env).resolve(
-            strict=False
+        if key in {"UV_PROJECT_ENVIRONMENT", "UV_PYTHON_INSTALL_DIR"} and not (
+            _looks_codllm_owned_cache(path, environ)
         ):
             continue
         if key == "XDG_CACHE_HOME" and not _looks_codllm_owned_cache(path, environ):
             continue
         paths.append(path)
+    paths.extend(_default_runtime_cache_paths(environ, locks=locks))
     return tuple(_dedupe_paths(paths))
+
+
+def _default_runtime_cache_paths(
+    environ: Mapping[str, str],
+    *,
+    locks: bool,
+) -> tuple[Path, ...]:
+    """Return managed runtime paths implied by RUN_STORAGE_DIR."""
+    run_storage_dir = environ.get("RUN_STORAGE_DIR")
+    if run_storage_dir is None or run_storage_dir.strip() == "":
+        return ()
+
+    root = Path(run_storage_dir).expanduser().resolve(strict=False)
+    paths = [
+        root / "cache",
+        root / ".venv",
+        root / "python",
+    ]
+    if locks:
+        lock_file = environ.get("UV_SYNC_LOCK_FILE")
+        paths.append(
+            Path(lock_file).expanduser() if lock_file else root / ".uv-sync.lock"
+        )
+    return tuple(paths)
 
 
 def _looks_codllm_owned_cache(path: Path, environ: Mapping[str, str]) -> bool:
@@ -368,8 +395,11 @@ def _path_size(path: Path) -> int:
         return path.lstat().st_size
     total = 0
     for child in path.rglob("*"):
-        if child.is_symlink() or child.is_file():
-            total += child.lstat().st_size
+        try:
+            if child.is_symlink() or child.is_file():
+                total += child.lstat().st_size
+        except OSError:
+            continue
     return total
 
 
@@ -384,9 +414,10 @@ def _last_activity_ns(path: Path) -> int:
     for child in path.rglob("*"):
         try:
             child_stats = child.lstat()
+            if child.is_symlink() or child.is_file() or child.is_dir():
+                newest = max(newest, child_stats.st_atime_ns, child_stats.st_mtime_ns)
         except OSError:
             continue
-        newest = max(newest, child_stats.st_atime_ns, child_stats.st_mtime_ns)
     return newest
 
 

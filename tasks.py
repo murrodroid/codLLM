@@ -301,7 +301,7 @@ def maintenance_status(
     lucas: bool = False,
     elias: bool = False,
 ) -> None:
-    """Show storage capacity and known codLLM storage usage by category."""
+    """Show storage capacity and managed or uncategorized storage usage."""
     del ctx
     runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
     with _temporary_environ(runtime_env):
@@ -747,7 +747,7 @@ def _print_git_hygiene_report(report: GitHygieneReport) -> None:
 
 
 def _print_maintenance_status(report: MaintenanceStatusReport) -> None:
-    """Print storage roots and known codLLM usage categories."""
+    """Print storage roots and storage usage categories."""
     print("Storage roots:")
     for root in report.roots:
         capacity_note = (
@@ -780,7 +780,7 @@ def _print_maintenance_status(report: MaintenanceStatusReport) -> None:
             f"limit={format_bytes(root.quota.limit_bytes)} "
             f"source={root.quota.source}"
         )
-    print("Known codLLM storage:")
+    print("Storage usage breakdown:")
     for category in report.categories:
         print(
             f"  {category.name}: {format_bytes(category.size_bytes)} "

@@ -191,6 +191,44 @@ def test_clear_cache_aggressive_deletes_generated_paths(tmp_path: Path) -> None:
     assert not run_dir.exists()
 
 
+def test_clear_cache_aggressive_deletes_hpc_runtime_roots(tmp_path: Path) -> None:
+    """Aggressive broad cleanup should delete regenerated HPC runtime roots."""
+    storage_dir = tmp_path / "work3/s234805"
+    run_storage = storage_dir / "codllm"
+    for path in (
+        run_storage / "cache/custom",
+        run_storage / ".venv/lib/python3.13/site-packages/pkg",
+        run_storage / "python/cpython",
+    ):
+        path.mkdir(parents=True)
+        (path / "payload.bin").write_bytes(b"cache")
+
+    cfg = Config(
+        data_processed_dir=str(run_storage / "data/processed"),
+        output_dir=str(run_storage / "runs"),
+        processed_filename="data.parquet",
+    )
+
+    actions = clear_generated_caches(
+        cfg,
+        repo_dir=tmp_path,
+        environ={
+            "STORAGE_FOLDER": str(storage_dir),
+            "RUN_STORAGE_DIR": str(run_storage),
+        },
+        mode="aggressive",
+        include_env_caches=True,
+        execute=True,
+    )
+
+    assert any(action.entry.path == run_storage / "cache" for action in actions)
+    assert any(action.entry.path == run_storage / ".venv" for action in actions)
+    assert any(action.entry.path == run_storage / "python" for action in actions)
+    assert not (run_storage / "cache").exists()
+    assert not (run_storage / ".venv").exists()
+    assert not (run_storage / "python").exists()
+
+
 def test_maintenance_status_reports_capacity_and_known_categories(
     tmp_path: Path,
 ) -> None:
@@ -223,6 +261,46 @@ def test_maintenance_status_reports_capacity_and_known_categories(
     assert categories["raw datasets"] == len("raw\n")
     assert categories["processed datasets and split caches"] == len(b"processed")
     assert categories["model weights and run outputs"] == len(b"weights")
+
+
+def test_maintenance_status_reports_uncategorized_hpc_storage(
+    tmp_path: Path,
+) -> None:
+    """Maintenance status should expose managed and uncategorized HPC storage."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    _git(repo_dir, "init")
+    storage_dir = tmp_path / "work3/s234805"
+    run_storage = storage_dir / "codllm"
+    cache_dir = run_storage / "cache/custom"
+    cache_dir.mkdir(parents=True)
+    unknown_path = run_storage / "unknown.bin"
+    sibling_dir = storage_dir / "other-project"
+    sibling_dir.mkdir(parents=True)
+    (cache_dir / "payload.bin").write_bytes(b"known-cache")
+    unknown_path.write_bytes(b"unknown")
+    (sibling_dir / "payload.bin").write_bytes(b"sibling")
+    cfg = Config(
+        data_raw_dir=str(repo_dir / "data/raw"),
+        data_processed_dir=str(run_storage / "data/processed"),
+        output_dir=str(run_storage / "runs"),
+        processed_filename="data.parquet",
+    )
+
+    report = build_maintenance_status(
+        cfg,
+        repo_dir=repo_dir,
+        environ={
+            "STORAGE_FOLDER": str(storage_dir),
+            "RUN_STORAGE_DIR": str(run_storage),
+        },
+    )
+    categories = {category.name: category.size_bytes for category in report.categories}
+
+    assert categories["runtime dependency caches"] == len(b"known-cache")
+    assert categories["HPC run storage total"] == len(b"known-cache") + len(b"unknown")
+    assert categories["uncategorized HPC run storage"] == len(b"unknown")
+    assert categories["HPC storage sibling: other-project"] == len(b"sibling")
 
 
 def test_quota_parser_handles_dtu_zhome_and_work3_outputs() -> None:

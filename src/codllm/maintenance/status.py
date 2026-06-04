@@ -44,7 +44,7 @@ class StorageRootReport:
 
 @dataclass(frozen=True)
 class StorageCategoryReport:
-    """Known codLLM storage usage for one category."""
+    """Storage usage for one managed or diagnostic category."""
 
     name: str
     size_bytes: int
@@ -114,6 +114,7 @@ def build_maintenance_status(
             paths=(repo_path,),
         ),
     ]
+    categories.extend(_hpc_storage_categories(environment, tuple(categories)))
 
     return MaintenanceStatusReport(
         roots=_storage_roots(repo_path, environment),
@@ -172,6 +173,95 @@ def _storage_roots(
             )
         )
     return tuple(reports)
+
+
+def _hpc_storage_categories(
+    environ: Mapping[str, str],
+    known_categories: tuple[StorageCategoryReport, ...],
+) -> list[StorageCategoryReport]:
+    """Return HPC storage totals and uncategorized storage usage."""
+    categories: list[StorageCategoryReport] = []
+    run_storage = _optional_path(environ.get("RUN_STORAGE_DIR"))
+    storage_folder = _optional_path(environ.get("STORAGE_FOLDER"))
+
+    if run_storage is not None and run_storage.exists():
+        run_storage_size = _path_size(run_storage)
+        known_run_storage_size = _covered_category_size(run_storage, known_categories)
+        categories.extend(
+            [
+                StorageCategoryReport(
+                    name="HPC run storage total",
+                    size_bytes=run_storage_size,
+                    paths=(run_storage,),
+                ),
+                StorageCategoryReport(
+                    name="uncategorized HPC run storage",
+                    size_bytes=max(run_storage_size - known_run_storage_size, 0),
+                    paths=(run_storage,),
+                ),
+            ]
+        )
+
+    if (
+        storage_folder is None
+        or not storage_folder.exists()
+        or not storage_folder.is_dir()
+    ):
+        return categories
+
+    sibling_reports: list[StorageCategoryReport] = []
+    for child in sorted(storage_folder.iterdir()):
+        child_path = child.resolve(strict=False)
+        if run_storage is not None and child_path == run_storage.resolve(strict=False):
+            continue
+        size_bytes = _path_size(child)
+        if size_bytes <= 0:
+            continue
+        sibling_reports.append(
+            StorageCategoryReport(
+                name=f"HPC storage sibling: {child.name}",
+                size_bytes=size_bytes,
+                paths=(child,),
+            )
+        )
+    sibling_reports.sort(key=lambda report: report.size_bytes, reverse=True)
+    return categories + sibling_reports[:10]
+
+
+def _optional_path(value: str | None) -> Path | None:
+    """Return a resolved path for a non-empty environment value."""
+    if value is None or value.strip() == "":
+        return None
+    return Path(value).expanduser().resolve(strict=False)
+
+
+def _covered_category_size(
+    root: Path,
+    categories: tuple[StorageCategoryReport, ...],
+) -> int:
+    """Return known category bytes covered by paths below one root."""
+    covered_size = 0
+    covered_dirs: list[Path] = []
+    root_path = root.resolve(strict=False)
+    category_paths = sorted(
+        (
+            path
+            for category in categories
+            for path in category.paths
+            if _is_relative_to(path.resolve(strict=False), root_path)
+        ),
+        key=lambda path: len(path.resolve(strict=False).parts),
+    )
+    for path in category_paths:
+        resolved_path = path.resolve(strict=False)
+        if any(
+            _is_relative_to(resolved_path, covered_dir) for covered_dir in covered_dirs
+        ):
+            continue
+        covered_size += _path_size(path)
+        if path.is_dir() and not path.is_symlink():
+            covered_dirs.append(resolved_path)
+    return covered_size
 
 
 def _existing_parent(path: Path) -> Path:
@@ -347,6 +437,18 @@ def _path_size(path: Path) -> int:
         return path.lstat().st_size
     total = 0
     for child in path.rglob("*"):
-        if child.is_symlink() or child.is_file():
-            total += child.lstat().st_size
+        try:
+            if child.is_symlink() or child.is_file():
+                total += child.lstat().st_size
+        except OSError:
+            continue
     return total
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    """Return True when path is equal to or below parent."""
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
