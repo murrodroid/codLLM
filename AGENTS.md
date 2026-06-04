@@ -28,9 +28,10 @@
   * To inspect broad storage usage, use `uv run invoke maintenance.status`. This reports shared filesystem capacity for
     the workspace, profile/home, and configured HPC storage roots, DTU quota lines when `getquota_zhome.sh`,
     `getquota_work1.sh`, or `getquota_work3.sh` are available, plus storage usage by code, raw data, processed data,
-    model outputs, generated jobs/logs, runtime caches, managed HPC runtime roots, uncategorized run-storage usage, and
-    large siblings under the configured HPC storage folder. Treat `filesystem_*` values as shared capacity only;
-    capacity failures on DTU HPC usually correspond to the separate `quota:` line.
+    model outputs, generated jobs/logs, runtime caches, managed HPC runtime roots, uncategorized run-storage usage, the
+    largest direct children of the run-storage root, large siblings under the configured HPC storage folder, and quota
+    gaps when DTU reports more quota usage than is visible below the configured storage folder. Treat `filesystem_*`
+    values as shared capacity only; capacity failures on DTU HPC usually correspond to the separate `quota:` line.
   * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks should normally inspect the
     current environment after `hpc/env.sh` has been sourced on HPC. Use user shortcuts such as `--lucas` or
     `--user lucas` only when the HPC storage environment is not already set; Lucas's shortcut resolves to

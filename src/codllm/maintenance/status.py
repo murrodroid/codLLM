@@ -68,6 +68,7 @@ def build_maintenance_status(
     """Build a categorized storage report for local or HPC environments."""
     environment = os.environ if environ is None else environ
     repo_path = Path(repo_dir).resolve(strict=False)
+    roots = _storage_roots(repo_path, environment)
     clear_actions = build_clear_cache_plan(
         cfg,
         repo_dir=repo_path,
@@ -114,10 +115,10 @@ def build_maintenance_status(
             paths=(repo_path,),
         ),
     ]
-    categories.extend(_hpc_storage_categories(environment, tuple(categories)))
+    categories.extend(_hpc_storage_categories(environment, tuple(categories), roots))
 
     return MaintenanceStatusReport(
-        roots=_storage_roots(repo_path, environment),
+        roots=roots,
         categories=tuple(categories),
     )
 
@@ -178,6 +179,7 @@ def _storage_roots(
 def _hpc_storage_categories(
     environ: Mapping[str, str],
     known_categories: tuple[StorageCategoryReport, ...],
+    roots: tuple[StorageRootReport, ...],
 ) -> list[StorageCategoryReport]:
     """Return HPC storage totals and uncategorized storage usage."""
     categories: list[StorageCategoryReport] = []
@@ -201,6 +203,9 @@ def _hpc_storage_categories(
                 ),
             ]
         )
+        categories.extend(
+            _child_storage_categories(run_storage, "HPC run storage child")
+        )
 
     if (
         storage_folder is None
@@ -208,6 +213,24 @@ def _hpc_storage_categories(
         or not storage_folder.is_dir()
     ):
         return categories
+
+    storage_folder_size = _path_size(storage_folder)
+    categories.append(
+        StorageCategoryReport(
+            name="HPC storage folder total",
+            size_bytes=storage_folder_size,
+            paths=(storage_folder,),
+        )
+    )
+    quota_gap = _quota_gap_for_path(storage_folder, storage_folder_size, roots)
+    if quota_gap > 0:
+        categories.append(
+            StorageCategoryReport(
+                name="quota not visible under configured HPC storage folder",
+                size_bytes=quota_gap,
+                paths=(storage_folder,),
+            )
+        )
 
     sibling_reports: list[StorageCategoryReport] = []
     for child in sorted(storage_folder.iterdir()):
@@ -226,6 +249,42 @@ def _hpc_storage_categories(
         )
     sibling_reports.sort(key=lambda report: report.size_bytes, reverse=True)
     return categories + sibling_reports[:10]
+
+
+def _child_storage_categories(root: Path, label: str) -> list[StorageCategoryReport]:
+    """Return largest direct children of one storage root."""
+    if not root.exists() or not root.is_dir():
+        return []
+    child_reports: list[StorageCategoryReport] = []
+    for child in sorted(root.iterdir()):
+        size_bytes = _path_size(child)
+        if size_bytes <= 0:
+            continue
+        child_reports.append(
+            StorageCategoryReport(
+                name=f"{label}: {child.name}",
+                size_bytes=size_bytes,
+                paths=(child,),
+            )
+        )
+    child_reports.sort(key=lambda report: report.size_bytes, reverse=True)
+    return child_reports[:10]
+
+
+def _quota_gap_for_path(
+    path: Path,
+    path_size_bytes: int,
+    roots: tuple[StorageRootReport, ...],
+) -> int:
+    """Return quota bytes not explained by du-visible files below a path."""
+    resolved_path = path.resolve(strict=False)
+    for root in roots:
+        if root.path != resolved_path or root.quota is None:
+            continue
+        if root.quota.used_bytes is None:
+            return 0
+        return max(root.quota.used_bytes - path_size_bytes, 0)
+    return 0
 
 
 def _optional_path(value: str | None) -> Path | None:

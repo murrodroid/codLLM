@@ -164,7 +164,9 @@ On DTU HPC, `maintenance.status` prints shared filesystem capacity as `filesyste
 scripts are available, prints a separate `quota:` line from `getquota_zhome.sh`, `getquota_work1.sh`, or
 `getquota_work3.sh`. Capacity errors are usually quota errors, so use the `quota:` line for the enforced user limit.
 The storage breakdown includes managed codLLM categories, total `$RUN_STORAGE_DIR`, uncategorized `$RUN_STORAGE_DIR`
-usage, and large siblings directly under `$STORAGE_FOLDER` that consume the same quota.
+usage, the largest direct children of `$RUN_STORAGE_DIR`, large siblings directly under `$STORAGE_FOLDER` that consume
+the same quota, and a quota-gap diagnostic when DTU reports more quota usage than is visible below the configured
+storage folder.
 
 ## Repository Layout
 

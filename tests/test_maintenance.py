@@ -300,7 +300,69 @@ def test_maintenance_status_reports_uncategorized_hpc_storage(
     assert categories["runtime dependency caches"] == len(b"known-cache")
     assert categories["HPC run storage total"] == len(b"known-cache") + len(b"unknown")
     assert categories["uncategorized HPC run storage"] == len(b"unknown")
+    assert categories["HPC run storage child: cache"] == len(b"known-cache")
+    assert categories["HPC run storage child: unknown.bin"] == len(b"unknown")
+    assert categories["HPC storage folder total"] == (
+        len(b"known-cache") + len(b"unknown") + len(b"sibling")
+    )
     assert categories["HPC storage sibling: other-project"] == len(b"sibling")
+
+
+def test_maintenance_status_reports_quota_gap_for_storage_folder(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Maintenance status should flag quota usage not visible below STORAGE_FOLDER."""
+    _git(tmp_path, "init")
+    original_run = status_module.subprocess.run
+    original_which = status_module.shutil.which
+    storage_dir = tmp_path / "work3/s234805"
+    run_storage = storage_dir / "codllm"
+    run_storage.mkdir(parents=True)
+    (run_storage / "visible.bin").write_bytes(b"visible")
+
+    def fake_which(command: str) -> str | None:
+        if command == "getquota_work3.sh":
+            return f"/usr/bin/{command}"
+        return original_which(command)
+
+    def fake_run(command, **kwargs):
+        if command == ["getquota_work3.sh"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="s234805 |54321 || 10.00 GiB| 300.00 GiB|| 119758 | 2000000\n",
+                stderr="",
+            )
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(status_module.shutil, "which", fake_which)
+    monkeypatch.setattr(status_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        status_module,
+        "_quota_command_for_path",
+        lambda path: ("getquota_work3.sh",)
+        if path.resolve(strict=False) == storage_dir.resolve(strict=False)
+        else None,
+    )
+
+    cfg = Config(
+        data_processed_dir=str(run_storage / "data/processed"),
+        output_dir=str(run_storage / "runs"),
+    )
+
+    report = build_maintenance_status(
+        cfg,
+        repo_dir=tmp_path,
+        environ={
+            "STORAGE_FOLDER": str(storage_dir),
+            "RUN_STORAGE_DIR": str(run_storage),
+        },
+    )
+    categories = {category.name: category.size_bytes for category in report.categories}
+
+    assert categories["quota not visible under configured HPC storage folder"] == (
+        10 * 1024**3 - len(b"visible")
+    )
 
 
 def test_quota_parser_handles_dtu_zhome_and_work3_outputs() -> None:
