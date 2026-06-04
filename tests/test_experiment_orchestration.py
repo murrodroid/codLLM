@@ -15,6 +15,7 @@ from tasks import (
     _build_run_dependencies,
     _maintenance_runtime_env,
     _profile_for_lsf_user,
+    _resolve_lsf_profile,
     _select_runs,
 )
 
@@ -417,6 +418,34 @@ email = "s234805@dtu.dk"
 
     assert inferred_env["STORAGE_FOLDER"] == "/work3/s234805"
     assert inferred_env["RUN_STORAGE_DIR"] == "/work3/s234805/codllm"
+
+
+def test_resolve_lsf_profile_applies_lucas_shortcut(tmp_path: Path) -> None:
+    """HPC build and submit should support the same user shortcut aliases."""
+    profiles_path = tmp_path / "profiles.toml"
+    profiles_path.write_text(
+        """
+[h100-10h]
+queue = "gpu"
+wall_time = "00:30"
+cores = 2
+memory = "2GB"
+storage_folder = "/work3/$USER"
+email = "old@example.com"
+""",
+        encoding="utf-8",
+    )
+
+    profile = _resolve_lsf_profile(
+        "h100-10h",
+        str(profiles_path),
+        user=None,
+        lucas=True,
+        elias=False,
+    )
+
+    assert profile.email == "s234805@dtu.dk"
+    assert profile.storage_folder == "/work3/s234805"
 
 
 def test_select_runs_zero_selects_all_sweep_runs(tmp_path: Path) -> None:

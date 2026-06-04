@@ -299,7 +299,8 @@ Prebuild reusable processed-data and prepared-split caches:
 ```bash
 uv run --no-sync invoke hpc.build \
   --config runs/single/base_small.toml \
-  --profile h100-10h
+  --profile h100-10h \
+  --user lucas
 ```
 
 For sweep specs, `hpc.build` builds every expanded run by default. Build one run with a one-based sweep index:
@@ -308,6 +309,7 @@ For sweep specs, `hpc.build` builds every expanded run by default. Build one run
 uv run --no-sync invoke hpc.build \
   --config runs/sweeps/multicod_pretrain.toml \
   --profile h100-10h \
+  --user lucas \
   --sweep-index 2
 ```
 
@@ -330,10 +332,11 @@ uv run --no-sync invoke hpc.submit \
   --user lucas
 ```
 
-`--user` currently supports `lucas` and `elias` for LSF notification email selection. Sweep specs render as LSF job
-arrays with one generated env file per array index. The generated job script sets storage/cache defaults, loads profile
-modules, runs `uv sync --frozen --no-dev` under a lock unless `SYNC_ENV=0`, and launches either training or inference
-from the generated run environment.
+`--user` currently supports `lucas` and `elias`; `--lucas` and `--elias` are shortcuts. For `hpc.build` and
+`hpc.submit`, these aliases set notification email and resolve storage placeholders such as `/work3/$USER` to the
+matching DTU account. Sweep specs render as LSF job arrays with one generated env file per array index. The generated
+job script sets storage/cache defaults, loads profile modules, runs `uv sync --frozen --no-dev` under a lock unless
+`SYNC_ENV=0`, and launches either training or inference from the generated run environment.
 
 HPC defaults:
 

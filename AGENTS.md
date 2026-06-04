@@ -44,10 +44,12 @@
   * To inspect HPC cache/storage environment hygiene through the maintenance package, use
     `uv run --no-sync invoke maintenance.hpc-env`.
   * To prebuild processed-data and prepared-split caches for an experiment spec on HPC, use
-    `uv run invoke hpc.build --config <path> --profile <profile>`. Use the same profile intended for `hpc.submit`.
-    By default this builds all expanded runs; pass `--sweep-index <n>` to build one run.
+    `uv run invoke hpc.build --config <path> --profile <profile> --user <lucas|elias>`. Use the same profile and user
+    alias intended for `hpc.submit`. By default this builds all expanded runs; pass `--sweep-index <n>` to build one
+    run.
   * To generate and submit an LSF job, use
     `uv run invoke hpc.submit --config <path> --profile <profile> --user <lucas|elias>`.
+    Both `hpc.build` and `hpc.submit` also accept shortcut flags such as `--lucas`.
   * To generate an LSF job without submitting it, add `--dry-run`.
 * The project uses `pre-commit` for managing pre-commit hooks. To run all hooks on all files, use
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.

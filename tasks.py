@@ -319,6 +319,9 @@ def hpc_build(
     config: str,
     profile: str = "h100-10h",
     profiles: str = str(DEFAULT_PROFILE_PATH),
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
     sweep_index: int = 0,
     force_reprocess: bool | None = None,
     dry_run: bool = False,
@@ -331,7 +334,7 @@ def hpc_build(
             f"Task 'hpc.build' only supports command='train' specs, got {spec.command!r}.",
             code=2,
         )
-    lsf_profile = load_lsf_profile(profile, profiles)
+    lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
 
     runs = _select_runs(spec, sweep_index)
     print(
@@ -356,15 +359,15 @@ def hpc_submit(
     config: str,
     profile: str = "h100-10h",
     user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
     profiles: str = str(DEFAULT_PROFILE_PATH),
     output_root: str = "jobs/generated",
     dry_run: bool = False,
 ) -> None:
     """Generate and optionally submit an LSF job for an experiment specification."""
     spec = load_experiment_spec(config)
-    lsf_profile = load_lsf_profile(profile, profiles)
-    if user is not None:
-        lsf_profile = _profile_for_lsf_user(lsf_profile, user)
+    lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
     submission = prepare_lsf_submission(
         spec,
         lsf_profile,
@@ -473,16 +476,27 @@ def _maintenance_runtime_env(
     if profile is None and selected_user is None:
         return os.environ.copy()
     profile_name = profile or "h100-10h"
-    lsf_profile = load_lsf_profile(profile_name, profiles)
-    if selected_user is not None:
-        lsf_profile = _profile_for_lsf_user(lsf_profile, selected_user)
-    else:
-        lsf_profile = _profile_with_inferred_lsf_user(lsf_profile)
+    lsf_profile = _resolve_lsf_profile(profile_name, profiles, user, lucas, elias)
     env = os.environ.copy()
     env.update(_hpc_runtime_env_defaults(lsf_profile))
     if env.get("VIRTUAL_ENV") and env["VIRTUAL_ENV"] != env["UV_PROJECT_ENVIRONMENT"]:
         env.pop("VIRTUAL_ENV", None)
     return env
+
+
+def _resolve_lsf_profile(
+    profile: str,
+    profiles: str,
+    user: str | None,
+    lucas: bool,
+    elias: bool,
+) -> LsfProfile:
+    """Load an LSF profile and resolve optional user storage aliases."""
+    selected_user = _resolve_lsf_user_alias(user, lucas, elias)
+    lsf_profile = load_lsf_profile(profile, profiles)
+    if selected_user is not None:
+        return _profile_for_lsf_user(lsf_profile, selected_user)
+    return _profile_with_inferred_lsf_user(lsf_profile)
 
 
 def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
@@ -592,7 +606,7 @@ def _resolve_lsf_user_alias(
     lucas: bool,
     elias: bool,
 ) -> str | None:
-    """Resolve --user and shortcut user flags for maintenance tasks."""
+    """Resolve --user and shortcut user flags for HPC-oriented tasks."""
     selected = [
         name for name, enabled in (("lucas", lucas), ("elias", elias)) if enabled
     ]
