@@ -353,7 +353,7 @@ def train(
             metric_key_prefix="holdout_test",
         )
     if (
-        cfg.uncertainty_eval_enabled
+        cfg.uncertainty_eval
         and cfg.model_task == "seq2seq"
         and dataset_row_count(splits.test) not in (None, 0)
     ):

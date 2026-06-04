@@ -137,7 +137,7 @@ class Config:
     multicod_synthetic_source_scope: MultiCodSyntheticSourceScope = "within_source"
     multicod_synthetic_text_separator: str = "; "
     inference_validate_registry: bool = False
-    uncertainty_eval_enabled: bool = True
+    uncertainty_eval: bool = True
 
     auto_resume: bool = False
     per_size_output_dir: bool = False

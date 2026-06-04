@@ -38,7 +38,7 @@ $env:CODLLM_SAVE_STRATEGY_BEST_METRIC = "sample_f1"
 # Exercise the new branches.
 $env:CODLLM_AUTO_RESUME = "1"
 $env:CODLLM_PER_SIZE_OUTPUT_DIR = "1"
-$env:CODLLM_UNCERTAINTY_EVAL_ENABLED = "1"
+$env:CODLLM_UNCERTAINTY_EVAL = "1"
 $env:CODLLM_EARLY_STOPPING_PATIENCE = "0"
 
 # Disable W&B for the smoke - we just want to confirm local artifacts.
