@@ -141,7 +141,7 @@ class Config:
         default_factory=default_multicod_synthetic_text_separators
     )
     inference_validate_registry: bool = False
-    uncertainty_eval_enabled: bool = True
+    uncertainty_eval: bool = True
 
     auto_resume: bool = False
     per_size_output_dir: bool = False

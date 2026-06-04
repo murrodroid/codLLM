@@ -329,9 +329,22 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if verbose is not None:
         cfg.verbose = verbose
 
-    uncertainty_eval_enabled = _parse_env_bool("CODLLM_UNCERTAINTY_EVAL_ENABLED")
-    if uncertainty_eval_enabled is not None:
-        cfg.uncertainty_eval_enabled = uncertainty_eval_enabled
+    # Prefer the canonical CODLLM_UNCERTAINTY_EVAL name; the old
+    # CODLLM_UNCERTAINTY_EVAL_ENABLED is still honored for one release with a
+    # deprecation warning so existing TOMLs do not silently break.
+    uncertainty_eval = _parse_env_bool("CODLLM_UNCERTAINTY_EVAL")
+    if uncertainty_eval is None:
+        legacy = _parse_env_bool("CODLLM_UNCERTAINTY_EVAL_ENABLED")
+        if legacy is not None:
+            warnings.warn(
+                "CODLLM_UNCERTAINTY_EVAL_ENABLED is deprecated; use "
+                "CODLLM_UNCERTAINTY_EVAL instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            uncertainty_eval = legacy
+    if uncertainty_eval is not None:
+        cfg.uncertainty_eval = uncertainty_eval
 
     auto_resume = _parse_env_bool("CODLLM_AUTO_RESUME")
     if auto_resume is not None:

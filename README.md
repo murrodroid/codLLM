@@ -532,6 +532,81 @@ separate from pretraining and has its own target-per-label and perturbation cont
 - `CODLLM_MASTERLIST_INJECT_PERTURBATIONS`
 - `CODLLM_MASTERLIST_INJECT_PERTURBATIONS_PER_SAMPLE`
 
+### Training Lifecycle and HPC Resilience
+
+These controls govern checkpoint cadence, early stopping, wall-time budgeting, auto-resume across LSF slots, and the
+optional end-of-training uncertainty pass. They are intended for long training runs that need to survive job restarts.
+
+#### Checkpoint and evaluation cadence
+
+- `CODLLM_EVAL_STRATEGY=epoch|steps` controls when validation runs.
+- `CODLLM_SAVE_STRATEGY=epoch|steps` controls when checkpoints are saved.
+- `CODLLM_EVAL_STEPS` and `CODLLM_SAVE_STEPS` set the step interval when using the `steps` strategy.
+- `CODLLM_SAVE_TOTAL_LIMIT` caps the number of retained checkpoints. With `LOAD_BEST_MODEL_AT_END=1` the trainer keeps
+  the best one plus the most recent up to this limit.
+- `CODLLM_LOGGING_STEPS` sets how often training-side `train/loss` lines are emitted.
+
+#### Best-model selection and early stopping
+
+- `CODLLM_LOAD_BEST_MODEL_AT_END=1` reloads the best checkpoint before final test evaluation.
+- `CODLLM_SAVE_STRATEGY_BEST_METRIC` chooses which validation metric ranks checkpoints. Common values: `macro_f1`,
+  `sample_f1`, `accuracy`.
+- `CODLLM_EARLY_STOPPING_PATIENCE` is the number of consecutive evaluations without improvement that triggers a stop.
+  `0` disables early stopping.
+- `CODLLM_EARLY_STOPPING_THRESHOLD` is the minimum improvement that resets the patience counter. `0.0` treats any
+  strict improvement as fresh progress (a "best yet" criterion).
+
+#### Wall-time budgeting
+
+LSF slots have a hard wall (typically 24h on `gpuh100`). The trainer can shut down gracefully before the wall via a
+runtime callback that periodically checks elapsed time.
+
+- `CODLLM_MAX_RUNTIME_SECONDS` is the upper bound on this slot's training time. Once reached the callback signals the
+  trainer to stop after the current step, runs `load_best_model_at_end` + final test evaluation, and writes a
+  `.resume_needed` marker so the next slot resumes cleanly. `0` disables the budget.
+- `CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS` is the headroom kept BEFORE `MAX_RUNTIME_SECONDS` to ensure the final
+  evaluation and checkpoint save complete before SIGKILL. Default 300s. Raise this for large models where the end-of-
+  training evaluation pass is slow (XL with `max_label_count=3` and a 76k test split can need 30-60 min).
+
+#### Auto-resume across slots
+
+- `CODLLM_AUTO_RESUME=1` makes the trainer pick up from the latest checkpoint in the output directory on startup. Used
+  with the LSF resubmit flow so each new slot continues the same logical training run.
+- `CODLLM_PER_SIZE_OUTPUT_DIR=1` puts each model-size run under its own subdirectory so size-sweep slots do not
+  collide. Combined with auto-resume, this lets multiple sizes resubmit independently.
+- The W&B sidecar `wandb_run_id.txt` is written next to the checkpoints and reread on resume so all slots write into
+  the same W&B run.
+
+#### End-of-training uncertainty pass
+
+After the final test evaluation, the trainer can run a per-record uncertainty pass on the test split (temperature
+fit on validation logits, then per-record signals: sum/mean/min logprob, mean and first-token entropy, risk-coverage
+curves). The artifacts (`temperature.json`, `predictions.jsonl`, `test_rows.parquet`, `rc_curves.json`) are logged
+to W&B as an `end_of_training_eval` artifact.
+
+- `CODLLM_UNCERTAINTY_EVAL=true|false` toggles the pass. Default is `true`.
+- The pass is wrapped in a Python `try/except`, but a native-code SIGFPE that has been observed on large models will
+  still terminate the process (the catch never fires). If you do not need the uncertainty artifacts on a given run,
+  set `CODLLM_UNCERTAINTY_EVAL=false`. The test metrics from the final evaluation are written BEFORE this pass, so
+  disabling it does not affect `test/macro_f1`, the saved best checkpoint, or any other training output.
+- `CODLLM_UNCERTAINTY_EVAL_ENABLED` is the legacy name for the same flag and still works, but logs a deprecation
+  warning. Migrate any existing TOMLs to the new name.
+
+### Weights and Biases
+
+Logging is automatic when W&B credentials are present. All knobs are overridable from env or TOML:
+
+- `CODLLM_WANDB_ENABLED=0` disables W&B entirely for this run.
+- `CODLLM_WANDB_MODE=online|offline|disabled` controls the wandb client mode. `offline` writes data to disk only and
+  requires a later `wandb sync` to upload.
+- `CODLLM_WANDB_PROJECT` and `CODLLM_WANDB_ENTITY` select the destination.
+- `CODLLM_WANDB_RUN_NAME` overrides the auto-generated run name.
+- `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full` controls how much of the resolved `Config` is shown on the
+  W&B run page (with the full version always available as a logged artifact).
+- `CODLLM_WANDB_METRIC_MODE=core|standard|all` filters which metric scopes are logged: `core` keeps the headline
+  numbers and skips per-chapter / per-block / per-source breakdowns, `all` logs everything.
+- `CODLLM_WANDB_LOG_MODEL=end|never|all` controls whether model checkpoints are uploaded as artifacts.
+
 ## Outputs and Metrics
 
 Each training run writes checkpoints under a run-scoped output directory. Locally this becomes `runs/run-0001`,
