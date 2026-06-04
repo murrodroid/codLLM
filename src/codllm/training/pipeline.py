@@ -350,7 +350,7 @@ def train(
             tokenizer=tokenizer,
             test_ds=splits.holdout,
             label2id=classifier_label2id,
-            metric_key_prefix="holdout_test",
+            metric_key_prefix="holdout",
         )
     if (
         cfg.uncertainty_eval_enabled

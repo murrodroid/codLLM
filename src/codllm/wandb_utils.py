@@ -813,13 +813,14 @@ def log_wandb_run_metadata(
     wandb.define_metric("eval/*", step_metric="epoch")
     wandb.define_metric("val/*", step_metric="epoch")
     wandb.define_metric("test/*", step_metric="epoch")
+    wandb.define_metric("holdout/*", step_metric="epoch")
     wandb.define_metric("holdout/val/*", step_metric="epoch")
     wandb.define_metric("holdout/test/*", step_metric="epoch")
     wandb.define_metric("pretraining/*", step_metric="epoch")
     wandb.define_metric("pretraining/val/*", step_metric="epoch")
     wandb.define_metric("pretraining/test/*", step_metric="epoch")
     # Pin key metrics to summary for easy comparison across runs
-    for prefix in ("val", "test", "holdout/val", "holdout/test"):
+    for prefix in ("val", "test", "holdout", "holdout/val", "holdout/test"):
         for metric_name in [
             "accuracy",
             "exact_match",

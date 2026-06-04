@@ -255,6 +255,7 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "loss": 1.2,
         "eval_loss": 0.9,
         "test_f1": 0.8,
+        "holdout_accuracy": 0.65,
         "holdout_val_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
         "epoch": 3.0,
@@ -266,6 +267,7 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
     assert rewritten["train/loss"] == 1.2
     assert rewritten["val/loss"] == 0.9
     assert rewritten["test/f1"] == 0.8
+    assert rewritten["holdout/accuracy"] == 0.65
     assert rewritten["holdout/val/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
     assert rewritten["epoch"] == 3.0
@@ -300,6 +302,7 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
         "loss": 1.2,
         "eval_accuracy": 0.8,
         "test_f1": 0.7,
+        "holdout_exact_match": 0.55,
         "holdout_val_exact_match": 0.6,
         "holdout_test_exact_match": 0.5,
     }
@@ -308,6 +311,7 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
     assert scoped["train/loss"] == 1.2
     assert scoped["val/accuracy"] == 0.8
     assert scoped["test/f1"] == 0.7
+    assert scoped["holdout/exact_match"] == 0.55
     assert scoped["holdout/val/exact_match"] == 0.6
     assert scoped["holdout/test/exact_match"] == 0.5
 
@@ -320,6 +324,10 @@ def test_metric_artifact_scope_uses_stage_scoped_namespace() -> None:
     assert (
         trainer_logging_module._scope_for_metric_key_prefix("holdout_val", "finetune")
         == "holdout/val"
+    )
+    assert (
+        trainer_logging_module._scope_for_metric_key_prefix("holdout", "finetune")
+        == "holdout"
     )
     assert (
         trainer_logging_module._scope_for_metric_key_prefix("holdout_test", "finetune")
@@ -1288,7 +1296,7 @@ def test_train_runs_holdout_evaluation_when_available(
         {
             "test_ds": holdout_df,
             "label2id": None,
-            "metric_key_prefix": "holdout_test",
+            "metric_key_prefix": "holdout",
         },
     ]
 
@@ -1823,7 +1831,7 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
             mode="offline",
         )
     )
-    metadata = {"dataset": {"split_rows": {"train": 3}}}
+    metadata = {"dataset": {"split_rows": {"train": 3, "val": 1, "holdout": 5}}}
     wandb_utils_module.log_wandb_run_metadata(
         cfg=cfg,
         report_to=["wandb"],
@@ -1836,8 +1844,13 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
     assert fake_wandb.init_calls[0]["entity"] == "cfg-entity"
     assert fake_wandb.init_calls[0]["name"] == "explicit-run"
     assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.train"] == 3
+    assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.val"] == 1
+    assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.holdout"] == 5
     assert "dataset" not in fake_wandb.config.updates[0]["payload"]
     assert fake_wandb.config.updates[0]["allow_val_change"] is True
+    defined_metric_names = {metric["name"] for metric in fake_wandb.defined_metrics}
+    assert "val/*" in defined_metric_names
+    assert "holdout/*" in defined_metric_names
 
 
 def test_log_wandb_run_metadata_full_mode_writes_flattened_keys(

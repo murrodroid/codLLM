@@ -97,7 +97,9 @@ Use `[sweep]` for Cartesian environment-variable dimensions. Use `[[variants]]` 
 model/profile pairs; each variant may set `base = "../profiles/..."` and optional `[variants.env]`, and variants cross
 with `[sweep]` without crossing with one another.
 Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
-`<scope>/errors/*`, where scopes include `val`, `test`, `holdout/val`, `holdout/test`, and pretraining scopes.
+`<scope>/errors/*`, where scopes include `val`, `test`, top-level final `holdout`, sampled `holdout/val`, and
+pretraining scopes. Keep final leave-one-source-out metrics under `holdout/*` so W&B runs visibly contain both `val/*`
+and `holdout/*`.
 Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.
 Prepared split cache metadata includes training balance diagnostics used by these visualizations; keep those diagnostics
 cache-safe and summary-only rather than adding visualization-only columns to training dataframes.

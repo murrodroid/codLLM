@@ -504,7 +504,7 @@ metadata fields, so structural metadata stays intact across synthetic copies.
 
 Set `CODLLM_HOLD_OUT_DATASET` to a processed `source_id` for leave-one-source-out evaluation. Matching rows are removed
 before dataset sampling and train/validation/test splitting. After training, the full held-out source is evaluated with
-`holdout_test` metrics.
+top-level `holdout/*` W&B metrics, while regular validation remains under `val/*`.
 
 During-training hold-out evaluation is optional:
 
@@ -547,7 +547,7 @@ When W&B credentials are available, training logs:
 - validation, test, hold-out, and pretraining metrics under scoped namespaces, filtered by
   `CODLLM_WANDB_METRIC_MODE=core|standard|all`
 - full evaluation metrics and row-level predictions as artifacts, plus compact error tables under scopes such as
-  `val/errors/*`, `test/errors/*`, and `holdout/test/errors/*`
+  `val/errors/*`, `test/errors/*`, `holdout/errors/*`, and sampled `holdout/val/errors/*`
 
 Multi-COD runs emit exact-match, micro, sample, Jaccard, Hamming, and label-count diagnostics. Single-label runs emit
 accuracy and macro precision/recall/F1.
