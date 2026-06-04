@@ -77,6 +77,7 @@ def _perturb_cod_segment(
     perturbations_per_sample: int | None = None,
     perturbation_mean: float | None = None,
     perturbation_variance: float = 0.0,
+    perturbation_loft: float | None = None,
 ) -> str:
     """Perturb only the configured COD segment inside a training text."""
     if not perturbation_fns:
@@ -93,6 +94,7 @@ def _perturb_cod_segment(
                 if perturbation_mean is None
                 else perturbation_mean,
                 perturbation_variance=perturbation_variance,
+                perturbation_loft=perturbation_loft,
                 rng=rng,
             )
         if perturbation_count < 1:
@@ -123,6 +125,7 @@ def _perturb_cod_segment(
             text=cod_value,
             perturbation_mean=0.0 if perturbation_mean is None else perturbation_mean,
             perturbation_variance=perturbation_variance,
+            perturbation_loft=perturbation_loft,
             rng=rng,
         )
     if perturbation_count < 1:
@@ -147,12 +150,15 @@ def _sample_perturbation_count(
     perturbation_mean: float,
     perturbation_variance: float,
     rng: random.Random,
+    perturbation_loft: float | None = None,
 ) -> int:
     """Sample a length-scaled perturbation count for one text segment."""
     if perturbation_mean < 0:
         raise ValueError("perturbation_mean must be non-negative.")
     if perturbation_variance < 0:
         raise ValueError("perturbation_variance must be non-negative.")
+    if perturbation_loft is not None and perturbation_loft < 0:
+        raise ValueError("perturbation_loft must be non-negative.")
     if perturbation_mean == 0 and perturbation_variance == 0:
         return 0
 
@@ -163,6 +169,11 @@ def _sample_perturbation_count(
     else:
         standard_deviation = math.sqrt(perturbation_variance * text_length)
         sampled_count = int(round(rng.gauss(expected_count, standard_deviation)))
+        if perturbation_loft is not None:
+            loft_count = int(
+                math.ceil(expected_count + perturbation_loft * standard_deviation)
+            )
+            sampled_count = min(sampled_count, loft_count)
     sampled_count = max(1, sampled_count)
     return min(sampled_count, text_length)
 
@@ -251,6 +262,7 @@ def upsample(
     perturbation_fns: Sequence[Any] | None = None,
     perturbation_mean: float = 0.05,
     perturbation_variance: float = 0.0,
+    perturbation_loft: float | None = None,
     text_field_separator: str = " | ",
 ) -> pd.DataFrame:
     """Upsample classes to target counts, perturbing synthetic rows proportionally."""
@@ -286,6 +298,7 @@ def upsample(
                             perturbation_fns=perturbation_fns,
                             perturbation_mean=perturbation_mean,
                             perturbation_variance=perturbation_variance,
+                            perturbation_loft=perturbation_loft,
                             rng=rng,
                         )
                     else:
@@ -293,6 +306,7 @@ def upsample(
                             text=text,
                             perturbation_mean=perturbation_mean,
                             perturbation_variance=perturbation_variance,
+                            perturbation_loft=perturbation_loft,
                             rng=rng,
                         )
                         for _ in range(perturbation_count):
@@ -322,6 +336,7 @@ def manipulate_classes(
     perturbation_names: Sequence[str] | None = None,
     perturbation_mean: float = 0.05,
     perturbation_variance: float = 0.0,
+    perturbation_loft: float | None = None,
     sample_fraction: float = 1.0,
     seed: int = 42,
 ) -> pd.DataFrame:
@@ -355,6 +370,7 @@ def manipulate_classes(
             perturbation_fns=perturbation_fns,
             perturbation_mean=perturbation_mean,
             perturbation_variance=perturbation_variance,
+            perturbation_loft=perturbation_loft,
             rng=rng,
         )
         for text in manipulated_df.loc[indices_to_perturb, text_column].tolist()

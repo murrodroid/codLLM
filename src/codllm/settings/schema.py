@@ -187,12 +187,14 @@ class Config:
     )
     balance_perturbation_mean: float = 0.05
     balance_perturbation_variance: float = 0.0
+    balance_perturbation_loft: float = 3.0
     balance_floor: int = 0
     balance_floor_decay: float = 0.0
     balance_floor_singlecod_only: bool = False
     base_perturbations: list[str] = field(default_factory=default_base_perturbations)
     base_perturbation_mean: float = 0.05
     base_perturbation_variance: float = 0.0
+    base_perturbation_loft: float = 3.0
     base_perturbation_rate: float = 0.05
 
     wandb: WandbConfig = field(default_factory=WandbConfig)

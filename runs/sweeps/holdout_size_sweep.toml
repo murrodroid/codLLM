@@ -1,13 +1,12 @@
-base = "../base/h100-small.toml"
-name = "codllm_size_sweep"
+name = "holdout_size_sweep"
 description = "simple run to check baseline model performance"
 force_reprocess = false
 
 [env]
 CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
-CODLLM_NUM_TRAIN_EPOCHS = 16
-CODLLM_SAVE_STRATEGY = "best"
+CODLLM_NUM_TRAIN_EPOCHS = 8
+CODLLM_SAVE_STRATEGY = "no"
 
 CODLLM_TRAINING_INPUT = "cod"
 
@@ -24,7 +23,7 @@ CODLLM_BASE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_rando
 CODLLM_BASE_PERTURBATION_RATE = 1.0
 CODLLM_BASE_PERTURBATION_MEAN = 0.08
 CODLLM_BASE_PERTURBATION_VARIANCE = 0.06
-
+CODLLM_BASE_PERTURBATION_LOFT = 5
 CODLLM_PRETRAIN_ENABLED = true
 CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
 CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
@@ -44,11 +43,6 @@ CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS = '[", ", " & ", " ", "; ", "
 CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.15
 
 [sweep]
-CODLLM_HF_MODEL = [
-  "google/flan-t5-small",
-  "google/flan-t5-base",
-  "google/flan-t5-large",
-]
 CODLLM_HOLD_OUT_DATASET = [
   "belgium_1920_1930",
   "amsterdam_1854_1926",
@@ -56,3 +50,15 @@ CODLLM_HOLD_OUT_DATASET = [
   "ipswich_1871_1911",
   "madrid_1905_1927",
 ]
+
+[[variants]]
+name = "small"
+base = "../profiles/h100-small.toml"
+
+[[variants]]
+name = "base"
+base = "../profiles/h100-base.toml"
+
+[[variants]]
+name = "large"
+base = "../profiles/h100-large.toml"

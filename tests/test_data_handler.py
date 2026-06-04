@@ -23,6 +23,7 @@ from codllm.data.handler import (
     manipulate_classes,
     upsample,
 )
+from codllm.data.balancing import _sample_perturbation_count
 
 
 def _make_mapping(**overrides) -> DatasetMapping:
@@ -1195,6 +1196,26 @@ class TestDataHandler:
         long_delta = len(source.iloc[1]["text"]) - len(manipulated.iloc[1]["text"])
         assert short_delta == 1
         assert long_delta == 5
+
+    def test_perturbation_loft_caps_stochastic_count(self) -> None:
+        """Perturbation loft should clip extreme normal-sample tails."""
+
+        class ExtremeRng:
+            """RNG test double that always returns a large Gaussian sample."""
+
+            def gauss(self, mu: float, sigma: float) -> float:
+                del mu, sigma
+                return 10_000.0
+
+        count = _sample_perturbation_count(
+            text="a" * 100,
+            perturbation_mean=0.1,
+            perturbation_variance=0.25,
+            perturbation_loft=1.0,
+            rng=ExtremeRng(),
+        )
+
+        assert count == 15
 
     def test_manipulate_classes_is_deterministic_for_seed(self) -> None:
         """Manipulation should remain reproducible with the configured data seed."""

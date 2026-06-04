@@ -10,6 +10,7 @@ from codllm.experiments.lsf import (
 from codllm.experiments.specs import (
     ExperimentRun,
     ExperimentSpec,
+    ExperimentVariant,
     SpecError,
     format_env_file,
     list_experiment_specs,
@@ -20,6 +21,7 @@ from codllm.experiments.specs import (
 __all__ = [
     "ExperimentRun",
     "ExperimentSpec",
+    "ExperimentVariant",
     "GeneratedSubmission",
     "LsfProfile",
     "SpecError",

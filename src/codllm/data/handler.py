@@ -247,14 +247,14 @@ class DataHandler:
                 "balance_perturbations": list(self.cfg.balance_perturbations),
                 "balance_perturbation_mean": self.cfg.balance_perturbation_mean,
                 "balance_perturbation_variance": self.cfg.balance_perturbation_variance,
+                "balance_perturbation_loft": self.cfg.balance_perturbation_loft,
                 "balance_floor": self.cfg.balance_floor,
                 "balance_floor_decay": self.cfg.balance_floor_decay,
-                "balance_floor_singlecod_only": (
-                    self.cfg.balance_floor_singlecod_only
-                ),
+                "balance_floor_singlecod_only": (self.cfg.balance_floor_singlecod_only),
                 "base_perturbations": list(self.cfg.base_perturbations),
                 "base_perturbation_mean": self.cfg.base_perturbation_mean,
                 "base_perturbation_variance": self.cfg.base_perturbation_variance,
+                "base_perturbation_loft": self.cfg.base_perturbation_loft,
                 "base_perturbation_rate": self.cfg.base_perturbation_rate,
                 "masterlist_inject_enabled": self.cfg.masterlist_inject_enabled,
                 "masterlist_inject_target_per_label": (
@@ -895,6 +895,7 @@ class DataHandler:
                 perturbation_fns=perturbation_fns,
                 perturbation_mean=self.cfg.balance_perturbation_mean,
                 perturbation_variance=self.cfg.balance_perturbation_variance,
+                perturbation_loft=self.cfg.balance_perturbation_loft,
                 text_field_separator=self.cfg.text_field_separator,
             )
 
@@ -915,6 +916,7 @@ class DataHandler:
                 perturbation_names=self.cfg.base_perturbations,
                 perturbation_mean=self.cfg.base_perturbation_mean,
                 perturbation_variance=self.cfg.base_perturbation_variance,
+                perturbation_loft=self.cfg.base_perturbation_loft,
                 sample_fraction=self.cfg.base_perturbation_rate,
                 seed=self.cfg.resolved_data_seed() + 1,
             )

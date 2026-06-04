@@ -16,7 +16,11 @@ Logbog og links.pdf
 experiments/notebooks/data/
 
 # Local training output
-runs/
+runs/run-*/
+runs/*/run-*/
+runs/inference/
+!runs/
+!runs/**/*.toml
 runs_smoke/
 
 # Downloaded model checkpoints (large binaries — fetch from W&B instead)

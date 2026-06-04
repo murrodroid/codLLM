@@ -346,7 +346,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         cfg.load_best_model_at_end = load_best_model_at_end
 
     early_stopping_patience_raw = os.getenv("CODLLM_EARLY_STOPPING_PATIENCE")
-    if early_stopping_patience_raw is not None and early_stopping_patience_raw.strip() != "":
+    if (
+        early_stopping_patience_raw is not None
+        and early_stopping_patience_raw.strip() != ""
+    ):
         try:
             cfg.early_stopping_patience = int(early_stopping_patience_raw)
         except ValueError as exc:
@@ -354,12 +357,13 @@ def config_from_env(base: Optional[Config] = None) -> Config:
                 "CODLLM_EARLY_STOPPING_PATIENCE must be a non-negative integer."
             ) from exc
         if cfg.early_stopping_patience < 0:
-            raise ValueError(
-                "CODLLM_EARLY_STOPPING_PATIENCE must be non-negative."
-            )
+            raise ValueError("CODLLM_EARLY_STOPPING_PATIENCE must be non-negative.")
 
     early_stopping_threshold_raw = os.getenv("CODLLM_EARLY_STOPPING_THRESHOLD")
-    if early_stopping_threshold_raw is not None and early_stopping_threshold_raw.strip() != "":
+    if (
+        early_stopping_threshold_raw is not None
+        and early_stopping_threshold_raw.strip() != ""
+    ):
         try:
             cfg.early_stopping_threshold = float(early_stopping_threshold_raw)
         except ValueError as exc:
@@ -376,12 +380,13 @@ def config_from_env(base: Optional[Config] = None) -> Config:
                 "CODLLM_MAX_RUNTIME_SECONDS must be a non-negative integer."
             ) from exc
         if cfg.max_runtime_seconds < 0:
-            raise ValueError(
-                "CODLLM_MAX_RUNTIME_SECONDS must be non-negative."
-            )
+            raise ValueError("CODLLM_MAX_RUNTIME_SECONDS must be non-negative.")
 
     runtime_safety_margin_raw = os.getenv("CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS")
-    if runtime_safety_margin_raw is not None and runtime_safety_margin_raw.strip() != "":
+    if (
+        runtime_safety_margin_raw is not None
+        and runtime_safety_margin_raw.strip() != ""
+    ):
         try:
             cfg.runtime_safety_margin_seconds = int(runtime_safety_margin_raw)
         except ValueError as exc:
@@ -822,6 +827,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             )
         cfg.balance_perturbation_variance = balance_perturbation_variance
 
+    balance_perturbation_loft = _parse_env_float("CODLLM_BALANCE_PERTURBATION_LOFT")
+    if balance_perturbation_loft is not None:
+        if balance_perturbation_loft < 0:
+            raise ValueError("CODLLM_BALANCE_PERTURBATION_LOFT must be non-negative.")
+        cfg.balance_perturbation_loft = balance_perturbation_loft
+
     base_perturbations = os.getenv("CODLLM_BASE_PERTURBATIONS")
     if base_perturbations is not None and base_perturbations.strip() != "":
         cfg.base_perturbations = [
@@ -839,6 +850,12 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if base_perturbation_variance < 0:
             raise ValueError("CODLLM_BASE_PERTURBATION_VARIANCE must be non-negative.")
         cfg.base_perturbation_variance = base_perturbation_variance
+
+    base_perturbation_loft = _parse_env_float("CODLLM_BASE_PERTURBATION_LOFT")
+    if base_perturbation_loft is not None:
+        if base_perturbation_loft < 0:
+            raise ValueError("CODLLM_BASE_PERTURBATION_LOFT must be non-negative.")
+        cfg.base_perturbation_loft = base_perturbation_loft
 
     balance_floor = _parse_env_int("CODLLM_BALANCE_FLOOR")
     if balance_floor is not None:
@@ -863,9 +880,7 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         try:
             cfg.save_total_limit = int(save_total_limit_raw)
         except ValueError as exc:
-            raise ValueError(
-                "CODLLM_SAVE_TOTAL_LIMIT must be an integer."
-            ) from exc
+            raise ValueError("CODLLM_SAVE_TOTAL_LIMIT must be an integer.") from exc
         if cfg.save_total_limit is not None and cfg.save_total_limit < 1:
             raise ValueError("CODLLM_SAVE_TOTAL_LIMIT must be at least 1.")
 
@@ -907,6 +922,8 @@ def config_from_env(base: Optional[Config] = None) -> Config:
             and balance_perturbation_variance is not None
         ):
             cfg.base_perturbation_variance = cfg.balance_perturbation_variance
+        if base_perturbation_loft is None and balance_perturbation_loft is not None:
+            cfg.base_perturbation_loft = cfg.balance_perturbation_loft
     if base_perturbation_rate is not None:
         if base_perturbation_rate < 0 or base_perturbation_rate > 1:
             raise ValueError("CODLLM_BASE_PERTURBATION_RATE must be between 0 and 1.")

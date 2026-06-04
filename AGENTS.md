@@ -30,10 +30,10 @@
     `getquota_work1.sh`, or `getquota_work3.sh` are available, plus known codLLM usage by code, raw data, processed
     data, model outputs, generated jobs/logs, and runtime caches. Treat `filesystem_*` values as shared capacity only;
     capacity failures on DTU HPC usually correspond to the separate `quota:` line.
-  * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks accept HPC context via
-    `--profile <profile>` and user shortcuts such as `--lucas` or `--user lucas`. User shortcuts default to the
-    `h100-10h` profile; profiles with known notification emails auto-resolve `$USER` storage placeholders, so Lucas's
-    H100 profiles resolve to `/work3/s234805` and `/work3/s234805/codllm`.
+  * Maintenance data-cache, clear-data-cache, clear-cache, status, and hpc-env tasks should normally inspect the
+    current environment after `hpc/env.sh` has been sourced on HPC. Use user shortcuts such as `--lucas` or
+    `--user lucas` only when the HPC storage environment is not already set; Lucas's shortcut resolves to
+    `/work3/s234805` and `/work3/s234805/codllm`.
   * To clear broad generated caches and outputs, use `uv run invoke maintenance.clear-cache --standard` for generated
     paths unused for 14+ days, or `uv run invoke maintenance.clear-cache --aggressive` for all maintenance-managed
     generated paths. Both modes dry-run unless `--yes` is passed. These policies still protect raw data, source code,
@@ -66,7 +66,8 @@ Experiment orchestration is handled separately from model code. Human-editable e
 `runs/**/*.toml`, LSF resource profiles live in `hpc/lsf_profiles.toml`, and `tasks.py` exposes the
 supported workflow through `uv run invoke ...`. Generated LSF scripts and per-run env files are written under
 `jobs/generated/` and logs under `logs/` are intentionally ignored by git. Prefer adding or editing TOML specs and LSF
-profiles over adding new handwritten shell scripts in `jobs/`.
+profiles over adding new handwritten shell scripts in `jobs/`. Do not ignore the whole `runs/` tree; only generated
+run output directories such as `runs/run-*/` and `runs/*/run-*/` should be ignored so new TOML specs remain addable.
 Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
@@ -77,14 +78,16 @@ clearing. Broad cache cleanup may delete processed-data caches, prepared split c
 generated LSF submissions, logs, Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B, and
 uv cache paths. It must not delete source code, checked-in TOML specs, raw datasets, arbitrary files under `models/`, or
 generic profile cache roots that are not clearly owned by codLLM.
-Maintenance tasks that inspect or clear generated storage should use `--profile <profile>` or `--lucas`/`--user lucas`
-when targeting HPC paths. Known profile emails are used to replace `$USER`/`${USER}` in LSF storage fields, which avoids
-using a local login name when inspecting Lucas's `/work3/s234805` storage from outside the cluster. On DTU HPC, status
-output labels shared filesystem capacity as `filesystem_*` and reports user quota separately when the DTU quota scripts
-are installed; do not interpret shared filesystem totals as available user quota.
+Maintenance tasks that inspect or clear generated storage should use the currently sourced HPC storage environment, or
+`--lucas`/`--user lucas` when inspecting Lucas's `/work3/s234805` storage from a shell where the env is not set. On DTU
+HPC, status output labels shared filesystem capacity as `filesystem_*` and reports user quota separately when the DTU
+quota scripts are installed; do not interpret shared filesystem totals as available user quota.
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.
+Use `[sweep]` for Cartesian environment-variable dimensions. Use `[[variants]]` for lockstep dimensions such as
+model/profile pairs; each variant may set `base = "../profiles/..."` and optional `[variants.env]`, and variants cross
+with `[sweep]` without crossing with one another.
 Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
 `<scope>/errors/*`, where scopes include `val`, `test`, `holdout/val`, `holdout/test`, and pretraining scopes.
 Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.
@@ -130,12 +133,15 @@ unexpected dependency downloads.
   * The default training input is COD text only. Set `Config.training_input` or `CODLLM_TRAINING_INPUT` explicitly for
     runs that should include age, sex, or other supported fields.
   * Floor-upsample copy perturbation count is controlled by `Config.balance_perturbation_mean`,
-    `Config.balance_perturbation_variance`, `CODLLM_BALANCE_PERTURBATION_MEAN`, and
-    `CODLLM_BALANCE_PERTURBATION_VARIANCE`. Whole-training-set base perturbation is controlled separately by
+    `Config.balance_perturbation_variance`, `Config.balance_perturbation_loft`,
+    `CODLLM_BALANCE_PERTURBATION_MEAN`, `CODLLM_BALANCE_PERTURBATION_VARIANCE`, and
+    `CODLLM_BALANCE_PERTURBATION_LOFT`. Whole-training-set base perturbation is controlled separately by
     `Config.base_perturbation_rate`, `Config.base_perturbations`, `Config.base_perturbation_mean`,
-    `Config.base_perturbation_variance`, `CODLLM_BASE_PERTURBATION_RATE`, `CODLLM_BASE_PERTURBATIONS`,
-    `CODLLM_BASE_PERTURBATION_MEAN`, and `CODLLM_BASE_PERTURBATION_VARIANCE`. These values scale by the length of the
-    processed `cod` text segment; do not reintroduce a fixed perturbations-per-sample control for training rows.
+    `Config.base_perturbation_variance`, `Config.base_perturbation_loft`, `CODLLM_BASE_PERTURBATION_RATE`,
+    `CODLLM_BASE_PERTURBATIONS`, `CODLLM_BASE_PERTURBATION_MEAN`, `CODLLM_BASE_PERTURBATION_VARIANCE`, and
+    `CODLLM_BASE_PERTURBATION_LOFT`. These values scale by the length of the processed `cod` text segment; loft caps
+    the stochastic variance tail at mean plus loft standard deviations. Do not reintroduce a fixed
+    perturbations-per-sample control for training rows.
   * Multi-COD dataset behavior is part of split preparation. Use the existing `multicod_*` config fields for
     label-order shuffling and training-only synthetic single-COD merges, and keep cross-source synthetic merging opt-in
     rather than the default. Use `Config.multicod_synthetic_text_separators` and

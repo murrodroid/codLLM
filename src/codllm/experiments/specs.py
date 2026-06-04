@@ -54,6 +54,14 @@ class ExperimentRun:
 
 
 @dataclass(frozen=True)
+class ExperimentVariant:
+    """A lockstep experiment dimension with optional base-derived env values."""
+
+    name: str
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ExperimentSpec:
     """Typed experiment specification loaded from TOML."""
 
@@ -63,12 +71,13 @@ class ExperimentSpec:
     description: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     sweep: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    variants: tuple[ExperimentVariant, ...] = ()
     force_reprocess: bool = False
     extra_args: tuple[str, ...] = ()
 
     def expanded_runs(self) -> list[ExperimentRun]:
         """Expand the spec into one or more concrete runs."""
-        if not self.sweep:
+        if not self.sweep and not self.variants:
             return [
                 ExperimentRun(
                     name=self.name,
@@ -81,24 +90,37 @@ class ExperimentSpec:
 
         sweep_keys = list(self.sweep)
         runs: list[ExperimentRun] = []
-        combinations = itertools.product(*(self.sweep[key] for key in sweep_keys))
-        for index, values in enumerate(combinations, start=1):
+        combinations = list(itertools.product(*(self.sweep[key] for key in sweep_keys)))
+        if not combinations:
+            combinations = [()]
+        variants = self.variants or (ExperimentVariant(name="", env={}),)
+        for index, (variant, values) in enumerate(
+            itertools.product(variants, combinations),
+            start=1,
+        ):
             sweep_values = dict(zip(sweep_keys, values, strict=True))
             run_env = dict(self.env)
+            run_env.update(variant.env)
             run_env.update(sweep_values)
-            suffix = "__".join(
+            suffix_parts = []
+            metadata_values = dict(sweep_values)
+            if variant.name:
+                suffix_parts.append(f"variant-{_slugify(variant.name)}")
+                metadata_values = {"variant": variant.name, **metadata_values}
+            suffix_parts.extend(
                 f"{_env_key_slug(key)}-{_slugify(value)}"
                 for key, value in sweep_values.items()
             )
+            suffix = "__".join(suffix_parts)
             runs.append(
                 ExperimentRun(
-                    name=f"{self.name}__{suffix}",
+                    name=f"{self.name}__{suffix}" if suffix else self.name,
                     command=self.command,
                     env=run_env,
                     force_reprocess=self.force_reprocess,
                     extra_args=self.extra_args,
                     sweep_index=index,
-                    sweep_values=sweep_values,
+                    sweep_values=metadata_values,
                 )
             )
         return runs
@@ -199,6 +221,9 @@ def _merge_raw(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str
             merged_table.update(_optional_mapping(value, key))
             result[key] = merged_table
             continue
+        if key == "variants":
+            result[key] = value
+            continue
         result[key] = value
     return result
 
@@ -214,8 +239,10 @@ def _build_spec(path: Path, raw: Mapping[str, Any]) -> ExperimentSpec:
     description = _optional_string(raw.get("description"), "description")
     force_reprocess = _optional_bool(raw.get("force_reprocess"), "force_reprocess")
     extra_args = _optional_string_tuple(raw.get("extra_args"), "extra_args")
-    env = _build_env(_optional_mapping(raw.get("env"), "env"))
+    raw_env = _optional_mapping(raw.get("env"), "env")
+    env = _build_env(raw_env)
     sweep = _build_sweep(_optional_mapping(raw.get("sweep"), "sweep"))
+    variants = _build_variants(raw.get("variants"), path, raw_env)
     return ExperimentSpec(
         path=path,
         name=name,
@@ -223,6 +250,7 @@ def _build_spec(path: Path, raw: Mapping[str, Any]) -> ExperimentSpec:
         description=description,
         env=env,
         sweep=sweep,
+        variants=variants,
         force_reprocess=force_reprocess,
         extra_args=extra_args,
     )
@@ -248,6 +276,55 @@ def _build_sweep(raw_sweep: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
             raise SpecError(f"Sweep variable '{key}' must be a non-empty TOML array.")
         sweep[key] = tuple(stringify_env_value(item) for item in value)
     return sweep
+
+
+def _build_variants(
+    raw_variants: object,
+    path: Path,
+    common_env: Mapping[str, Any],
+) -> tuple[ExperimentVariant, ...]:
+    """Validate and resolve lockstep experiment variants."""
+    if raw_variants is None:
+        return ()
+    if not isinstance(raw_variants, list) or not all(
+        isinstance(item, Mapping) for item in raw_variants
+    ):
+        raise SpecError("'variants' must be a TOML array of tables.")
+
+    variants: list[ExperimentVariant] = []
+    for index, raw_variant in enumerate(raw_variants, start=1):
+        variant_base_env: dict[str, Any] = {}
+        base_paths = _base_paths(path, raw_variant.get("base"))
+        for base_path in base_paths:
+            base_raw = _load_raw_spec(base_path, seen=(path,))
+            if _optional_mapping(base_raw.get("sweep"), "sweep"):
+                raise SpecError("Variant base specs must not define [sweep].")
+            if base_raw.get("variants") is not None:
+                raise SpecError("Variant base specs must not define [[variants]].")
+            variant_base_env.update(_optional_mapping(base_raw.get("env"), "env"))
+
+        variant_env_raw = dict(variant_base_env)
+        variant_env_raw.update(common_env)
+        variant_env_raw.update(
+            _optional_mapping(raw_variant.get("env"), "variants.env")
+        )
+        variant_name = _optional_string(raw_variant.get("name"), "variants.name")
+        if variant_name is None:
+            variant_name = _default_variant_name(base_paths, index)
+        variants.append(
+            ExperimentVariant(
+                name=variant_name,
+                env=_build_env(variant_env_raw),
+            )
+        )
+    return tuple(variants)
+
+
+def _default_variant_name(base_paths: list[Path], index: int) -> str:
+    """Return a readable variant name when one is not specified."""
+    if len(base_paths) == 1:
+        return base_paths[0].stem
+    return f"variant-{index}"
 
 
 def _optional_mapping(value: object, name: str) -> Mapping[str, Any]:

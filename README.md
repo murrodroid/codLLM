@@ -115,7 +115,7 @@ Inspect cache usage:
 
 ```bash
 uv run invoke maintenance.data-cache
-uv run invoke maintenance.data-cache --profile h100-10h
+uv run invoke maintenance.data-cache --lucas
 ```
 
 Clear processed-data and prepared-split caches with a dry run first:
@@ -150,11 +150,9 @@ Python/tool caches, and explicit runtime caches such as Hugging Face, torch, W&B
 raw datasets, source code, tracked TOML specs, arbitrary files under `models/`, and generic profile cache roots that are
 not clearly owned by codLLM.
 
-Maintenance cache and status tasks accept the same LSF profile context used by HPC submission. Pass `--profile h100-10h`
-to inspect that profile's storage layout, or pass `--lucas` to use the default H100 profile with Lucas's DTU work folder
-resolved as `/work3/s234805` and run storage as `/work3/s234805/codllm`. Profiles with a known notification email also
-auto-resolve `$USER` storage placeholders, so `--profile h100-10h` resolves to Lucas's work folder even when run from a
-local machine whose shell user is not `s234805`.
+On DTU HPC, source `hpc/env.sh` before running maintenance commands so they inspect the active storage environment.
+When checking Lucas's storage from a shell that has not sourced the HPC env, pass `--lucas` to resolve the work folder as
+`/work3/s234805` and run storage as `/work3/s234805/codllm`.
 
 On DTU HPC, `maintenance.status` prints shared filesystem capacity as `filesystem_*` values and, when the DTU quota
 scripts are available, prints a separate `quota:` line from `getquota_zhome.sh`, `getquota_work1.sh`, or
@@ -220,7 +218,21 @@ CODLLM_LR_SCHEDULER_TYPE = ["cosine", "linear"]
 ```
 
 TOML booleans become `1` or `0`, arrays in `[env]` become comma-separated strings, and arrays in `[sweep]` expand into
-one run per cartesian combination. Sweep runs also get generated W&B grouping metadata unless explicitly overridden:
+one run per cartesian combination. Use `[[variants]]` for lockstep dimensions that should not cross with each other,
+such as pairing a model with its matching H100 runtime base:
+
+```toml
+[[variants]]
+name = "small"
+base = "../profiles/h100-small.toml"
+
+[[variants]]
+name = "base"
+base = "../profiles/h100-base.toml"
+```
+
+Variants cross with `[sweep]`, so a spec with three variants and five hold-out datasets expands to 15 runs instead of a
+3x3 accidental model/profile product. Sweep runs also get generated W&B grouping metadata unless explicitly overridden:
 `WANDB_SWEEP_ID=codllm-<experiment-name>` and `WANDB_RUN_GROUP=<experiment-name>`.
 
 Useful commands:
@@ -335,7 +347,7 @@ Use the maintenance checks before long HPC runs or before pushing a branch:
 
 ```bash
 uv run invoke maintenance.status
-uv run --no-sync invoke maintenance.status --profile h100-10h
+uv run --no-sync invoke maintenance.status --lucas
 uv run --no-sync invoke maintenance.hpc-env --lucas
 uv run invoke maintenance.git-hygiene
 uv run invoke maintenance.git-snapshot
@@ -345,10 +357,10 @@ uv run invoke maintenance.git-snapshot
 cluster stdout/stderr logs and local snapshots do not get pushed accidentally.
 `maintenance.status` shows shared filesystem capacity for the workspace, profile/home, and configured HPC storage roots,
 then breaks known codLLM usage into code, raw datasets, processed datasets/splits, model outputs, generated jobs/logs,
-runtime caches, and Python/tool caches. For Lucas's H100 profiles, `maintenance.status --profile h100-10h` and
-`maintenance.status --lucas` report the managed HPC roots under `/work3/s234805/codllm`. On DTU login nodes, quota
-lines come from the DTU quota scripts; the `filesystem_*` totals are shared filesystem capacity and do not represent the
-per-user limit that kills jobs.
+runtime caches, and Python/tool caches. With `hpc/env.sh` sourced, it reports the active managed HPC roots; `--lucas`
+is a shortcut for Lucas's `/work3/s234805/codllm` storage when the env is not already set. On DTU login nodes, quota
+lines come from the DTU quota scripts; the `filesystem_*` totals are shared filesystem capacity and do not represent
+the per-user limit that kills jobs.
 
 ## Training Options
 
@@ -467,10 +479,12 @@ metadata fields, so structural metadata stays intact across synthetic copies.
 
 - `CODLLM_BALANCE_PERTURBATIONS` — comma-separated names from {`swap_adjacent_chars`, `delete_random_char`,
   `insert_random_whitespace`, `accent_random_vowel`, `qwerty_misspell`}. Applies to floor-upsampled copies.
-- `CODLLM_BALANCE_PERTURBATION_MEAN` and `_VARIANCE` — control edits for floor-upsampled copies.
-- `CODLLM_BASE_PERTURBATIONS`, `CODLLM_BASE_PERTURBATION_MEAN`, and `_VARIANCE` — equivalent controls for the
-  whole-training-set regularization pass.
-  Counts scale with COD text length, so longer cause strings receive more edits on average.
+- `CODLLM_BALANCE_PERTURBATION_MEAN`, `_VARIANCE`, and `_LOFT` — control edits for floor-upsampled copies.
+- `CODLLM_BASE_PERTURBATIONS`, `CODLLM_BASE_PERTURBATION_MEAN`, `_VARIANCE`, and `_LOFT` — equivalent controls for the
+  whole-training-set regularization pass. Counts scale with COD text length, so longer cause strings receive more edits
+  on average. With variance enabled, `_LOFT` caps the sampled count at
+  `mean * cod_length + loft * sqrt(variance * cod_length)`, preventing rare long-tail samples from making a string far
+  noisier than intended. The default loft is `3.0`.
 
 ### Hold-Out Evaluation
 

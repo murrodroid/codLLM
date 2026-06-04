@@ -47,12 +47,14 @@ ENV_KEYS = [
     "CODLLM_BALANCE_PERTURBATIONS",
     "CODLLM_BALANCE_PERTURBATION_MEAN",
     "CODLLM_BALANCE_PERTURBATION_VARIANCE",
+    "CODLLM_BALANCE_PERTURBATION_LOFT",
     "CODLLM_BALANCE_FLOOR",
     "CODLLM_BALANCE_FLOOR_DECAY",
     "CODLLM_BALANCE_BASE_PERTURBATION_RATE",
     "CODLLM_BASE_PERTURBATIONS",
     "CODLLM_BASE_PERTURBATION_MEAN",
     "CODLLM_BASE_PERTURBATION_VARIANCE",
+    "CODLLM_BASE_PERTURBATION_LOFT",
     "CODLLM_BASE_PERTURBATION_RATE",
     "CODLLM_DETERMINISTIC_ALGORITHMS",
     "CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY",
@@ -196,11 +198,13 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATIONS", "delete_random_char")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_MEAN", "0.08")
     monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_VARIANCE", "0.02")
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_LOFT", "2.5")
     monkeypatch.setenv("CODLLM_BALANCE_FLOOR", "50")
     monkeypatch.setenv("CODLLM_BALANCE_FLOOR_DECAY", "0.25")
     monkeypatch.setenv("CODLLM_BASE_PERTURBATIONS", "qwerty_misspell")
     monkeypatch.setenv("CODLLM_BASE_PERTURBATION_MEAN", "0.03")
     monkeypatch.setenv("CODLLM_BASE_PERTURBATION_VARIANCE", "0.01")
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_LOFT", "1.5")
     monkeypatch.setenv("CODLLM_BASE_PERTURBATION_RATE", "0.5")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS", "true")
     monkeypatch.setenv("CODLLM_DETERMINISTIC_ALGORITHMS_WARN_ONLY", "false")
@@ -316,11 +320,13 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.balance_perturbations == ["delete_random_char"]
     assert cfg.balance_perturbation_mean == 0.08
     assert cfg.balance_perturbation_variance == 0.02
+    assert cfg.balance_perturbation_loft == 2.5
     assert cfg.balance_floor == 50
     assert cfg.balance_floor_decay == 0.25
     assert cfg.base_perturbations == ["qwerty_misspell"]
     assert cfg.base_perturbation_mean == 0.03
     assert cfg.base_perturbation_variance == 0.01
+    assert cfg.base_perturbation_loft == 1.5
     assert cfg.base_perturbation_rate == 0.5
     assert cfg.deterministic_algorithms is True
     assert cfg.deterministic_algorithms_warn_only is False
@@ -709,6 +715,16 @@ def test_config_from_env_rejects_negative_balance_perturbation_variance(
         config_from_env()
 
 
+def test_config_from_env_rejects_negative_balance_perturbation_loft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Balance perturbation loft should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BALANCE_PERTURBATION_LOFT", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
 def test_config_from_env_rejects_negative_base_perturbation_mean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -725,6 +741,16 @@ def test_config_from_env_rejects_negative_base_perturbation_variance(
     """Base perturbation variance should be non-negative."""
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_BASE_PERTURBATION_VARIANCE", "-0.1")
+    with pytest.raises(ValueError):
+        config_from_env()
+
+
+def test_config_from_env_rejects_negative_base_perturbation_loft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Base perturbation loft should be non-negative."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_BASE_PERTURBATION_LOFT", "-0.1")
     with pytest.raises(ValueError):
         config_from_env()
 

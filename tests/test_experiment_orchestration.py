@@ -65,6 +65,69 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert runs[0].env["CODLLM_NUM_TRAIN_EPOCHS"] == "1"
 
 
+def test_experiment_variants_lock_base_env_with_sweep_values(
+    tmp_path: Path,
+) -> None:
+    """Variants should zip model/profile bases while sweeping other dimensions."""
+    small_base = tmp_path / "h100-small.toml"
+    small_base.write_text(
+        """
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 256
+""",
+        encoding="utf-8",
+    )
+    base_base = tmp_path / "h100-base.toml"
+    base_base.write_text(
+        """
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-base"
+CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 192
+""",
+        encoding="utf-8",
+    )
+    spec_path = tmp_path / "holdout-size.toml"
+    spec_path.write_text(
+        """
+name = "holdout-size"
+
+[env]
+CODLLM_LR = 2.5e-5
+
+[[variants]]
+name = "small"
+base = "h100-small.toml"
+
+[[variants]]
+name = "base"
+base = "h100-base.toml"
+
+[sweep]
+CODLLM_HOLD_OUT_DATASET = ["belgium", "madrid"]
+""",
+        encoding="utf-8",
+    )
+
+    spec = load_experiment_spec(spec_path)
+    runs = spec.expanded_runs()
+
+    assert len(runs) == 4
+    assert runs[0].name == "holdout-size__variant-small__hold-out-dataset-belgium"
+    assert runs[0].env["CODLLM_HF_MODEL"] == "google/flan-t5-small"
+    assert runs[0].env["CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"] == "256"
+    assert runs[0].env["CODLLM_HOLD_OUT_DATASET"] == "belgium"
+    assert runs[1].env["CODLLM_HF_MODEL"] == "google/flan-t5-small"
+    assert runs[1].env["CODLLM_HOLD_OUT_DATASET"] == "madrid"
+    assert runs[2].name == "holdout-size__variant-base__hold-out-dataset-belgium"
+    assert runs[2].env["CODLLM_HF_MODEL"] == "google/flan-t5-base"
+    assert runs[2].env["CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"] == "192"
+    assert runs[2].sweep_values == {
+        "variant": "base",
+        "CODLLM_HOLD_OUT_DATASET": "belgium",
+    }
+
+
 def test_format_env_file_includes_runtime_metadata(tmp_path: Path) -> None:
     """Generated env files should include explicit orchestration metadata."""
     spec_path = tmp_path / "run.toml"
