@@ -130,6 +130,28 @@ def test_filter_metrics_for_logging_keeps_selected_run_page_metrics() -> None:
     }
 
 
+def test_filter_metrics_for_logging_keeps_standard_seen_unseen_metrics() -> None:
+    """Standard metric mode should keep input-string seen/unseen diagnostics."""
+    metrics = {
+        "accuracy": 0.9,
+        "seen_string_rate": 0.25,
+        "unseen_string_rate": 0.75,
+        "seen_accuracy": 1.0,
+        "unseen_accuracy": 0.5,
+        "avg_false_positives_per_sample": 0.2,
+    }
+
+    filtered = filter_metrics_for_logging(metrics, mode="standard")
+
+    assert filtered == {
+        "accuracy": 0.9,
+        "seen_string_rate": 0.25,
+        "unseen_string_rate": 0.75,
+        "seen_accuracy": 1.0,
+        "unseen_accuracy": 0.5,
+    }
+
+
 class TestSamplePrecisionRecallF1:
     def test_partial_overlap(self) -> None:
         """Sample metrics should average overlap quality per row."""
@@ -494,9 +516,7 @@ class TestHierarchyMetrics:
 
 class TestPerSourceMetrics:
     def test_returns_empty_when_source_ids_missing(self) -> None:
-        result = _per_source_metrics(
-            [{"A"}], [{"A"}], [True], None, multi_label=False
-        )
+        result = _per_source_metrics([{"A"}], [{"A"}], [True], None, multi_label=False)
         assert result == {}
 
     def test_returns_empty_on_length_mismatch(self) -> None:

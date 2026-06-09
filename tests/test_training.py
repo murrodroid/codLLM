@@ -229,11 +229,17 @@ def test_build_training_args_disables_fp16_when_requested(
 
 def test_scope_metric_logs_for_pretrain_stage() -> None:
     """Pretraining metrics should be logged under the pretraining category."""
-    logs = {"loss": 1.2, "eval_loss": 0.9, "holdout_val_accuracy": 0.6, "epoch": 1.0}
+    logs = {
+        "loss": 1.2,
+        "eval_loss": 0.9,
+        "holdout_sample_accuracy": 0.6,
+        "epoch": 1.0,
+    }
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "pretrain")
 
     assert scoped["pretraining/loss"] == 1.2
     assert scoped["pretraining/val/loss"] == 0.9
+    assert scoped["holdout/sample/accuracy"] == 0.6
     assert scoped["holdout/val/accuracy"] == 0.6
     assert scoped["epoch"] == 1.0
     assert "loss" not in scoped
@@ -255,8 +261,8 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
         "loss": 1.2,
         "eval_loss": 0.9,
         "test_f1": 0.8,
-        "holdout_accuracy": 0.65,
-        "holdout_val_accuracy": 0.6,
+        "holdout_full_accuracy": 0.65,
+        "holdout_sample_accuracy": 0.6,
         "pretraining/val/loss": 0.7,
         "epoch": 3.0,
         "step": 42,
@@ -268,6 +274,8 @@ def test_rewrite_logs_preserving_scoped_metric_keys() -> None:
     assert rewritten["val/loss"] == 0.9
     assert rewritten["test/f1"] == 0.8
     assert rewritten["holdout/accuracy"] == 0.65
+    assert rewritten["holdout/full/accuracy"] == 0.65
+    assert rewritten["holdout/sample/accuracy"] == 0.6
     assert rewritten["holdout/val/accuracy"] == 0.6
     assert rewritten["pretraining/val/loss"] == 0.7
     assert rewritten["epoch"] == 3.0
@@ -302,8 +310,8 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
         "loss": 1.2,
         "eval_accuracy": 0.8,
         "test_f1": 0.7,
-        "holdout_exact_match": 0.55,
-        "holdout_val_exact_match": 0.6,
+        "holdout_full_exact_match": 0.55,
+        "holdout_sample_exact_match": 0.6,
         "holdout_test_exact_match": 0.5,
     }
     scoped = trainer_logging_module.scope_metric_logs_for_stage(logs, "finetune")
@@ -312,6 +320,8 @@ def test_scope_metric_logs_for_finetune_stage() -> None:
     assert scoped["val/accuracy"] == 0.8
     assert scoped["test/f1"] == 0.7
     assert scoped["holdout/exact_match"] == 0.55
+    assert scoped["holdout/full/exact_match"] == 0.55
+    assert scoped["holdout/sample/exact_match"] == 0.6
     assert scoped["holdout/val/exact_match"] == 0.6
     assert scoped["holdout/test/exact_match"] == 0.5
 
@@ -322,12 +332,14 @@ def test_metric_artifact_scope_uses_stage_scoped_namespace() -> None:
         trainer_logging_module._scope_for_metric_key_prefix("eval", "finetune") == "val"
     )
     assert (
-        trainer_logging_module._scope_for_metric_key_prefix("holdout_val", "finetune")
-        == "holdout/val"
+        trainer_logging_module._scope_for_metric_key_prefix(
+            "holdout_sample", "finetune"
+        )
+        == "holdout/sample"
     )
     assert (
-        trainer_logging_module._scope_for_metric_key_prefix("holdout", "finetune")
-        == "holdout"
+        trainer_logging_module._scope_for_metric_key_prefix("holdout_full", "finetune")
+        == "holdout/full"
     )
     assert (
         trainer_logging_module._scope_for_metric_key_prefix("holdout_test", "finetune")
@@ -454,7 +466,7 @@ def test_holdout_evaluation_callback_runs_on_epoch(tmp_path: Path) -> None:
     assert trainer.calls == [
         {
             "eval_dataset": "holdout-dataset",
-            "metric_key_prefix": "holdout_val",
+            "metric_key_prefix": "holdout_sample",
         }
     ]
 
@@ -501,7 +513,7 @@ def test_holdout_evaluation_callback_runs_on_eval_steps(tmp_path: Path) -> None:
     assert trainer.calls == [
         {
             "eval_dataset": "holdout-dataset",
-            "metric_key_prefix": "holdout_val",
+            "metric_key_prefix": "holdout_sample",
         }
     ]
 
@@ -546,7 +558,7 @@ def test_holdout_evaluation_callback_logs_baseline_when_regular_eval_not_due(
         },
         {
             "eval_dataset": "holdout-dataset",
-            "metric_key_prefix": "holdout_val",
+            "metric_key_prefix": "holdout_sample",
         },
     ]
 
@@ -1132,6 +1144,56 @@ def test_train_omits_eval_when_validation_is_empty(
     }
 
 
+def test_build_data_metadata_includes_holdout_leakage_stats(tmp_path: Path) -> None:
+    """Data metadata should summarize holdout overlap with the training split."""
+    cfg = Config(
+        data_processed_dir=str(tmp_path),
+        processed_filename="data.parquet",
+        label_separator=",",
+    )
+    splits = DataSplits(
+        train=pd.DataFrame(
+            {
+                "source_id": ["internal", "internal"],
+                "text": ["cod: alpha", "cod: beta"],
+                "label": ["A00.001", "B00.001"],
+            }
+        ),
+        val=pd.DataFrame(
+            {"source_id": ["internal"], "text": ["cod: v"], "label": ["A00.001"]}
+        ),
+        test=pd.DataFrame(
+            {"source_id": ["internal"], "text": ["cod: t"], "label": ["C00.001"]}
+        ),
+        holdout=pd.DataFrame(
+            {
+                "source_id": ["external", "external"],
+                "text": ["cod: alpha", "cod: gamma"],
+                "label": ["A00.001", "D00.001"],
+            }
+        ),
+    )
+
+    class DummyHandler:
+        """Handler stub exposing processed cache paths."""
+
+        processed_path = tmp_path / "data.parquet"
+        processed_metadata_path = tmp_path / "data.parquet.meta.json"
+
+    metadata = metadata_module.build_data_metadata(
+        cfg=cfg,
+        splits=splits,
+        force_reprocess=False,
+        handler=DummyHandler(),
+    )
+
+    leakage = metadata["holdout_leakage"]
+    assert leakage["input_seen_rate"] == 0.5
+    assert leakage["input_label_pair_seen_rate"] == 0.5
+    assert leakage["label_occurrence_seen_rate"] == 0.5
+    assert leakage["unique_label_seen_rate"] == 0.5
+
+
 def test_resolve_run_output_dir_uses_hpc_job_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1228,9 +1290,13 @@ def test_train_runs_holdout_evaluation_when_available(
     )
     holdout_eval_df = holdout_df.iloc[:1].copy()
     splits = DataSplits(
-        train=pd.DataFrame({"text": ["t1"], "label": ["A00"]}),
-        val=pd.DataFrame({"text": ["v1"], "label": ["A01"]}),
-        test=pd.DataFrame({"text": ["x1"], "label": ["A02"]}),
+        train=pd.DataFrame(
+            {"source_id": ["internal"], "text": ["t1"], "label": ["A00"]}
+        ),
+        val=pd.DataFrame({"source_id": ["internal"], "text": ["v1"], "label": ["A01"]}),
+        test=pd.DataFrame(
+            {"source_id": ["internal"], "text": ["x1"], "label": ["A02"]}
+        ),
         holdout=holdout_df,
         holdout_eval=holdout_eval_df,
     )
@@ -1296,9 +1362,36 @@ def test_train_runs_holdout_evaluation_when_available(
         {
             "test_ds": holdout_df,
             "label2id": None,
-            "metric_key_prefix": "holdout",
+            "metric_key_prefix": "holdout_full",
         },
     ]
+
+
+def test_validate_split_source_integrity_rejects_holdout_in_train() -> None:
+    """Source integrity validation should reject held-out rows in train/val/test."""
+    cfg = Config(
+        hold_out_dataset="external",
+        train_excluded_source_ids=["reference"],
+    )
+    splits = DataSplits(
+        train=pd.DataFrame(
+            {
+                "source_id": ["internal", "external"],
+                "text": ["t1", "leak"],
+                "label": ["A00", "A01"],
+            }
+        ),
+        val=pd.DataFrame({"source_id": ["internal"], "text": ["v1"], "label": ["A02"]}),
+        test=pd.DataFrame(
+            {"source_id": ["reference"], "text": ["r1"], "label": ["A03"]}
+        ),
+        holdout=pd.DataFrame(
+            {"source_id": ["external"], "text": ["h1"], "label": ["A04"]}
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Invalid source-partitioned splits"):
+        pipeline_module.validate_split_source_integrity(cfg, splits)
 
 
 def test_train_uses_pretraining_dataset_when_available(
@@ -1831,7 +1924,12 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
             mode="offline",
         )
     )
-    metadata = {"dataset": {"split_rows": {"train": 3, "val": 1, "holdout": 5}}}
+    metadata = {
+        "dataset": {
+            "split_rows": {"train": 3, "val": 1, "holdout": 5},
+            "holdout_leakage": {"input_seen_rate": 0.25},
+        }
+    }
     wandb_utils_module.log_wandb_run_metadata(
         cfg=cfg,
         report_to=["wandb"],
@@ -1846,11 +1944,19 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
     assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.train"] == 3
     assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.val"] == 1
     assert fake_wandb.config.updates[0]["payload"]["dataset.split_rows.holdout"] == 5
+    assert (
+        fake_wandb.config.updates[0]["payload"][
+            "dataset.holdout_leakage.input_seen_rate"
+        ]
+        == 0.25
+    )
     assert "dataset" not in fake_wandb.config.updates[0]["payload"]
     assert fake_wandb.config.updates[0]["allow_val_change"] is True
     defined_metric_names = {metric["name"] for metric in fake_wandb.defined_metrics}
     assert "val/*" in defined_metric_names
     assert "holdout/*" in defined_metric_names
+    assert "holdout/full/*" in defined_metric_names
+    assert "holdout/sample/*" in defined_metric_names
 
 
 def test_log_wandb_run_metadata_full_mode_writes_flattened_keys(

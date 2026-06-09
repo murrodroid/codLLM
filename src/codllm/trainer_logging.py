@@ -32,6 +32,10 @@ def rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
     """Map trainer metric keys to stage-scoped logging categories."""
     if key == "epoch":
         return key
+    if key.startswith("holdout_full_"):
+        return f"holdout/full/{key.removeprefix('holdout_full_')}"
+    if key.startswith("holdout_sample_"):
+        return f"holdout/sample/{key.removeprefix('holdout_sample_')}"
     if key.startswith("holdout_val_"):
         return f"holdout/val/{key.removeprefix('holdout_val_')}"
     if key.startswith("holdout_test_"):
@@ -64,7 +68,18 @@ def scope_metric_logs_for_stage(
     """Rewrite one trainer log payload to stage-scoped metric keys."""
     scoped_logs: dict[str, Any] = {}
     for key, value in logs.items():
-        scoped_logs[rewrite_metric_key_for_stage(key, stage_name)] = value
+        scoped_key = rewrite_metric_key_for_stage(key, stage_name)
+        scoped_logs[scoped_key] = value
+        if key.startswith("holdout_full_"):
+            scoped_logs[f"holdout/{key.removeprefix('holdout_full_')}"] = value
+        elif key.startswith("holdout_sample_"):
+            scoped_logs[f"holdout/val/{key.removeprefix('holdout_sample_')}"] = value
+        elif key.startswith("holdout_val_"):
+            scoped_logs[f"holdout/sample/{key.removeprefix('holdout_val_')}"] = value
+        elif key.startswith("holdout_test_"):
+            continue
+        elif key.startswith("holdout_"):
+            scoped_logs[f"holdout/full/{key.removeprefix('holdout_')}"] = value
     return scoped_logs
 
 
@@ -162,7 +177,7 @@ class HoldoutEvaluationCallback(TrainerCallback):
         eval_dataset: Any,
         eval_steps: int,
         baseline_eval_dataset: Any | None = None,
-        metric_key_prefix: str = "holdout_val",
+        metric_key_prefix: str = "holdout_sample",
     ) -> None:
         normalized = evaluate_per.strip().lower()
         if normalized not in {"epoch", "steps"}:
@@ -392,9 +407,7 @@ class SigtermSaveCallback(TrainerCallback):
         """SIGTERM handler: flip the flag so the next step boundary saves+exits."""
         del signum, frame
         self._signaled = True
-        logger.warning(
-            "SIGTERM received; will save and stop at next step boundary."
-        )
+        logger.warning("SIGTERM received; will save and stop at next step boundary.")
 
 
 class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
@@ -420,9 +433,7 @@ class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
         scope_token = set_metric_artifact_scope(
             _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
         )
-        eval_dataset = _eval_dataset_from_evaluate_call(
-            self.eval_dataset, args, kwargs
-        )
+        eval_dataset = _eval_dataset_from_evaluate_call(self.eval_dataset, args, kwargs)
         source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
         try:
             return super().evaluate(*args, **kwargs)
@@ -454,9 +465,7 @@ class StageScopedTrainer(Trainer):
         scope_token = set_metric_artifact_scope(
             _scope_for_metric_key_prefix(metric_key_prefix, self.stage_name)
         )
-        eval_dataset = _eval_dataset_from_evaluate_call(
-            self.eval_dataset, args, kwargs
-        )
+        eval_dataset = _eval_dataset_from_evaluate_call(self.eval_dataset, args, kwargs)
         source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
         try:
             return super().evaluate(*args, **kwargs)

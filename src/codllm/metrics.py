@@ -59,6 +59,20 @@ _STANDARD_LOGGED_METRICS = _CORE_LOGGED_METRICS | frozenset(
         "source_transfer_label_macro_f1",
         "source_transfer_label_chapter_block_accuracy",
         "source_transfer_label_chapter_block_macro_f1",
+        "seen_string_count",
+        "seen_string_rate",
+        "seen_accuracy",
+        "seen_exact_match",
+        "seen_macro_f1",
+        "seen_sample_f1",
+        "seen_sample_jaccard",
+        "unseen_string_count",
+        "unseen_string_rate",
+        "unseen_accuracy",
+        "unseen_exact_match",
+        "unseen_macro_f1",
+        "unseen_sample_f1",
+        "unseen_sample_jaccard",
         "same_source_label_sample_count",
         "same_source_label_sample_rate",
         "same_source_label_true_count",
@@ -654,10 +668,7 @@ def _hierarchy_truncated_codes(
     length: int,
 ) -> list[set[str]]:
     """Return code sets truncated to the first `length` characters of each code."""
-    return [
-        {code[:length] for code in codes if code}
-        for codes in code_sets
-    ]
+    return [{code[:length] for code in codes if code} for codes in code_sets]
 
 
 def _hierarchy_metrics(
@@ -1010,6 +1021,7 @@ def build_exact_match_accuracy_metric(
                 input_strings=input_strings,
                 predictions=normalized_predictions,
                 labels=normalized_labels,
+                source_ids=source_ids,
                 metrics=result,
             )
         return filter_metrics_for_logging(
@@ -1133,6 +1145,7 @@ def build_sequence_classification_metric(
                 input_strings=input_strings,
                 predictions=normalized_predictions,
                 labels=normalized_labels,
+                source_ids=source_ids,
                 metrics=result,
             )
         return filter_metrics_for_logging(

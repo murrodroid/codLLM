@@ -77,8 +77,8 @@ profiles over adding new handwritten shell scripts in `jobs/`. Do not ignore the
 run output directories such as `runs/run-*/` and `runs/*/run-*/` should be ignored so new TOML specs remain addable.
 Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
-balancing, hold-out sampling, and masterlist injection. Keep cache-key metadata in sync with any option that changes
-prepared split content.
+balancing, hold-out sampling, configured train-source exclusions, and masterlist injection. Keep cache-key metadata in
+sync with any option that changes prepared split content.
 Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
 Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
 clearing. Broad cache cleanup may delete processed-data caches, prepared split caches, local run/checkpoint directories,
@@ -97,9 +97,9 @@ Use `[sweep]` for Cartesian environment-variable dimensions. Use `[[variants]]` 
 model/profile pairs; each variant may set `base = "../profiles/..."` and optional `[variants.env]`, and variants cross
 with `[sweep]` without crossing with one another.
 Training runs log compact W&B data visualizations under `data/*`, and evaluation error tables under
-`<scope>/errors/*`, where scopes include `val`, `test`, top-level final `holdout`, sampled `holdout/val`, and
-pretraining scopes. Keep final leave-one-source-out metrics under `holdout/*` so W&B runs visibly contain both `val/*`
-and `holdout/*`.
+`<scope>/errors/*`, where scopes include `val`, `test`, final full `holdout/full` plus legacy `holdout`, sampled
+`holdout/sample` plus legacy `holdout/val`, and pretraining scopes. Keep final leave-one-source-out metrics visible
+under both `holdout/full/*` and compatibility `holdout/*` so W&B runs visibly contain both `val/*` and hold-out metrics.
 Error tables aggregate ICD10h labels to the chapter-block prefix, i.e. the first three characters of each code.
 Prepared split cache metadata includes training balance diagnostics used by these visualizations; keep those diagnostics
 cache-safe and summary-only rather than adding visualization-only columns to training dataframes.
@@ -160,10 +160,14 @@ unexpected dependency downloads.
   * Dataset leave-one-source-out evaluation is controlled by `Config.hold_out_dataset` and
     `CODLLM_HOLD_OUT_DATASET`. Hold-out matching uses processed `source_id` values, removes the entire matching source
     from train/val/test splitting, keeps normal val/test splits on the remaining sources, and evaluates the held-out
-    rows after training with `holdout_*` metrics. During-training sampled hold-out evaluation is controlled separately
-    by `Config.hold_out_evaluate_per`, `Config.hold_out_evaluate_ratio`, `CODLLM_HOLD_OUT_EVALUATE_PER`, and
-    `CODLLM_HOLD_OUT_EVALUATE_RATIO`; the final post-training hold-out evaluation must always use the full held-out
-    source.
+    rows after training with `holdout_full_*` metrics that are logged as `holdout/full/*` plus legacy `holdout/*`
+    aliases. `Config.train_excluded_source_ids` and `CODLLM_TRAIN_EXCLUDED_SOURCE_IDS` remove non-training reference
+    sources from the remaining pool before sampling/splitting; hold-out sweeps should exclude
+    `historic_strings_en_2024` unless deliberately measuring with that reference source in training. During-training
+    sampled hold-out evaluation is controlled separately by `Config.hold_out_evaluate_per`,
+    `Config.hold_out_evaluate_ratio`, `CODLLM_HOLD_OUT_EVALUATE_PER`, and `CODLLM_HOLD_OUT_EVALUATE_RATIO`, and logs
+    as `holdout/sample/*` plus legacy `holdout/val/*`; the final post-training hold-out evaluation must always use the
+    full held-out source.
   * `CODLLM_SAVE_STRATEGY_BEST_METRIC` supports single-label metrics plus multi-COD metrics such as `exact_match`,
     `sample_f1`, `sample_jaccard`, `micro_jaccard`, `hamming_loss`, and `hamming_score`; source-transfer metrics such
     as `source_transfer_label_accuracy`, `source_transfer_label_macro_f1`, and `source_transfer_label_recall` are also

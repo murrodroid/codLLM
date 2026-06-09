@@ -189,14 +189,28 @@ def rewrite_logs_preserving_scoped_metric_keys(
         if key.startswith("test_"):
             rewritten_logs[f"test/{key.removeprefix('test_')}"] = value
             continue
+        if key.startswith("holdout_full_"):
+            metric_name = key.removeprefix("holdout_full_")
+            rewritten_logs[f"holdout/full/{metric_name}"] = value
+            rewritten_logs[f"holdout/{metric_name}"] = value
+            continue
+        if key.startswith("holdout_sample_"):
+            metric_name = key.removeprefix("holdout_sample_")
+            rewritten_logs[f"holdout/sample/{metric_name}"] = value
+            rewritten_logs[f"holdout/val/{metric_name}"] = value
+            continue
         if key.startswith("holdout_val_"):
-            rewritten_logs[f"holdout/val/{key.removeprefix('holdout_val_')}"] = value
+            metric_name = key.removeprefix("holdout_val_")
+            rewritten_logs[f"holdout/val/{metric_name}"] = value
+            rewritten_logs[f"holdout/sample/{metric_name}"] = value
             continue
         if key.startswith("holdout_test_"):
             rewritten_logs[f"holdout/test/{key.removeprefix('holdout_test_')}"] = value
             continue
         if key.startswith("holdout_"):
-            rewritten_logs[f"holdout/{key.removeprefix('holdout_')}"] = value
+            metric_name = key.removeprefix("holdout_")
+            rewritten_logs[f"holdout/{metric_name}"] = value
+            rewritten_logs[f"holdout/full/{metric_name}"] = value
             continue
         rewritten_logs[f"train/{key}"] = value
     return rewritten_logs
@@ -617,6 +631,8 @@ def _minimal_wandb_config_payload(
         "training.epochs": cfg.num_train_epochs,
         "data.dataset_size": cfg.dataset_size,
         "data.max_label_count": cfg.max_label_count,
+        "data.hold_out_dataset": cfg.hold_out_dataset,
+        "data.train_excluded_source_ids": list(cfg.train_excluded_source_ids),
         "balance.strategy": cfg.balance_strategy,
         "perturbation.base_rate": cfg.base_perturbation_rate,
         "pretraining.enabled": cfg.pretrain_enabled,
@@ -645,6 +661,7 @@ def _standard_wandb_config_payload(
             "data.test_size": cfg.test_size,
             "data.training_input": list(cfg.training_input),
             "data.hold_out_dataset": cfg.hold_out_dataset,
+            "data.train_excluded_source_ids": list(cfg.train_excluded_source_ids),
             "multicod.shuffle_labels": cfg.multicod_shuffle_labels,
             "multicod.synthetic_ratio": cfg.multicod_synthetic_ratio,
             "multicod.synthetic_source_scope": cfg.multicod_synthetic_source_scope,
@@ -693,6 +710,22 @@ def _standard_wandb_config_payload(
         if isinstance(split_rows, Mapping):
             for split_name, row_count in split_rows.items():
                 payload[f"dataset.split_rows.{split_name}"] = row_count
+        holdout_leakage = dataset.get("holdout_leakage")
+        if isinstance(holdout_leakage, Mapping):
+            for key, value in holdout_leakage.items():
+                payload[f"dataset.holdout_leakage.{key}"] = value
+        split_sources = dataset.get("split_source_distribution")
+        if isinstance(split_sources, Mapping):
+            train_sources = split_sources.get("train")
+            if isinstance(train_sources, Mapping):
+                payload["dataset.train_sources"] = sorted(
+                    str(key) for key in train_sources
+                )
+            holdout_sources = split_sources.get("holdout")
+            if isinstance(holdout_sources, Mapping):
+                payload["dataset.holdout_sources"] = sorted(
+                    str(key) for key in holdout_sources
+                )
         classification = dataset.get("classification")
         if isinstance(classification, Mapping):
             payload["classification.num_labels"] = classification.get("num_labels")
@@ -814,13 +847,23 @@ def log_wandb_run_metadata(
     wandb.define_metric("val/*", step_metric="epoch")
     wandb.define_metric("test/*", step_metric="epoch")
     wandb.define_metric("holdout/*", step_metric="epoch")
+    wandb.define_metric("holdout/full/*", step_metric="epoch")
+    wandb.define_metric("holdout/sample/*", step_metric="epoch")
     wandb.define_metric("holdout/val/*", step_metric="epoch")
     wandb.define_metric("holdout/test/*", step_metric="epoch")
     wandb.define_metric("pretraining/*", step_metric="epoch")
     wandb.define_metric("pretraining/val/*", step_metric="epoch")
     wandb.define_metric("pretraining/test/*", step_metric="epoch")
     # Pin key metrics to summary for easy comparison across runs
-    for prefix in ("val", "test", "holdout", "holdout/val", "holdout/test"):
+    for prefix in (
+        "val",
+        "test",
+        "holdout",
+        "holdout/full",
+        "holdout/sample",
+        "holdout/val",
+        "holdout/test",
+    ):
         for metric_name in [
             "accuracy",
             "exact_match",

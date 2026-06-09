@@ -44,6 +44,104 @@ def _label_stats(dataset: Any, label_column: str) -> dict[str, int] | None:
     }
 
 
+def _normalized_text_values(dataset: Any, text_column: str) -> list[str] | None:
+    """Return normalized text values from a dataframe-like split."""
+    if dataset is None or not hasattr(dataset, "columns"):
+        return None
+    if text_column not in dataset.columns:
+        return None
+    return [
+        " ".join(text.split())
+        for text in dataset[text_column].fillna("").astype(str).tolist()
+    ]
+
+
+def _normalized_label_values(dataset: Any, label_column: str) -> list[str] | None:
+    """Return stripped label strings from a dataframe-like split."""
+    if dataset is None or not hasattr(dataset, "columns"):
+        return None
+    if label_column not in dataset.columns:
+        return None
+    return [
+        label.strip() for label in dataset[label_column].fillna("").astype(str).tolist()
+    ]
+
+
+def _split_label_codes(label: str, label_separator: str) -> list[str]:
+    """Split one label string into non-empty label codes."""
+    if label_separator:
+        values = label.split(label_separator)
+    else:
+        values = [label]
+    return [value.strip() for value in values if value.strip()]
+
+
+def _holdout_leakage_stats(cfg: Config, splits: DataSplits) -> dict[str, Any] | None:
+    """Summarize holdout overlap with the train split."""
+    train_texts = _normalized_text_values(splits.train, cfg.dataset_text_column)
+    holdout_texts = _normalized_text_values(splits.holdout, cfg.dataset_text_column)
+    train_labels = _normalized_label_values(splits.train, cfg.dataset_label_column)
+    holdout_labels = _normalized_label_values(
+        splits.holdout,
+        cfg.dataset_label_column,
+    )
+    if (
+        train_texts is None
+        or holdout_texts is None
+        or train_labels is None
+        or holdout_labels is None
+        or not holdout_texts
+    ):
+        return None
+
+    train_text_set = set(train_texts)
+    train_text_label_pairs = set(zip(train_texts, train_labels))
+    input_seen_count = sum(text in train_text_set for text in holdout_texts)
+    input_label_pair_seen_count = sum(
+        (text, label) in train_text_label_pairs
+        for text, label in zip(holdout_texts, holdout_labels)
+    )
+
+    train_label_codes: set[str] = set()
+    for label in train_labels:
+        train_label_codes.update(_split_label_codes(label, cfg.label_separator))
+
+    holdout_label_codes: list[str] = []
+    for label in holdout_labels:
+        holdout_label_codes.extend(_split_label_codes(label, cfg.label_separator))
+    holdout_unique_labels = set(holdout_label_codes)
+    label_occurrence_seen_count = sum(
+        label in train_label_codes for label in holdout_label_codes
+    )
+    unique_label_seen_count = len(holdout_unique_labels.intersection(train_label_codes))
+
+    holdout_rows = len(holdout_texts)
+    holdout_label_occurrences = len(holdout_label_codes)
+    holdout_unique_label_count = len(holdout_unique_labels)
+    return {
+        "input_seen_count": int(input_seen_count),
+        "input_seen_rate": float(input_seen_count / holdout_rows),
+        "input_label_pair_seen_count": int(input_label_pair_seen_count),
+        "input_label_pair_seen_rate": float(input_label_pair_seen_count / holdout_rows),
+        "label_occurrence_seen_count": int(label_occurrence_seen_count),
+        "label_occurrence_seen_rate": float(
+            label_occurrence_seen_count / holdout_label_occurrences
+        )
+        if holdout_label_occurrences > 0
+        else 0.0,
+        "unique_label_seen_count": int(unique_label_seen_count),
+        "unique_label_seen_rate": float(
+            unique_label_seen_count / holdout_unique_label_count
+        )
+        if holdout_unique_label_count > 0
+        else 0.0,
+        "holdout_rows": int(holdout_rows),
+        "holdout_label_occurrences": int(holdout_label_occurrences),
+        "holdout_unique_labels": int(holdout_unique_label_count),
+        "train_unique_labels": int(len(train_label_codes)),
+    }
+
+
 def _load_json_file(path: Path) -> dict[str, Any] | None:
     """Load JSON file contents when present and parseable."""
     if not path.exists():
@@ -109,6 +207,9 @@ def build_data_metadata(
     holdout_eval_rows = dataset_row_count(splits.holdout_eval)
     if holdout_eval_rows is not None:
         payload["split_rows"]["holdout_eval"] = holdout_eval_rows
+    holdout_leakage = _holdout_leakage_stats(cfg, splits)
+    if holdout_leakage is not None:
+        payload["holdout_leakage"] = holdout_leakage
     fingerprint = _load_json_file(processed_metadata_path)
     if fingerprint is not None:
         payload["processed_fingerprint"] = fingerprint

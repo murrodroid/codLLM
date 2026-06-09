@@ -1749,6 +1749,53 @@ class TestDataHandler:
         assert set(splits.test["source_id"]) == {"test_source"}
         assert set(splits.holdout["source_id"]) == {"external"}
 
+    def test_get_splits_excludes_configured_training_sources_before_sampling(
+        self, tmp_path: Path
+    ) -> None:
+        """train_excluded_source_ids should remove reference rows from train/val/test."""
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_dir / "training.csv"
+        source_df = pd.concat(
+            [
+                _processed_df(num_rows=20),
+                _processed_df(num_rows=5).assign(
+                    source_id="reference",
+                    record_id=lambda df: [f"REF-{idx:03d}" for idx in range(len(df))],
+                ),
+                _processed_df(num_rows=5).assign(
+                    source_id="external",
+                    record_id=lambda df: [f"EXT-{idx:03d}" for idx in range(len(df))],
+                ),
+            ],
+            ignore_index=True,
+        )
+        source_df.to_csv(processed_path, index=False)
+
+        cfg = Config(
+            data_processed_dir=str(processed_dir),
+            processed_filename="training.csv",
+            train_size=0.8,
+            val_size=0.1,
+            test_size=0.1,
+            dataset_size=0.5,
+            hold_out_dataset="external",
+            train_excluded_source_ids=["reference"],
+            data_sources=[],
+        )
+        handler = DataHandler(cfg)
+        handler._write_processing_metadata(handler._build_processing_metadata())
+        splits = handler.get_splits()
+
+        assert len(splits.train) == 8
+        assert len(splits.val) == 1
+        assert len(splits.test) == 1
+        assert splits.holdout is not None
+        assert len(splits.holdout) == 5
+        for split in [splits.train, splits.val, splits.test]:
+            assert set(split["source_id"]) == {"test_source"}
+        assert set(splits.holdout["source_id"]) == {"external"}
+
     def test_get_splits_rejects_unknown_hold_out_dataset(self, tmp_path: Path) -> None:
         """Unknown hold-out source ids should fail before training starts."""
         processed_dir = tmp_path / "processed"

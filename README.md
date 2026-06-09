@@ -504,7 +504,12 @@ metadata fields, so structural metadata stays intact across synthetic copies.
 
 Set `CODLLM_HOLD_OUT_DATASET` to a processed `source_id` for leave-one-source-out evaluation. Matching rows are removed
 before dataset sampling and train/validation/test splitting. After training, the full held-out source is evaluated with
-top-level `holdout/*` W&B metrics, while regular validation remains under `val/*`.
+canonical `holdout/full/*` W&B metrics plus legacy `holdout/*` aliases, while regular validation remains under `val/*`.
+
+Set `CODLLM_TRAIN_EXCLUDED_SOURCE_IDS` to a comma-separated list of processed `source_id` values that should be removed
+from the train/validation/test pool without becoming the held-out evaluation set. Hold-out sweeps should normally set
+`CODLLM_TRAIN_EXCLUDED_SOURCE_IDS=historic_strings_en_2024` so the reference historic strings source is not used as
+ordinary fine-tuning data.
 
 During-training hold-out evaluation is optional:
 
@@ -512,7 +517,8 @@ During-training hold-out evaluation is optional:
 - `CODLLM_HOLD_OUT_EVALUATE_RATIO=0.05`
 
 The during-training callback evaluates a deterministic sample of the held-out source. The final post-training hold-out
-evaluation always uses the full held-out source.
+evaluation always uses the full held-out source. Sampled during-training hold-out metrics are logged under
+`holdout/sample/*` plus legacy `holdout/val/*` aliases.
 
 Default source ids:
 
@@ -621,8 +627,11 @@ When W&B credentials are available, training logs:
 - compact data visualizations under `data/*`
 - validation, test, hold-out, and pretraining metrics under scoped namespaces, filtered by
   `CODLLM_WANDB_METRIC_MODE=core|standard|all`
-- full evaluation metrics and row-level predictions as artifacts, plus compact error tables under scopes such as
-  `val/errors/*`, `test/errors/*`, `holdout/errors/*`, and sampled `holdout/val/errors/*`
+- hold-out leakage diagnostics such as `dataset.holdout_leakage.input_seen_rate` on the W&B run page and in metadata
+  artifacts
+- full evaluation metrics and row-level predictions, including row `source_id`, as artifacts, plus compact error tables
+  under scopes such as `val/errors/*`, `test/errors/*`, `holdout/full/errors/*`, and sampled
+  `holdout/sample/errors/*`
 
 Multi-COD runs emit exact-match, micro, sample, Jaccard, Hamming, and label-count diagnostics. Single-label runs emit
 accuracy and macro precision/recall/F1.

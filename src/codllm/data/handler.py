@@ -226,6 +226,7 @@ class DataHandler:
                 "data_seed": self.cfg.data_seed,
                 "resolved_data_seed": self.cfg.resolved_data_seed(),
                 "hold_out_dataset": self.cfg.hold_out_dataset,
+                "train_excluded_source_ids": list(self.cfg.train_excluded_source_ids),
                 "hold_out_evaluate_per": self.cfg.hold_out_evaluate_per,
                 "hold_out_evaluate_ratio": self.cfg.hold_out_evaluate_ratio,
                 "dataset_text_column": self.cfg.dataset_text_column,
@@ -434,12 +435,21 @@ class DataHandler:
     def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
         """Build prepared split dataframes from processed rows."""
         _log_data_progress(f"Preparing split source rows: rows={len(processed_df)}.")
+        processed_source_ids = (
+            set(processed_df["source_id"].fillna("").astype(str).tolist())
+            if "source_id" in processed_df.columns
+            else set()
+        )
         training_pool_df, holdout_df = self._partition_hold_out_dataset(processed_df)
         if holdout_df is not None:
             _log_data_progress(
                 "Partitioned hold-out dataset: "
                 f"training_pool={len(training_pool_df)}, holdout={len(holdout_df)}."
             )
+        training_pool_df = self._exclude_training_sources(
+            training_pool_df,
+            processed_source_ids=processed_source_ids,
+        )
         sampled_df = self._apply_dataset_size(training_pool_df)
         if len(sampled_df) != len(training_pool_df):
             _log_data_progress(
@@ -1116,6 +1126,57 @@ class DataHandler:
             size=self.cfg.dataset_size,
             setting_name="dataset_size",
         )
+
+    def _exclude_training_sources(
+        self,
+        df: pd.DataFrame,
+        *,
+        processed_source_ids: set[str],
+    ) -> pd.DataFrame:
+        """Remove configured non-training sources before train/val/test splitting."""
+        excluded_sources = {
+            source_id.strip()
+            for source_id in self.cfg.train_excluded_source_ids
+            if source_id.strip()
+        }
+        if not excluded_sources:
+            return df
+        if "source_id" not in df.columns:
+            raise KeyError(
+                "Processed data is missing required column 'source_id' for "
+                "train_excluded_source_ids filtering."
+            )
+
+        missing_sources = sorted(excluded_sources.difference(processed_source_ids))
+        if missing_sources:
+            available_sources = ", ".join(
+                sorted(source for source in processed_source_ids if source)
+            )
+            missing = ", ".join(missing_sources)
+            raise ValueError(
+                f"train_excluded_source_ids did not match processed rows: {missing}. "
+                f"Available source_id values: {available_sources or '<none>'}."
+            )
+
+        source_ids = df["source_id"].fillna("").astype(str)
+        excluded_mask = source_ids.isin(excluded_sources)
+        if not excluded_mask.any():
+            return df.reset_index(drop=True)
+
+        filtered_df = df.loc[~excluded_mask].reset_index(drop=True)
+        if filtered_df.empty:
+            excluded = ", ".join(sorted(excluded_sources))
+            raise ValueError(
+                f"train_excluded_source_ids '{excluded}' would leave no rows for "
+                "train/val/test splits."
+            )
+        _log_data_progress(
+            "Excluded configured non-training sources: "
+            f"sources={','.join(sorted(excluded_sources))}, "
+            f"rows_removed={int(excluded_mask.sum())}, rows_remaining={len(filtered_df)}."
+        )
+        self._validate_label_quality(filtered_df)
+        return filtered_df
 
     def _build_holdout_eval_dataframe(
         self, holdout_df: pd.DataFrame

@@ -1,4 +1,4 @@
-base = "../base/h100-small.toml"
+base = "../profiles/h100-small.toml"
 name = "holdout2"
 description = "Sweep to test holdout of different datasets, advanced"
 force_reprocess = false
@@ -9,6 +9,7 @@ CODLLM_LR = 2.5e-5
 CODLLM_NUM_TRAIN_EPOCHS = 20
 CODLLM_SAVE_STRATEGY = "best"
 CODLLM_TRAINING_INPUT = "cod"
+CODLLM_TRAIN_EXCLUDED_SOURCE_IDS = "historic_strings_en_2024"
 
 CODLLM_MAX_LABEL_COUNT = 5
 CODLLM_MULTICOD_SHUFFLE_LABELS = 1
@@ -49,5 +50,4 @@ CODLLM_HOLD_OUT_EVALUATE_RATIO = 0.5
 CODLLM_HOLD_OUT_DATASET = [
   "belgium_1920_1930",
   "madrid_1905_1927",
-  "",
 ]

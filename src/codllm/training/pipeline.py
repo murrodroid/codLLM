@@ -179,6 +179,79 @@ def evaluate_test_split(
     return {key: float(value) for key, value in raw_metrics.items()}
 
 
+def _source_count(dataset: Any, source_id: str) -> int | None:
+    """Return count of rows from one source when source metadata is available."""
+    if dataset is None:
+        return 0
+    if not hasattr(dataset, "columns"):
+        return None
+    if "source_id" not in dataset.columns:
+        return None
+    return int((dataset["source_id"].fillna("").astype(str) == source_id).sum())
+
+
+def validate_split_source_integrity(cfg: Config, splits: DataSplits) -> None:
+    """Fail fast when source-partitioned splits violate configured source rules."""
+    forbidden_sources = {
+        source_id.strip()
+        for source_id in cfg.train_excluded_source_ids
+        if source_id.strip()
+    }
+    if cfg.hold_out_dataset is not None:
+        forbidden_sources.add(cfg.hold_out_dataset)
+    if not forbidden_sources:
+        return
+
+    errors: list[str] = []
+    for split_name, dataset in (
+        ("train", splits.train),
+        ("val", splits.val),
+        ("test", splits.test),
+    ):
+        for source_id in sorted(forbidden_sources):
+            count = _source_count(dataset, source_id)
+            if count is None and dataset_row_count(dataset) not in (None, 0):
+                errors.append(
+                    f"{split_name} split is missing source_id metadata needed "
+                    f"to validate source '{source_id}'"
+                )
+            elif count and count > 0:
+                errors.append(
+                    f"{split_name} split contains {count} row(s) from forbidden "
+                    f"source '{source_id}'"
+                )
+
+    if cfg.hold_out_dataset is not None:
+        holdout_count = _source_count(splits.holdout, cfg.hold_out_dataset)
+        if holdout_count is None:
+            errors.append("holdout split is missing source_id metadata")
+        elif holdout_count <= 0:
+            errors.append(
+                f"holdout split contains no rows from '{cfg.hold_out_dataset}'"
+            )
+        if splits.holdout is not None and hasattr(splits.holdout, "columns"):
+            if "source_id" in splits.holdout.columns:
+                source_values = {
+                    source
+                    for source in splits.holdout["source_id"]
+                    .fillna("")
+                    .astype(str)
+                    .tolist()
+                    if source
+                }
+                unexpected_sources = sorted(
+                    source_values.difference({cfg.hold_out_dataset})
+                )
+                if unexpected_sources:
+                    errors.append(
+                        "holdout split contains unexpected source_id values: "
+                        + ", ".join(unexpected_sources)
+                    )
+
+    if errors:
+        raise ValueError("Invalid source-partitioned splits: " + "; ".join(errors))
+
+
 def train(
     cfg: Config,
     data_handler: DataHandler | None = None,
@@ -196,6 +269,7 @@ def train(
         f"val={dataset_row_count(splits.val)}, "
         f"test={dataset_row_count(splits.test)}."
     )
+    validate_split_source_integrity(cfg, splits)
     train_ds, eval_ds = resolve_training_frames(splits)
     run_data_metadata = build_data_metadata(
         cfg=cfg,
@@ -350,7 +424,7 @@ def train(
             tokenizer=tokenizer,
             test_ds=splits.holdout,
             label2id=classifier_label2id,
-            metric_key_prefix="holdout",
+            metric_key_prefix="holdout_full",
         )
     if (
         cfg.uncertainty_eval

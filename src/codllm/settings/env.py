@@ -119,6 +119,18 @@ def _parse_training_input(raw_value: str) -> list[TrainingInput]:
     return parsed
 
 
+def _parse_csv_string_values(raw_value: str, setting_name: str) -> list[str]:
+    """Parse comma-separated non-empty string values from one env setting."""
+    values = [value.strip() for value in raw_value.split(",") if value.strip()]
+    if not values:
+        raise ValueError(f"{setting_name} must include at least one value.")
+    unique_values: list[str] = []
+    for value in values:
+        if value not in unique_values:
+            unique_values.append(value)
+    return unique_values
+
+
 def _apply_input_prefix_env(cfg: Config) -> None:
     """Apply optional processed-input prefix overrides from environment."""
     env_names: dict[TrainingInput, str] = {
@@ -480,6 +492,13 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if hold_out_dataset is not None:
         normalized_hold_out_dataset = hold_out_dataset.strip()
         cfg.hold_out_dataset = normalized_hold_out_dataset or None
+
+    train_excluded_source_ids = os.getenv("CODLLM_TRAIN_EXCLUDED_SOURCE_IDS")
+    if train_excluded_source_ids is not None:
+        cfg.train_excluded_source_ids = _parse_csv_string_values(
+            train_excluded_source_ids,
+            "CODLLM_TRAIN_EXCLUDED_SOURCE_IDS",
+        )
 
     hold_out_evaluate_per = os.getenv("CODLLM_HOLD_OUT_EVALUATE_PER")
     if hold_out_evaluate_per is not None:

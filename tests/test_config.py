@@ -68,6 +68,7 @@ ENV_KEYS = [
     "CODLLM_LR",
     "CODLLM_DATASET_SIZE",
     "CODLLM_HOLD_OUT_DATASET",
+    "CODLLM_TRAIN_EXCLUDED_SOURCE_IDS",
     "CODLLM_HOLD_OUT_EVALUATE_PER",
     "CODLLM_HOLD_OUT_EVALUATE_RATIO",
     "CODLLM_TRAIN_SIZE",
@@ -145,6 +146,7 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     )
     assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
     assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
+    assert cfg.train_excluded_source_ids == []
 
 
 def test_config_from_env_applies_runtime_overrides(
@@ -218,6 +220,10 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_LR", "5e-5")
     monkeypatch.setenv("CODLLM_DATASET_SIZE", "0.75")
     monkeypatch.setenv("CODLLM_HOLD_OUT_DATASET", "amsterdam")
+    monkeypatch.setenv(
+        "CODLLM_TRAIN_EXCLUDED_SOURCE_IDS",
+        "historic_strings_en_2024,reference_source",
+    )
     monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_PER", "epoche")
     monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_TRAIN_SIZE", "0.7")
@@ -340,6 +346,10 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.lr == 5e-5
     assert cfg.dataset_size == 0.75
     assert cfg.hold_out_dataset == "amsterdam"
+    assert cfg.train_excluded_source_ids == [
+        "historic_strings_en_2024",
+        "reference_source",
+    ]
     assert cfg.hold_out_evaluate_per == "epoch"
     assert cfg.hold_out_evaluate_ratio == 0.2
     assert cfg.train_size == 0.7
@@ -639,6 +649,16 @@ def test_config_from_env_rejects_invalid_holdout_evaluate_ratio(
     _clear_relevant_env(monkeypatch)
     monkeypatch.setenv("CODLLM_HOLD_OUT_EVALUATE_RATIO", "0")
     with pytest.raises(ValueError, match="CODLLM_HOLD_OUT_EVALUATE_RATIO"):
+        config_from_env()
+
+
+def test_config_from_env_rejects_empty_train_excluded_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Excluded training sources should not accept an empty override."""
+    _clear_relevant_env(monkeypatch)
+    monkeypatch.setenv("CODLLM_TRAIN_EXCLUDED_SOURCE_IDS", " , ")
+    with pytest.raises(ValueError, match="CODLLM_TRAIN_EXCLUDED_SOURCE_IDS"):
         config_from_env()
 
 

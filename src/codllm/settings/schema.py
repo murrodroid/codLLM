@@ -127,6 +127,7 @@ class Config:
     label_harmonization_masterlist_sheet_name: str = "Masterlist"
     label_harmonization_transfer_sheet_name: str = "2020to2024transfer"
     hold_out_dataset: Optional[str] = None
+    train_excluded_source_ids: list[str] = field(default_factory=list)
     hold_out_evaluate_per: Optional[HoldOutEvaluatePer] = None
     hold_out_evaluate_ratio: float = 0.05
     training_input: list[TrainingInput] = field(default_factory=default_training_input)

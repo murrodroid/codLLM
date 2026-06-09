@@ -1,4 +1,5 @@
 from io import StringIO
+import json
 from typing import Any
 
 import pandas as pd
@@ -169,14 +170,23 @@ def test_metric_artifact_logger_logs_full_evaluation_artifact(monkeypatch) -> No
         input_strings=["cod: alpha", "cod: beta"],
         predictions=["A00.001", "B00.001"],
         labels=["A00.001", "A01.001"],
+        source_ids=["external", "external"],
         metrics={"accuracy": 0.5, "seen_accuracy": 1.0},
     )
 
     artifact = fake_wandb.run.artifacts[0]
     assert artifact.type == "evaluation"
-    assert artifact.metadata == {"scope": "test", "rows": 2}
+    assert artifact.metadata == {
+        "scope": "test",
+        "rows": 2,
+        "source_distribution": {"external": 2},
+    }
     assert '"seen_accuracy": 1.0' in artifact.files["metrics.json"]
     assert '"prediction": "B00.001"' in artifact.files["predictions.jsonl"]
+    prediction_rows = [
+        json.loads(line) for line in artifact.files["predictions.jsonl"].splitlines()
+    ]
+    assert prediction_rows[0]["source_id"] == "external"
     assert artifact.aliases == ["test", "latest"]
 
 

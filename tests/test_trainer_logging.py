@@ -89,6 +89,18 @@ class TestRewriteMetricKeyForStage:
     def test_test_keys_routed_to_test(self) -> None:
         assert rewrite_metric_key_for_stage("test_accuracy", "train") == "test/accuracy"
 
+    def test_holdout_full_keys_routed_to_full_holdout(self) -> None:
+        assert (
+            rewrite_metric_key_for_stage("holdout_full_accuracy", "train")
+            == "holdout/full/accuracy"
+        )
+
+    def test_holdout_sample_keys_routed_to_sample_holdout(self) -> None:
+        assert (
+            rewrite_metric_key_for_stage("holdout_sample_accuracy", "train")
+            == "holdout/sample/accuracy"
+        )
+
     def test_per_source_eval_key_keeps_source_prefix(self) -> None:
         """Per-source eval metrics must remain under val/ namespace untouched."""
         rewritten = rewrite_metric_key_for_stage(

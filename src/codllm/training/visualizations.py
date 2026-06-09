@@ -68,6 +68,7 @@ def _log_evaluation_artifact(
     cfg: Config,
     metric_scope: str,
     input_strings: Sequence[str],
+    source_ids: Sequence[str] | None,
     predictions: Sequence[str],
     labels: Sequence[str],
     metrics: Mapping[str, float] | None,
@@ -83,12 +84,20 @@ def _log_evaluation_artifact(
     run_id = str(getattr(run, "id", "") or getattr(run, "name", "") or "run")
     step = getattr(run, "step", None)
     step_suffix = f"-step-{step}" if step is not None else ""
+    artifact_metadata: dict[str, Any] = {"scope": metric_scope, "rows": len(labels)}
+    if source_ids is not None:
+        artifact_metadata["source_distribution"] = {
+            source_id: int(count)
+            for source_id, count in Counter(
+                str(source) for source in source_ids
+            ).items()
+        }
     artifact = artifact_factory(
         name=_safe_artifact_component(
             f"{run_id}-codllm-evaluation-{safe_scope}{step_suffix}"
         ),
         type="evaluation",
-        metadata={"scope": metric_scope, "rows": len(labels)},
+        metadata=artifact_metadata,
     )
     if metrics is not None:
         with artifact.new_file("metrics.json", mode="w") as metrics_file:
@@ -105,6 +114,11 @@ def _log_evaluation_artifact(
     with artifact.new_file("predictions.jsonl", mode="w") as predictions_file:
         for index, (label, prediction) in enumerate(zip(labels, predictions)):
             input_text = input_strings[index] if index < len(input_strings) else ""
+            source_id = (
+                str(source_ids[index])
+                if source_ids is not None and index < len(source_ids)
+                else ""
+            )
             predictions_file.write(
                 json.dumps(
                     {
@@ -113,6 +127,7 @@ def _log_evaluation_artifact(
                         "label": str(label),
                         "prediction": str(prediction),
                         "label_separator": cfg.label_separator,
+                        "source_id": source_id,
                     },
                     sort_keys=True,
                 )
@@ -717,6 +732,7 @@ class MetricArtifactLogger:
         input_strings: Sequence[str] | None,
         predictions: Sequence[str],
         labels: Sequence[str],
+        source_ids: Sequence[str] | None = None,
         metrics: Mapping[str, float] | None = None,
     ) -> None:
         """Log full artifacts and top chapter-block error tables for one scope."""
@@ -748,6 +764,7 @@ class MetricArtifactLogger:
             cfg=self.cfg,
             metric_scope=metric_scope,
             input_strings=input_values,
+            source_ids=source_ids,
             predictions=predictions,
             labels=labels,
             metrics=metrics,
