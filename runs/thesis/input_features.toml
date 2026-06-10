@@ -1,0 +1,11 @@
+name = "thesis_input_features"
+command = "train"
+description = """
+Tests (RQ3, per-example input representation): does adding structured metadata to the
+input help? Sweeps the input between cause-text only ("cod") and
+cause-text + age + sex ("cod,age,sex") at the thesis baseline. Confirms or refutes that
+demographic metadata improves classification. Inherits the input axis from
+runs/sweeps/training_inputs.toml.
+"""
+base = ["../sweeps/training_inputs.toml", "base_thesis.toml"]
+force_reprocess = false

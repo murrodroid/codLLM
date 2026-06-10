@@ -1,0 +1,14 @@
+name = "thesis_upsampling_floor"
+command = "train"
+description = """
+Tests: does floor-based rare-class upsampling help, and where does it saturate?
+Sweeps the floor over {0 (off), 25, 50, 100, 200} with decay off, everything else
+at the thesis baseline. Read macro-F1 (rare-class sensitive): shows whether lifting
+rare codes to a minimum count improves the tail and locates the point of diminishing
+or negative returns that justifies floor = 50.
+"""
+base = "base_thesis.toml"
+force_reprocess = false
+
+[sweep]
+CODLLM_BALANCE_FLOOR = [0, 25, 50, 100, 200]

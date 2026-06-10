@@ -1,0 +1,14 @@
+name = "thesis_upsampling_decay"
+command = "train"
+description = """
+Tests: once a floor is in place, does its logarithmic decay (which keeps the very
+rarest codes ranked below slightly-less-rare ones) change anything? Holds floor = 50
+and sweeps decay over {0.0, 0.15, 0.3, 0.45}. Confirms or refutes that a strict floor
+(decay = 0) is as good as a rank-preserving one, justifying decay = 0 in the final
+method.
+"""
+base = "base_thesis.toml"
+force_reprocess = false
+
+[sweep]
+CODLLM_BALANCE_FLOOR_DECAY = [0.0, 0.15, 0.3, 0.45]

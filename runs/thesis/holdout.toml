@@ -1,0 +1,25 @@
+name = "thesis_holdout"
+command = "train"
+description = """
+Tests (generalisation): how well does the coder transfer to a source it never saw in
+training? Leave-one-source-out: each cell removes one corpus from the train/val/test
+pool, trains on the remaining four, and evaluates on the held-out corpus, quantifying
+the gap between random-split performance and true cross-source transfer. The reference
+historic-strings source is excluded from training (inherited from
+runs/sweeps/holdout.toml). This is the heaviest ablation (one retrain per source), so
+the dataset size is reduced here.
+"""
+base = ["../sweeps/holdout.toml", "base_thesis.toml"]
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 0.25
+
+[sweep]
+CODLLM_HOLD_OUT_DATASET = [
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "madrid_1905_1927",
+  "belgium_1920_1930",
+  "ipswich_1871_1911",
+]

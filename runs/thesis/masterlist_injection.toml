@@ -1,0 +1,19 @@
+name = "thesis_masterlist_injection"
+command = "train"
+description = """
+Tests: does injecting masterlist code-description rows directly into the fine-tuning
+set (separate from pretraining) improve coverage of rare and zero-shot codes? Enables
+injection and sweeps the copies-per-label over {0, 10, 20}. Confirms or refutes
+masterlist injection as a fine-tuning-time augmentation.
+
+Note: cell 0 with injection enabled is expected to inject nothing (the off baseline);
+verify that target-per-label = 0 is treated as a no-op before reading it that way.
+"""
+base = "base_thesis.toml"
+force_reprocess = false
+
+[env]
+CODLLM_MASTERLIST_INJECT_ENABLED = 1
+
+[sweep]
+CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL = [0, 10, 20]

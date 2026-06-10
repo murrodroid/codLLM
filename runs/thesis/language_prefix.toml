@@ -1,0 +1,15 @@
+name = "thesis_language_prefix"
+command = "train"
+description = """
+PLANNED -- BLOCKED ON CODE SUPPORT. Tests the hypothesis (contra OccCANINE, which
+prepends a language token) that withholding the source language improves transfer to
+unseen languages. Intended sweep: language tag vs no tag, scored on the held-out
+sources from thesis/holdout.toml.
+
+This requires a per-record language input field, which the pipeline does not yet
+expose (CODLLM_TRAINING_INPUT supports cod/age/sex only). No [sweep] is defined until
+that field exists; this file records the experiment so it is not forgotten. To run it
+once implemented, add a `language` input option and sweep tag-on vs tag-off here.
+"""
+base = "base_thesis.toml"
+force_reprocess = false

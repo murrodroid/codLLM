@@ -1,0 +1,17 @@
+name = "thesis_perturbation_rate"
+command = "train"
+description = """
+Tests: how much whole-training-set perturbation helps before it hurts. The original
+runs/sweeps/perturbation_overhaul.toml only compared rate 0.0 vs 1.0 (and found 1.0
+costs ~5.7 macro-F1 points on flan-t5-small); this fills in the middle, sweeping the
+base perturbation rate over {0.0, 0.1, 0.25, 0.5, 1.0} with floor upsampling on, to
+locate the sweet spot and reconfirm that high rates degrade macro-F1 (the model never
+sees clean text yet is evaluated on clean text). Inherits the balance/perturbation
+knobs from perturbation_overhaul; the floor stage is pinned on so only the rate varies.
+"""
+base = ["../sweeps/perturbation_overhaul.toml", "base_thesis.toml"]
+force_reprocess = false
+
+[sweep]
+CODLLM_BALANCE_STRATEGY = ["floor"]
+CODLLM_BASE_PERTURBATION_RATE = [0.0, 0.1, 0.25, 0.5, 1.0]
