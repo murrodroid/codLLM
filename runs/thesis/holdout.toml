@@ -12,9 +12,6 @@ the dataset size is reduced here.
 base = ["../sweeps/holdout.toml", "base_thesis.toml"]
 force_reprocess = false
 
-[env]
-CODLLM_DATASET_SIZE = 0.25
-
 [sweep]
 CODLLM_HOLD_OUT_DATASET = [
   "amsterdam_1854_1926",

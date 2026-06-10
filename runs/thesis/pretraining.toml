@@ -10,3 +10,6 @@ runs/sweeps/pretraining.toml.
 """
 base = ["../sweeps/pretraining.toml", "base_thesis.toml"]
 force_reprocess = false
+
+[sweep]
+CODLLM_PRETRAIN_ENABLED = [true, false]

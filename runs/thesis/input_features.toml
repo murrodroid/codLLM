@@ -9,3 +9,6 @@ runs/sweeps/training_inputs.toml.
 """
 base = ["../sweeps/training_inputs.toml", "base_thesis.toml"]
 force_reprocess = false
+
+[sweep]
+CODLLM_TRAINING_INPUT = ["cod", "cod,age,sex"]

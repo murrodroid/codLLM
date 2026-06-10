@@ -20,11 +20,11 @@ force_reprocess = false
 
 [env]
 CODLLM_LR = 2.5e-5
-CODLLM_DATASET_SIZE = 0.5
+CODLLM_DATASET_SIZE = 1
 CODLLM_TRAIN_SIZE = 0.9
 CODLLM_VAL_SIZE = 0.05
 CODLLM_TEST_SIZE = 0.05
-CODLLM_NUM_TRAIN_EPOCHS = 15
+CODLLM_NUM_TRAIN_EPOCHS = 8
 
 # Epoch-cadence eval, best-checkpoint selection on macro_f1, early stopping.
 CODLLM_EVAL_STRATEGY = "epoch"

@@ -9,3 +9,6 @@ Inherits the schedule axis from runs/sweeps/scheduler.toml.
 """
 base = ["../sweeps/scheduler.toml", "base_thesis.toml"]
 force_reprocess = false
+
+[sweep]
+CODLLM_LR_SCHEDULER_TYPE = ["cosine", "linear", "constant_with_warmup"]
