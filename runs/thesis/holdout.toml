@@ -9,6 +9,10 @@ historic-strings source is excluded from training (inherited from
 runs/sweeps/holdout.toml). This is the heaviest ablation (one retrain per source), so
 the dataset size is reduced here.
 """
+
+SUBMITTED = true
+
+
 base = ["../sweeps/holdout.toml", "base_thesis.toml"]
 force_reprocess = false
 

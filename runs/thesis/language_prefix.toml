@@ -11,5 +11,8 @@ expose (CODLLM_TRAINING_INPUT supports cod/age/sex only). No [sweep] is defined 
 that field exists; this file records the experiment so it is not forgotten. To run it
 once implemented, add a `language` input option and sweep tag-on vs tag-off here.
 """
+
+SUBMITTED = false
+
 base = "base_thesis.toml"
 force_reprocess = false

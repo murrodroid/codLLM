@@ -7,6 +7,9 @@ cause-text + age + sex ("cod,age,sex") at the thesis baseline. Confirms or refut
 demographic metadata improves classification. Inherits the input axis from
 runs/sweeps/training_inputs.toml.
 """
+
+SUBMITTED = false
+
 base = ["../sweeps/training_inputs.toml", "base_thesis.toml"]
 force_reprocess = false
 

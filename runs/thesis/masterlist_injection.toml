@@ -9,6 +9,9 @@ masterlist injection as a fine-tuning-time augmentation.
 Note: cell 0 with injection enabled is expected to inject nothing (the off baseline);
 verify that target-per-label = 0 is treated as a no-op before reading it that way.
 """
+
+SUBMITTED = false
+
 base = "base_thesis.toml"
 force_reprocess = false
 

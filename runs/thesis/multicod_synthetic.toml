@@ -8,6 +8,10 @@ thesis baseline (max 3 codes). Confirms or refutes the decision to disable synth
 multi-CoD in the final fine-tuning runs. Inherits the multi-CoD setup (separators,
 shuffle) from runs/sweeps/multicod.toml.
 """
+
+SUBMITTED = false
+
+
 base = ["../sweeps/multicod.toml", "base_thesis.toml"]
 force_reprocess = false
 

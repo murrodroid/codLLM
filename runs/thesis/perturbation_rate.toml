@@ -9,6 +9,10 @@ locate the sweet spot and reconfirm that high rates degrade macro-F1 (the model 
 sees clean text yet is evaluated on clean text). Inherits the balance/perturbation
 knobs from perturbation_overhaul; the floor stage is pinned on so only the rate varies.
 """
+
+SUBMITTED = false
+
+
 base = ["../sweeps/perturbation_overhaul.toml", "base_thesis.toml"]
 force_reprocess = false
 

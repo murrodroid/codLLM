@@ -8,6 +8,10 @@ in every other ablation for feasibility, so this is the file that evaluates it.
 Inherits the on/off axis and the pretraining-stage hyperparameters from
 runs/sweeps/pretraining.toml.
 """
+
+SUBMITTED = false
+
+
 base = ["../sweeps/pretraining.toml", "base_thesis.toml"]
 force_reprocess = false
 

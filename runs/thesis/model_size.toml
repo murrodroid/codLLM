@@ -12,6 +12,10 @@ NOTE: unlike the other thesis specs, this one does NOT inherit base_thesis, beca
 base_thesis fixes the model to flan-t5-base and that would override the per-size
 variants. The shared contract is therefore repeated here.
 """
+
+SUBMITTED = false
+
+
 force_reprocess = false
 
 [env]
