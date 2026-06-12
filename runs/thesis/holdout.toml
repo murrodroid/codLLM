@@ -6,8 +6,9 @@ training? Leave-one-source-out: each cell removes one corpus from the train/val/
 pool, trains on the remaining four, and evaluates on the held-out corpus, quantifying
 the gap between random-split performance and true cross-source transfer. The reference
 historic-strings source is excluded from training (inherited from
-runs/sweeps/holdout.toml). This is the heaviest ablation (one retrain per source), so
-the dataset size is reduced here.
+runs/sweeps/holdout.toml). This is one of the heaviest ablations (one retrain per
+source) and runs the full baseline contract from base_thesis, including the full
+dataset size.
 """
 
 SUBMITTED = true

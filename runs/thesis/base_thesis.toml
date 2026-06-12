@@ -7,13 +7,15 @@ chapter's experimental-design section), carried by the h100-base profile. Every
 ablation under runs/thesis/ inherits this contract and overrides exactly one
 factor, so differences are attributable to that factor alone.
 
-Choices made for feasibility ("no large runs"): a single short run per cell on
-half the corpus, best-checkpoint selection on macro_f1 with early stopping, the
-end-of-training uncertainty pass off, and masterlist pretraining off (pretraining
+Choices made for feasibility ("no large runs"): a single short (8-epoch) run per
+cell on the full corpus, best-checkpoint selection on macro_f1 with early stopping,
+the end-of-training uncertainty pass off, and masterlist pretraining off (pretraining
 is evaluated on its own in thesis/pretraining.toml). Tune CODLLM_DATASET_SIZE and
-CODLLM_NUM_TRAIN_EPOCHS to your budget; raise to 1.0 / longer for final numbers. 
-All other augmentation knobs are pinned to the final-method values so each ablation
-varies one factor from the chosen baseline.
+CODLLM_NUM_TRAIN_EPOCHS down if the budget requires it — but change them here, not
+per ablation, so every cell keeps the identical contract. All other augmentation
+knobs are pinned to the final-method values so each ablation varies one factor from
+the chosen baseline. NOTE: thesis/model_size.toml repeats this contract instead of
+inheriting it (it must swap the model); keep the two in sync.
 """
 
 SUBMITTED = false

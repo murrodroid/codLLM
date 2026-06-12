@@ -3,14 +3,17 @@ command = "train"
 description = """
 Tests (scaling): how does coding quality change with model capacity? Runs the full
 thesis method across the four FLAN-T5 sizes as lockstep variants, with the effective
-batch held at 256 across sizes (per-device x accumulation) so size is the only
-variable. This is the one experiment that deliberately varies the model and the only
-one that touches the large/xl checkpoints, so it is the heaviest run; the full-budget
-80-epoch version lives in runs/single/size_sweep_*.toml.
+batch held at 192 across sizes (per-device x accumulation) so size is the only
+variable. 192 matches the h100-base profile that carries every other thesis ablation,
+so the "base" variant here is exactly the thesis baseline cell. This is the one
+experiment that deliberately varies the model and the only one that touches the
+large/xl checkpoints, so it is the heaviest run; the full-budget 80-epoch version
+lives in runs/single/size_sweep_*.toml.
 
 NOTE: unlike the other thesis specs, this one does NOT inherit base_thesis, because
 base_thesis fixes the model to flan-t5-base and that would override the per-size
-variants. The shared contract is therefore repeated here.
+variants. The shared contract is therefore repeated here and must be kept in sync
+with base_thesis.toml.
 """
 
 SUBMITTED = false
@@ -20,11 +23,11 @@ force_reprocess = false
 
 [env]
 CODLLM_LR = 2.5e-5
-CODLLM_DATASET_SIZE = 0.5
+CODLLM_DATASET_SIZE = 1
 CODLLM_TRAIN_SIZE = 0.9
 CODLLM_VAL_SIZE = 0.05
 CODLLM_TEST_SIZE = 0.05
-CODLLM_NUM_TRAIN_EPOCHS = 15
+CODLLM_NUM_TRAIN_EPOCHS = 8
 CODLLM_EVAL_STRATEGY = "epoch"
 CODLLM_SAVE_STRATEGY = "best"
 CODLLM_SAVE_STRATEGY_BEST_METRIC = "macro_f1"
@@ -49,19 +52,19 @@ CODLLM_UNCERTAINTY_EVAL = false
 [[variants]]
 name = "small"
 base = "../profiles/h100-small.toml"
-env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 256, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 256, CODLLM_GRADIENT_ACCUMULATION_STEPS = 1 }
+env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 192, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 192, CODLLM_GRADIENT_ACCUMULATION_STEPS = 1 }
 
 [[variants]]
 name = "base"
 base = "../profiles/h100-base.toml"
-env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 128, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 128, CODLLM_GRADIENT_ACCUMULATION_STEPS = 2 }
+env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 192, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 192, CODLLM_GRADIENT_ACCUMULATION_STEPS = 1 }
 
 [[variants]]
 name = "large"
 base = "../profiles/h100-large.toml"
-env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 64, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 64, CODLLM_GRADIENT_ACCUMULATION_STEPS = 4 }
+env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 96, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 96, CODLLM_GRADIENT_ACCUMULATION_STEPS = 2 }
 
 [[variants]]
 name = "xl"
 base = "../profiles/h100-xl.toml"
-env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 16, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 16, CODLLM_GRADIENT_ACCUMULATION_STEPS = 16 }
+env = { CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE = 16, CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 16, CODLLM_GRADIENT_ACCUMULATION_STEPS = 12 }

@@ -2,12 +2,13 @@ name = "thesis_masterlist_injection"
 command = "train"
 description = """
 Tests: does injecting masterlist code-description rows directly into the fine-tuning
-set (separate from pretraining) improve coverage of rare and zero-shot codes? Enables
-injection and sweeps the copies-per-label over {0, 10, 20}. Confirms or refutes
-masterlist injection as a fine-tuning-time augmentation.
+set (separate from pretraining) improve coverage of rare and zero-shot codes? Compares
+injection off against 10 and 20 copies per label. Confirms or refutes masterlist
+injection as a fine-tuning-time augmentation.
 
-Note: cell 0 with injection enabled is expected to inject nothing (the off baseline);
-verify that target-per-label = 0 is treated as a no-op before reading it that way.
+The cells are [[variants]] rather than a [sweep] because target-per-label = 0 with
+injection enabled is NOT a no-op: DataHandler._inject_masterlist raises ValueError for
+targets below 1, so the off cell must disable injection instead.
 """
 
 SUBMITTED = false
@@ -15,8 +16,14 @@ SUBMITTED = false
 base = "base_thesis.toml"
 force_reprocess = false
 
-[env]
-CODLLM_MASTERLIST_INJECT_ENABLED = 1
+[[variants]]
+name = "off"
+env = { CODLLM_MASTERLIST_INJECT_ENABLED = 0 }
 
-[sweep]
-CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL = [0, 10, 20]
+[[variants]]
+name = "inject-10"
+env = { CODLLM_MASTERLIST_INJECT_ENABLED = 1, CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL = 10 }
+
+[[variants]]
+name = "inject-20"
+env = { CODLLM_MASTERLIST_INJECT_ENABLED = 1, CODLLM_MASTERLIST_INJECT_TARGET_PER_LABEL = 20 }

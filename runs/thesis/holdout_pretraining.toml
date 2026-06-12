@@ -1,0 +1,55 @@
+name = "thesis_holdout_pretraining"
+command = "train"
+description = """
+Tests (generalisation x pretraining): does masterlist pretraining improve transfer to
+an unseen source? Identical to thesis/holdout.toml (same leave-one-source-out cells,
+same fine-tuning contract, historic strings excluded from training) but with masterlist
+pretraining enabled, so each cell here is read against the matching thesis_holdout cell.
+The pretraining-stage hyperparameters are inherited from runs/sweeps/pretraining.toml,
+the same file thesis/pretraining.toml inherits, so the pretraining stage is identical
+across both experiments.
+
+The [sweep] below pins CODLLM_PRETRAIN_ENABLED to [true]: the inherited sweep axis is
+[true, false], and the false cells would just duplicate thesis_holdout. Like
+thesis_holdout, this is a heavy experiment (one pretrain + retrain per source).
+"""
+
+SUBMITTED = false
+
+
+base = [
+  "../sweeps/holdout.toml",
+  "../sweeps/pretraining.toml",
+  "base_thesis.toml",
+]
+force_reprocess = false
+
+[env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_PRETRAIN_WARMUP_RATIO = 0.5
+CODLLM_PRETRAIN_LR_SCHEDULER_TYPE = "constant"
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 4
+CODLLM_PRETRAIN_UPSAMPLE_ENABLED = true
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 8
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
+  "swap_adjacent_chars",
+  "delete_random_char",
+  "accent_random_vowel",
+  "qwerty_misspell",
+]
+CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 6
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS = '[", ", " & ", " ", "; ", " / "]'
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.15
+
+
+[sweep]
+CODLLM_PRETRAIN_ENABLED = [true]
+CODLLM_HOLD_OUT_DATASET = [
+  "amsterdam_1854_1926",
+  "copenhagen_may2025",
+  "madrid_1905_1927",
+  "belgium_1920_1930",
+  "ipswich_1871_1911",
+]
