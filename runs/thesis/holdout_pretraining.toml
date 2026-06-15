@@ -14,7 +14,7 @@ The [sweep] below pins CODLLM_PRETRAIN_ENABLED to [true]: the inherited sweep ax
 thesis_holdout, this is a heavy experiment (one pretrain + retrain per source).
 """
 
-SUBMITTED = false
+SUBMITTED = true
 
 
 base = [
