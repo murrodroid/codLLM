@@ -160,81 +160,64 @@ def _per_record_signals(
 # ---------------------------------------------------------------------------
 
 
+def _split_codes(text: str, separator: str) -> set[str]:
+    """Split a label string into a set of codes (order-independent, multi-label)."""
+    return {tok.strip() for tok in str(text).split(separator) if tok.strip()}
+
+
 def _load_eval_split(
     split: str,
     max_records: int | None,
     seed: int,
     *,
-    train_size: float = 0.98,
-    val_size: float = 0.01,
-    test_size: float = 0.01,
-    parquet_path: Path | None = None,
-) -> list[tuple[str, str, str]]:
-    """Return [(source_text, gold_label, source_id), ...] from a deterministic split.
+    train_size: float = 0.90,
+    val_size: float = 0.05,
+    test_size: float = 0.05,
+) -> tuple[list[tuple[str, str, str]], str]:
+    """Return ([(source_text, gold_label, source_id), ...], label_separator).
 
-    Reads `data/processed/data.parquet` directly and replicates
-    `DataHandler.split_dataframe` (sklearn `train_test_split` with the configured
-    seed and split sizes), bypassing `ensure_processed` so this script is
-    branch-agnostic — no metadata-version mismatch can trigger a parquet rebuild
-    with shifted row identities.
-
-    The on-disk parquet was produced with `max_label_count=1`, so every row
-    already has exactly one code; no post-split single-CoD filter is needed.
+    Uses the SAME data path the model was trained and evaluated on: the cod+age+sex
+    MULTI-LABEL input built by Config + DataHandler. This mirrors
+    experiments/offline_test_eval/eval.py exactly, so the split, the cod+age+sex
+    input representation, and the multi-label space are identical to training. (The
+    old version read a legacy single-label, cod-only parquet at seed 42 with a
+    0.98/0.01/0.01 split -- all wrong; that is what produced the invalid earlier
+    uncertainty numbers.) The locked seed-333 split is reproduced via Config; `seed`
+    is applied to data_seed when that field exists and logged for traceability.
     """
-    import pandas as pd
-    from sklearn.model_selection import train_test_split
+    from codllm.settings.schema import Config
+    from codllm.data.handler import DataHandler
 
-    parquet = parquet_path or (
-        Path(__file__).resolve().parents[2] / "data" / "processed" / "data.parquet"
-    )
-    if not parquet.exists():
-        raise FileNotFoundError(f"Parquet not found at {parquet}")
+    cfg = Config()
+    cfg.max_label_count = 3
+    cfg.dataset_size = 1.0
+    cfg.train_size = train_size
+    cfg.val_size = val_size
+    cfg.test_size = test_size
+    if hasattr(cfg, "data_seed"):
+        cfg.data_seed = seed
 
-    df = pd.read_parquet(parquet)
-    logger.info("Loaded parquet: %d rows from %s", len(df), parquet)
-
-    holdout_size = round(val_size + test_size, 10)
-    if holdout_size <= 0:
-        train_df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
-        val_df = df.iloc[0:0].copy()
-        test_df = df.iloc[0:0].copy()
-    else:
-        train_df, holdout_df = train_test_split(
-            df, test_size=holdout_size, random_state=seed, shuffle=True,
-        )
-        if val_size == 0:
-            val_df = df.iloc[0:0].copy()
-            test_df = holdout_df
-        elif test_size == 0:
-            val_df = holdout_df
-            test_df = df.iloc[0:0].copy()
-        else:
-            test_ratio = test_size / holdout_size
-            val_df, test_df = train_test_split(
-                holdout_df, test_size=test_ratio, random_state=seed, shuffle=True,
-            )
-
-    if split == "val":
-        chosen = val_df
-    elif split == "test":
-        chosen = test_df
-    elif split == "train":
-        chosen = train_df
-    else:
+    handler = DataHandler(cfg)
+    splits = handler.get_splits()
+    chosen = {"train": splits.train, "val": splits.val, "test": splits.test}.get(split)
+    if chosen is None:
         raise ValueError(f"Unknown split: {split!r}")
 
+    text_col = cfg.dataset_text_column
+    label_col = cfg.dataset_label_column
+    has_src = "source_id" in chosen.columns
     logger.info(
-        "Split %r at seed=%d: train=%d val=%d test=%d (returning %s with %d rows)",
-        split, seed, len(train_df), len(val_df), len(test_df), split, len(chosen),
+        "Split %r (sizes %.2f/%.2f/%.2f, seed=%d, input=%s): %d rows",
+        split, train_size, val_size, test_size, seed,
+        list(cfg.training_input), len(chosen),
     )
-
     pairs = [
-        (str(row["text"]), str(row["label"]), str(row["source_id"]))
-        for _, row in chosen.iterrows()
+        (str(r[text_col]), str(r[label_col]), str(r["source_id"]) if has_src else "")
+        for _, r in chosen.iterrows()
     ]
     if max_records is not None:
         pairs = pairs[:max_records]
-    return pairs
+    return pairs, cfg.label_separator
 
 
 # ---------------------------------------------------------------------------
@@ -263,13 +246,13 @@ def parse_args() -> argparse.Namespace:
         help="cuda / cuda:0 / cpu (defaults to cuda if available)"
     )
     p.add_argument(
-        "--seed", type=int, default=42,
-        help="data_seed used to reconstruct the split. MUST match the value the "
-             "model was trained with (e.g. 333 for the perturbation-overhaul runs)."
+        "--seed", type=int, default=333,
+        help="data_seed for the locked split (333 = the size-sweep split). Applied to "
+             "Config.data_seed when present; otherwise the split matches offline_test_eval."
     )
-    p.add_argument("--train-size", type=float, default=0.98)
-    p.add_argument("--val-size", type=float, default=0.01)
-    p.add_argument("--test-size", type=float, default=0.01)
+    p.add_argument("--train-size", type=float, default=0.90)
+    p.add_argument("--val-size", type=float, default=0.05)
+    p.add_argument("--test-size", type=float, default=0.05)
     p.add_argument(
         "--log-every", type=int, default=50,
         help="Log progress every N records"
@@ -298,7 +281,7 @@ def main() -> int:
         "Loading %s split (seed=%d, sizes=%.3f/%.3f/%.3f)...",
         args.split, args.seed, args.train_size, args.val_size, args.test_size,
     )
-    pairs = _load_eval_split(
+    pairs, label_separator = _load_eval_split(
         args.split, args.max_records, args.seed,
         train_size=args.train_size,
         val_size=args.val_size,
@@ -317,7 +300,9 @@ def main() -> int:
                 device=device,
                 max_new_tokens=args.max_new_tokens,
             )
-            correct = sig.prediction.strip() == gold.strip()
+            pred_codes = _split_codes(sig.prediction, label_separator)
+            gold_codes = _split_codes(gold, label_separator)
+            correct = pred_codes == gold_codes
             if correct:
                 n_correct += 1
             row = {
@@ -325,7 +310,9 @@ def main() -> int:
                 "source": source_text,
                 "source_id": source_id,
                 "gold": gold,
+                "gold_codes": sorted(gold_codes),
                 "prediction": sig.prediction,
+                "pred_codes": sorted(pred_codes),
                 "correct": correct,
                 "n_tokens": sig.n_tokens,
                 "sum_logprob": sig.sum_logprob,
