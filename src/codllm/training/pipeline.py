@@ -172,6 +172,12 @@ def evaluate_test_split(
             test_ds,
             target_max_length,
         )
+    # transformers caches eval dataloaders under the literal key "eval" for any
+    # non-str dataset; with dataloader_persistent_workers=True this makes
+    # evaluate(eval_dataset=test/holdout) silently reuse the cached VAL dataloader
+    # and re-score val (the test/* == val/* and holdout_full/* == val/* aliasing).
+    # Evict the stale entry so HF rebuilds a dataloader over the real split.
+    getattr(trainer, "_eval_dataloaders", {}).pop("eval", None)
     raw_metrics = trainer.evaluate(
         eval_dataset=processed_test_ds,
         metric_key_prefix=metric_key_prefix,
