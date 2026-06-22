@@ -205,7 +205,14 @@ class HoldoutEvaluationCallback(TrainerCallback):
         """Evaluate at epoch boundaries when configured."""
         del args, state, kwargs
         if self.evaluate_per == "epoch":
-            self._evaluate(include_baseline=not control.should_evaluate)
+            native_eval_scheduled = control.should_evaluate
+            self._evaluate(include_baseline=not native_eval_scheduled)
+            if native_eval_scheduled:
+                # Our manual evaluate() flips should_evaluate to False
+                # (CallbackHandler.on_evaluate), which would suppress the
+                # Trainer's own eval that sets best_metric and drives
+                # load_best_model_at_end + early stopping. Re-arm it.
+                control.should_evaluate = True
         return control
 
     def on_step_end(
@@ -224,7 +231,10 @@ class HoldoutEvaluationCallback(TrainerCallback):
             return control
         if global_step % self.eval_steps == 0:
             self._last_step = global_step
-            self._evaluate(include_baseline=not control.should_evaluate)
+            native_eval_scheduled = control.should_evaluate
+            self._evaluate(include_baseline=not native_eval_scheduled)
+            if native_eval_scheduled:
+                control.should_evaluate = True
         return control
 
 
