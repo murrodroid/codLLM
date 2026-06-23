@@ -1,0 +1,21 @@
+base = "size_sweep_base_final.toml"
+name = "base_holdout_madrid"
+description = """
+RQ3 leave-one-source-out, OPTIMAL deployment config (inherits size_sweep_base_final.toml:
+floor 200, multicod 0.3, constant_with_warmup, masterlist pretraining, 80ep / patience 10).
+Holds out MADRID (Spanish, ~18k, the most linguistically-distinct source -> the strongest
+"truly unseen" transfer argument). Trains on the other 4 historical sources; validation
+excludes Madrid automatically (_partition_hold_out_dataset removes it before the train/val
+split); transfer is evaluated on Madrid. Isolated output dir so AUTO_RESUME stays per-run.
+"""
+force_reprocess = false
+
+[env]
+CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"
+CODLLM_HOLD_OUT_EVALUATE_PER = "epoch"
+CODLLM_HOLD_OUT_EVALUATE_RATIO = 0.10
+CODLLM_OUTPUT_DIR = "/dtu/blackhole/1e/205502/codllm/runs_holdout_madrid_fixed"
+CODLLM_DATALOADER_PERSISTENT_WORKERS = false
+CODLLM_SAVE_TOTAL_LIMIT = 10
+CODLLM_AUTO_RESUME = true
+CODLLM_UNCERTAINTY_EVAL = false
