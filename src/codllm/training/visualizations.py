@@ -777,12 +777,15 @@ class MetricArtifactLogger:
         false_negatives: Counter[str] = Counter()
         false_positives: Counter[str] = Counter()
         support: Counter[str] = Counter()
+        prediction_support: Counter[str] = Counter()
 
         for index, (true_blocks, pred_blocks) in enumerate(
             zip(true_block_sets, pred_block_sets)
         ):
             for block in true_blocks:
                 support[block] += 1
+            for block in pred_blocks:
+                prediction_support[block] += 1
             if true_blocks == pred_blocks:
                 continue
             pair_key = (tuple(sorted(true_blocks)), tuple(sorted(pred_blocks)))
@@ -800,6 +803,7 @@ class MetricArtifactLogger:
             for block in pred_blocks.difference(true_blocks):
                 false_positives[block] += 1
 
+        mismatched_rows = sum(pair_counts.values())
         pair_rows = []
         for (true_blocks, pred_blocks), count in pair_counts.most_common(self.max_rows):
             example_input, example_label, example_prediction = pair_examples[
@@ -810,6 +814,7 @@ class MetricArtifactLogger:
                     ", ".join(true_blocks),
                     ", ".join(pred_blocks),
                     int(count),
+                    float(count / mismatched_rows) if mismatched_rows > 0 else 0.0,
                     example_label,
                     example_prediction,
                     example_input,
@@ -822,11 +827,19 @@ class MetricArtifactLogger:
                 int(count),
                 int(support[block]),
                 float(count / support[block]) if support[block] > 0 else 0.0,
+                float(1 - (count / support[block])) if support[block] > 0 else 0.0,
             ]
             for block, count in false_negatives.most_common(self.max_rows)
         ]
         fp_rows = [
-            [block, int(count)]
+            [
+                block,
+                int(count),
+                int(prediction_support[block]),
+                int(support[block]),
+                float(count / prediction_support[block]) if prediction_support[block] > 0 else 0.0,
+                float(1 - (count / prediction_support[block])) if prediction_support[block] > 0 else 0.0,
+            ]
             for block, count in false_positives.most_common(self.max_rows)
         ]
 
@@ -837,6 +850,7 @@ class MetricArtifactLogger:
                 "true_chapter_blocks",
                 "predicted_chapter_blocks",
                 "count",
+                "share_of_mismatched_rows",
                 "example_label",
                 "example_prediction",
                 "example_input",
@@ -846,13 +860,20 @@ class MetricArtifactLogger:
             payload[f"{metric_scope}/errors/chapter_block_pairs"] = pair_table
         fn_table = _wandb_table(
             fn_rows,
-            ["chapter_block", "misses", "support", "miss_rate"],
+            ["chapter_block", "misses", "gold_support", "miss_rate", "recall"],
         )
         if fn_table is not None:
             payload[f"{metric_scope}/errors/chapter_block_false_negatives"] = fn_table
         fp_table = _wandb_table(
             fp_rows,
-            ["chapter_block", "false_positives"],
+            [
+                "chapter_block",
+                "false_positives",
+                "predicted_support",
+                "gold_support",
+                "false_positive_rate",
+                "precision",
+            ],
         )
         if fp_table is not None:
             payload[f"{metric_scope}/errors/chapter_block_false_positives"] = fp_table

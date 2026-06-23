@@ -150,13 +150,30 @@ def test_metric_artifact_logger_logs_chapter_block_error_tables(
         "true_chapter_blocks",
         "predicted_chapter_blocks",
         "count",
+        "share_of_mismatched_rows",
         "example_label",
         "example_prediction",
         "example_input",
     ]
     assert pair_table.data[0][:3] == ["A01", "B00", 1]
-    assert false_negative_table.data[0] == ["A01", 1, 1, 1.0]
-    assert false_positive_table.data[0] == ["B00", 1]
+    assert pair_table.data[0][3] == 1.0
+    assert false_negative_table.columns == [
+        "chapter_block",
+        "misses",
+        "gold_support",
+        "miss_rate",
+        "recall",
+    ]
+    assert false_negative_table.data[0] == ["A01", 1, 1, 1.0, 0.0]
+    assert false_positive_table.columns == [
+        "chapter_block",
+        "false_positives",
+        "predicted_support",
+        "gold_support",
+        "false_positive_rate",
+        "precision",
+    ]
+    assert false_positive_table.data[0] == ["B00", 1, 1, 0, 1.0, 0.0]
 
 
 def test_metric_artifact_logger_logs_full_evaluation_artifact(monkeypatch) -> None:
