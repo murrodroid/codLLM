@@ -14,13 +14,12 @@ evaluated on the held-out city (no leak).
 ```bash
 source hpc/env.sh                 # storage bootstrap (caches under $RUN_STORAGE_DIR)
 uv sync --frozen --no-dev
-git checkout elias && git pull origin elias    # brings the holdout fix + the ready TOMLs
+git checkout main && git pull origin main    # brings the holdout fix + the ready TOMLs
 grep -c "should_evaluate = True" src/codllm/trainer_logging.py   # MUST print 2
 ```
 The last line confirms the one critical fix is present. Without it, best-checkpoint
 selection and early-stopping silently break (the run keeps the last, overfit checkpoint).
-It lives on `elias`, NOT on `main` (main's `trainer_logging.py` is a different rewrite
-that still has the bug). If `grep` does not print 2, apply this to
+The fix and the specs are on `main` (merged from `elias`). If `grep` does not print 2, apply this to
 `src/codllm/trainer_logging.py` in both `HoldoutEvaluationCallback.on_epoch_end` and
 `on_step_end`:
 ```python
