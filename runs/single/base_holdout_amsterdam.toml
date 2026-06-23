@@ -1,0 +1,20 @@
+base = "size_sweep_base_final.toml"
+name = "base_holdout_amsterdam"
+description = """
+RQ3 leave-one-source-out, OPTIMAL deployment config (inherits size_sweep_base_final.toml:
+floor 200, multicod 0.3, constant_with_warmup, masterlist pretraining, 80ep / patience 10).
+Holds out AMSTERDAM (Dutch, ~28k, the largest source -> tightest transfer CI; Dutch is close
+to the training mix so the weakest distinctness argument, but a clean big-data transfer point).
+Third priority. Validation excludes Amsterdam automatically; transfer evaluated on it. Isolated dir.
+"""
+force_reprocess = false
+
+[env]
+CODLLM_HOLD_OUT_DATASET = "amsterdam_1854_1926"
+CODLLM_HOLD_OUT_EVALUATE_PER = "epoch"
+CODLLM_HOLD_OUT_EVALUATE_RATIO = 0.10
+CODLLM_OUTPUT_DIR = "/dtu/blackhole/1e/205502/codllm/runs_holdout_amsterdam_fixed"
+CODLLM_DATALOADER_PERSISTENT_WORKERS = false
+CODLLM_SAVE_TOTAL_LIMIT = 10
+CODLLM_AUTO_RESUME = true
+CODLLM_UNCERTAINTY_EVAL = false

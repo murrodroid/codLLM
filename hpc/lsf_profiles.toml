@@ -2,7 +2,7 @@
 queue = "gpuh100"
 wall_time = "24:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -36,7 +36,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "10:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -47,7 +47,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "9:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -58,7 +58,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "8:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -69,7 +69,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "7:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -80,7 +80,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "6:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -91,7 +91,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "5:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -102,7 +102,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "4:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -113,7 +113,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "3:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
@@ -124,7 +124,7 @@ modules = ["cuda/12.2"]
 queue = "gpuh100"
 wall_time = "2:00"
 cores = 17
-memory = "4GB"
+memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
