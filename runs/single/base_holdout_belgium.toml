@@ -6,9 +6,6 @@ floor 200, multicod 0.3, constant_with_warmup, masterlist pretraining, 80ep / pa
 Holds out BELGIUM (~2.1k). Trains on the other 4 historical sources; validation excludes
 Belgium automatically (_partition_hold_out_dataset removes it before the train/val split);
 transfer is evaluated on Belgium. Isolated output dir so AUTO_RESUME stays per-run.
-
-NOTE: to run this on a DIFFERENT HPC account (e.g. Lucas's), change the 205502 in
-CODLLM_OUTPUT_DIR below to that account's blackhole allocation before submitting.
 """
 force_reprocess = false
 
@@ -16,6 +13,7 @@ force_reprocess = false
 CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
 CODLLM_HOLD_OUT_EVALUATE_PER = "epoch"
 CODLLM_HOLD_OUT_EVALUATE_RATIO = 0.10
+CODLLM_OUTPUT_DIR = "runs_holdout_belgium_fixed"
 CODLLM_DATALOADER_PERSISTENT_WORKERS = false
 CODLLM_SAVE_TOTAL_LIMIT = 10
 CODLLM_AUTO_RESUME = true

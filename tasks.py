@@ -427,6 +427,10 @@ def _build_run_dependencies(
 
     runtime_defaults = _hpc_runtime_env_defaults(profile)
     run_env = runtime_defaults | run.env_with_runtime_metadata(spec)
+    run_env["CODLLM_OUTPUT_DIR"] = _resolve_output_dir_for_run_storage(
+        run_env["CODLLM_OUTPUT_DIR"],
+        run_env["RUN_STORAGE_DIR"],
+    )
     with _temporary_environ(run_env):
         cfg = config_from_env()
         print(f"  CODLLM_DATA_RAW_DIR={cfg.data_raw_dir}")
@@ -562,6 +566,14 @@ def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
         "CODLLM_DATA_PROCESSED_DIR": str(Path(run_storage_dir) / "data/processed"),
     }
     return {key: os.environ.get(key, value) for key, value in defaults.items()}
+
+
+def _resolve_output_dir_for_run_storage(output_dir: str, run_storage_dir: str) -> str:
+    """Resolve a possibly relative output directory under the run-storage root."""
+    path = Path(output_dir)
+    if path.is_absolute():
+        return str(path)
+    return str(Path(run_storage_dir) / path)
 
 
 @contextmanager

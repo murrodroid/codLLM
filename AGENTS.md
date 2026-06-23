@@ -75,6 +75,8 @@ supported workflow through `uv run invoke ...`. Generated LSF scripts and per-ru
 `jobs/generated/` and logs under `logs/` are intentionally ignored by git. Prefer adding or editing TOML specs and LSF
 profiles over adding new handwritten shell scripts in `jobs/`. Do not ignore the whole `runs/` tree; only generated
 run output directories such as `runs/run-*/` and `runs/*/run-*/` should be ignored so new TOML specs remain addable.
+In TOML specs, relative `CODLLM_OUTPUT_DIR` values are resolved below the selected profile/user's `$RUN_STORAGE_DIR`;
+prefer this for isolated resumable run roots instead of hardcoded DTU account paths.
 Processed raw-data caches live under `Config.data_processed_dir`; prepared split caches live beside the processed file
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, configured train-source exclusions, and masterlist injection. Keep cache-key metadata in

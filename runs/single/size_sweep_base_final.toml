@@ -13,7 +13,8 @@ robustness hedge for unseen sources (rate 0 was best on in-distribution val, but
 tune one factor at a time holding the rest fixed, so the combination is the best
 we found, not a guaranteed joint optimum.
 
-Output is routed to a dedicated, isolated root (CODLLM_OUTPUT_DIR below) with
+Output is routed to a dedicated, isolated root under the selected user's
+RUN_STORAGE_DIR (CODLLM_OUTPUT_DIR below) with
 CODLLM_PER_SIZE_OUTPUT_DIR = 0 so AUTO_RESUME cannot pick up the earlier
 floor-200-only run at runs_base_floor200/run-28689905 (killed). Within this new
 root, AUTO_RESUME still works across HPC slots (~50h over 2-3 24h slots).
@@ -50,7 +51,7 @@ CODLLM_LR_SCHEDULER_TYPE = "constant_with_warmup"
 
 CODLLM_AUTO_RESUME = 1
 # Fresh isolated output root so AUTO_RESUME cannot resume the killed floor-200 run.
-CODLLM_OUTPUT_DIR = "/dtu/blackhole/1e/205502/codllm/runs_base_final"
+CODLLM_OUTPUT_DIR = "runs_base_final"
 CODLLM_PER_SIZE_OUTPUT_DIR = 0
 CODLLM_MAX_RUNTIME_SECONDS = 82800
 CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600

@@ -252,6 +252,8 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert "unset VIRTUAL_ENV" in script
     assert 'XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_STORAGE_DIR/cache/xdg}"' in script
     assert "XDG_CACHE_HOME_DIR" not in script
+    assert 'case "$CODLLM_OUTPUT_DIR" in' in script
+    assert 'CODLLM_OUTPUT_DIR="$RUN_STORAGE_DIR/$CODLLM_OUTPUT_DIR"' in script
     assert "uv run --no-dev python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest
@@ -588,6 +590,54 @@ CODLLM_DATA_PROCESSED_DIR = "/explicit/processed"
     _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
 
     assert seen["processed_dir"] == "/explicit/processed"
+
+
+def test_build_run_dependencies_resolves_relative_output_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Relative CODLLM_OUTPUT_DIR values should resolve below RUN_STORAGE_DIR."""
+    spec_path = tmp_path / "run.toml"
+    spec_path.write_text(
+        """
+name = "run"
+
+[env]
+CODLLM_OUTPUT_DIR = "runs_custom"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    run = spec.expanded_runs()[0]
+    profile = LsfProfile(
+        name="test",
+        queue="gpu",
+        wall_time="00:30",
+        cores=2,
+        memory="2GB",
+        storage_folder=str(tmp_path / "storage"),
+    )
+    seen = {}
+
+    class DummyHandler:
+        """Test double for DataHandler."""
+
+        def __init__(self, cfg) -> None:
+            seen["output_dir"] = cfg.output_dir
+
+        def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+            del force_reprocess
+            frame = pd.DataFrame({"text": ["cod: alpha"], "label": ["A00"]})
+            return DataSplits(train=frame, val=frame.iloc[0:0], test=frame.iloc[0:0])
+
+    monkeypatch.setattr(tasks_module, "DataHandler", DummyHandler)
+    monkeypatch.delenv("STORAGE_FOLDER", raising=False)
+    monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("CODLLM_OUTPUT_DIR", raising=False)
+
+    _build_run_dependencies(spec, run, profile=profile, run_number=1, total_runs=1)
+
+    assert seen["output_dir"] == str(tmp_path / "storage" / "codllm" / "runs_custom")
 
 
 def test_build_run_dependencies_reports_quota_failures(
