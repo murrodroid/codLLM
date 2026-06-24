@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#BSUB -J codllm-offtest-large
+#BSUB -q gpuh100
+#BSUB -W 2:00
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=12GB]"
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -env "all"
+#BSUB -u s234854@dtu.dk
+#BSUB -B
+#BSUB -N
+#BSUB -oo logs/%J.out
+set -euo pipefail
+cd "${LSB_SUBCWD:-$HOME/codLLM}"
+export STORAGE_FOLDER="${BLACKHOLE:?BLACKHOLE must be set}"
+source hpc/env.sh
+exec 2>&1
+CKPT="/dtu/blackhole/1e/205502/codllm/runs/flan-t5-large/run-28505703/finetune/checkpoint-304750"
+echo "=== offline test eval: large best checkpoint ==="
+echo "checkpoint: $CKPT"
+# Quick subset smoke first (fast; confirms test != val before the full pass).
+uv run python -m experiments.offline_test_eval.eval \
+    --checkpoint "$CKPT" --batch-size 64 --limit 2000 \
+    --out experiments/offline_test_eval/results/large_test_subset2000.json
+echo "=== subset done; starting full eval ==="
+uv run python -m experiments.offline_test_eval.eval \
+    --checkpoint "$CKPT" --batch-size 64 \
+    --out experiments/offline_test_eval/results/large_test_full.json
+echo "=== full eval done ==="

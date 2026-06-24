@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#BSUB -J codllm-offtest
+#BSUB -q gpuh100
+#BSUB -W 2:00
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=12GB]"
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -oo logs/%J.out
+set -euo pipefail
+cd "${LSB_SUBCWD:-$HOME/codLLM}"
+export STORAGE_FOLDER="${BLACKHOLE:?BLACKHOLE must be set}"
+source hpc/env.sh
+exec 2>&1
+: "${CKPT:?CKPT env var must be set}"
+: "${SIZE:?SIZE env var must be set}"
+BS="${BS:-64}"
+echo "=== offline test+val eval: $SIZE (batch $BS) ==="
+echo "checkpoint: $CKPT"
+uv run python -m experiments.offline_test_eval.eval \
+    --checkpoint "$CKPT" --batch-size "$BS" \
+    --out "experiments/offline_test_eval/results/${SIZE}_test_full.json"
+echo "=== $SIZE eval done ==="

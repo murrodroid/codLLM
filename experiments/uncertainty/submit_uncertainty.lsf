@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#BSUB -J codllm-unc
+#BSUB -q gpuh100
+#BSUB -W 6:00
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=12GB]"
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -env "all"
+#BSUB -oo logs/%J.out
+# Post-hoc uncertainty inference for a trained size-sweep checkpoint.
+# Mirrors experiments/offline_test_eval/submit_eval.lsf. Parameterized by env:
+#   CKPT    (required)  absolute checkpoint dir on blackhole
+#   SIZE    (required)  small|base|large|xl  (used only for the output filename)
+#   SPLIT   (optional)  train|val|test       (default val; we calibrate on val)
+#   MAXREC  (optional)  cap records for a smoke test (default: full split)
+# Output JSONL lands in experiments/uncertainty/results/seed333_fixed/.
+set -euo pipefail
+cd "${LSB_SUBCWD:-$HOME/codLLM}"
+export STORAGE_FOLDER="${BLACKHOLE:?BLACKHOLE must be set}"
+source hpc/env.sh
+exec 2>&1
+: "${CKPT:?CKPT env var must be set}"
+: "${SIZE:?SIZE env var must be set}"
+SPLIT="${SPLIT:-val}"
+OUTDIR="experiments/uncertainty/results/seed333_fixed"
+mkdir -p "$OUTDIR"
+MAXREC_ARG=""
+SUFFIX=""
+if [ -n "${MAXREC:-}" ]; then
+    MAXREC_ARG="--max-records ${MAXREC}"
+    SUFFIX="_n${MAXREC}"
+fi
+OUT="${OUTDIR}/${SIZE}_${SPLIT}${SUFFIX}.jsonl"
+echo "=== uncertainty inference: ${SIZE} / ${SPLIT} (maxrec=${MAXREC:-full}) ==="
+echo "checkpoint: ${CKPT}"
+echo "output:     ${OUT}"
+uv run python -m experiments.uncertainty.inference \
+    --checkpoint "${CKPT}" --split "${SPLIT}" --seed 333 \
+    ${MAXREC_ARG} \
+    --output "${OUT}"
+echo "=== ${SIZE} / ${SPLIT} done -> ${OUT} ==="
