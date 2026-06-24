@@ -1,19 +1,79 @@
-# Coding Historical Causes of Death with Large Language Models
+# codLLM , coding historical causes of death with language models
 
-codLLM trains and evaluates transformer models for mapping historical free-text causes of death to ICD10h labels. The
-main runtime is the `codllm` Python package under `src/`, with entrypoints for training and inference, TOML experiment
-specs under `runs/`, and invoke tasks for local and LSF/HPC workflows.
+![python](https://img.shields.io/badge/python-3.13-blue) ![license](https://img.shields.io/badge/license-MIT-green)
+
+Fine-tuned FLAN-T5 models that map historical, free-text causes of death to **ICD10h** codes, with calibrated
+uncertainty so a historian can accept the confident predictions and defer the rest to expert review.
 
 ![codLLM training pipeline](visualizations/codLLM_pipeline.png)
 
-## Project Scope
+## Problem
 
-Historical cause-of-death coding is usually manual, slow, and dependent on specialist knowledge. codLLM makes this work
-repeatable by standardizing source datasets, harmonizing ICD10h labels, preparing train/validation/test and hold-out
-splits, fine-tuning Hugging Face models, and logging model behavior and data diagnostics.
+Historical death registers record causes of death as free text, in several languages, with archaic and inconsistent
+terminology. Turning that text into standardized ICD10h codes is normally manual, slow, and dependent on specialist
+knowledge. codLLM standardizes five European registers (about 1.5M records), harmonizes their labels to the 2024 ICD10h
+masterlist, and fine-tunes sequence-to-sequence models to do the coding automatically, with uncertainty estimates that
+tell a historian which records are safe to accept and which to review. The historical datasets are not public and must
+be supplied separately under `data/raw/`.
 
-The repository does not include the historical datasets. Raw data and the ICD10h masterlist must be supplied separately
-under `data/raw/` or through `CODLLM_DATA_RAW_DIR`.
+## Research questions
+
+> **RQ1.** On historical, multilingual ICD10h cause-of-death coding, does our fine-tuned approach outperform classical,
+> retrieval-based, and agentic-LLM baselines, on both the full test set and the unseen-string slice?
+>
+> **RQ2.** Can uncertainty-informed selective prediction keep retained predictions highly accurate while deferring
+> ambiguous cases to expert review?
+>
+> **RQ3.** Can the approach reliably classify records from a historical source it was never trained on, and where it
+> cannot, does its uncertainty track its accuracy so those records can be deferred to expert review?
+
+RQ1 is answered by `experiments/baselines/` and `experiments/agentic_baseline_v2/` against the fine-tuned size sweep;
+RQ2 and RQ3 by `experiments/uncertainty/` and the leave-one-source-out specs under `runs/`.
+
+## Repository map
+
+```text
+codLLM/
+  src/codllm/            # the package: training, inference, data, settings, experiments
+  runs/                  # declarative TOML experiment specs  (see runs/README.md)
+    profiles/            #   per-model runtime profiles (h100-{small,base,large,xl})
+    sweeps/              #   reusable single-factor sweep building-blocks
+    thesis/              #   the reported thesis experiments (size sweep + ablations)
+    single/             #   standalone runs: holdouts (RQ3), deployment recipe
+  experiments/           # research code  (see experiments/README.md)
+    baselines/           #   RQ1 classical baselines
+    agentic_baseline_v2/ #   RQ1 agentic baseline
+    offline_test_eval/   #   authoritative held-out test evaluation
+    uncertainty/         #   RQ2 selective prediction + RQ3 transfer
+    notebooks/           #   exploratory data analysis
+    exploratory/         #   superseded directions (RAG, agentic v1)
+  hpc/                   # LSF submission profiles + storage bootstrap
+  tests/                 # pytest suite
+  docs/                  # onboarding
+  data/                  # raw + processed data (gitignored; supplied separately)
+```
+
+## Reproduce every experiment
+
+Training runs are submitted with `uv run invoke hpc.submit --config <spec> --profile <lsf-profile> --user <name>`.
+The W&B `test/*` metric is aliased to validation by a known trainer bug, so the **authoritative held-out test number
+comes from `experiments/offline_test_eval/eval.py`**, not from W&B.
+
+| Experiment | Spec or command |
+|---|---|
+| Size sweep, small to xl (RQ1) | `runs/thesis/model_size.toml` |
+| One-factor ablations (floor, multicod, perturbation, scheduler, inputs, pretraining, masterlist) | `runs/thesis/{upsampling_floor,multicod_synthetic,perturbation_rate,scheduler,input_features,pretraining,masterlist_injection}.toml` |
+| Deployment recipe (ablation winners) | `runs/single/size_sweep_base_final.toml` |
+| Leave-one-source-out holdouts (RQ3) | `runs/single/base_holdout_{amsterdam,belgium,copenhagen,ipswich,madrid}.toml` |
+| Authoritative held-out test eval | `uv run python -m experiments.offline_test_eval.eval --checkpoint <ckpt> --out <json>` |
+| Classical baselines (RQ1) | `uv run python -m experiments.baselines.{tfidf,embedding,majority_class}_baseline` |
+| Agentic baseline (RQ1) | `uv run python -m experiments.agentic_baseline_v2.run` then `...eval_posthoc` |
+| Selective prediction (RQ2) | `experiments/uncertainty/{dump_test_split,local_infer,analysis}.py` |
+| Transfer + uncertainty (RQ3) | `experiments/uncertainty/_rq3_*.py` |
+| Local smoke run | `uv run invoke train --config runs/single/codllm_small.toml` (override sizes, see Quick Start) |
+
+See [`runs/README.md`](runs/README.md) for spec inheritance and [`experiments/README.md`](experiments/README.md) for
+the research layout.
 
 ## Quick Start
 
@@ -66,7 +126,7 @@ uv run python -m codllm.training
 Run one TOML experiment spec locally:
 
 ```bash
-uv run invoke train --config runs/single/base_small.toml
+uv run invoke train --config runs/single/codllm_small.toml
 ```
 
 The checked-in specs target the project workflow, and several inherit H100 batch-size defaults. Adjust batch sizes,
@@ -168,45 +228,6 @@ usage, the largest direct children of `$RUN_STORAGE_DIR`, large siblings directl
 the same quota, and a quota-gap diagnostic when DTU reports more quota usage than is visible below the configured
 storage folder.
 
-## Repository Layout
-
-```text
-codLLM/
-|-- AGENTS.md                       # Agent instructions and project conventions
-|-- README.md
-|-- pyproject.toml                  # Python package metadata and dependencies
-|-- uv.lock
-|-- tasks.py                        # Invoke tasks for local, experiment, and HPC workflows
-|-- src/codllm/
-|   |-- training/                   # Training CLI, stages, Trainer setup, W&B logging
-|   |-- inference/                  # Inference CLI, IO, generation, decoding
-|   |-- maintenance/                # Dataset cache, HPC env, and git hygiene helpers
-|   |-- settings/                   # Config dataclasses, env parsing, option types
-|   |-- input/                      # Source mappings, raw loaders, harmonization, multi-COD
-|   |-- data/                       # DataHandler, caches, splits, balancing, tokenization
-|   |-- experiments/                # TOML specs and LSF submission rendering
-|   |-- labels/                     # ICD10h schemas and registry helpers
-|   |-- models/                     # Hugging Face model loading
-|   `-- runtime/                    # Paths and reproducibility helpers
-|-- runs/
-|   |-- base/                       # Reusable H100 runtime bases
-|   |-- single/                     # Single-run experiment specs
-|   `-- sweeps/                     # Cartesian sweep specs
-|-- hpc/
-|   |-- env.sh                      # HPC storage/cache bootstrap
-|   |-- lsf_profiles.toml           # Named LSF resource profiles
-|   `-- storage-check.sh
-|-- data/
-|   |-- raw/                        # User-supplied raw data, not committed
-|   `-- processed/                  # Local processed caches, not committed
-|-- visualizations/                 # README and project figures
-|-- experiments/                    # Notebooks and tree-search experiments
-|-- dockerfiles/
-|   `-- train.dockerfile
-|-- tests/
-`-- jobs/generated/                 # Created by hpc.submit; ignored by git
-```
-
 ## Experiment Specs
 
 Experiment specs are TOML files. They can inherit from base specs, set shared environment values in `[env]`, and define
@@ -253,22 +274,9 @@ uv run invoke experiments.list
 uv run invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
 ```
 
-Checked-in specs:
-
-| Spec | Purpose |
-| --- | --- |
-| `runs/profiles/h100-small.toml` | H100 runtime profile for `google/flan-t5-small` |
-| `runs/profiles/h100-base.toml` | H100 runtime profile for `google/flan-t5-base` |
-| `runs/profiles/h100-large.toml` | H100 runtime profile for `google/flan-t5-large` |
-| `runs/profiles/h100-xl.toml` | H100 runtime profile for `google/flan-t5-xl` |
-| `runs/single/size_sweep_{small,base,large,xl}.toml` | Identical-contract size-sweep baselines (effective batch 32 across sizes) |
-| `runs/single/base_small.toml` | Current single-run baseline with multi-COD, balancing, and pretraining enabled |
-| `runs/sweeps/pretraining.toml` | Masterlist pretraining on/off |
-| `runs/sweeps/multicod_pretrain.toml` | Synthetic multi-COD masterlist pretraining ratio |
-| `runs/sweeps/multicod.toml` | Multi-COD synthetic fine-tuning ratio with the large H100 base |
-| `runs/sweeps/holdout.toml` | Leave-one-source-out evaluation |
-| `runs/sweeps/scheduler.toml` | LR scheduler comparison |
-| `runs/sweeps/training_inputs.toml` | COD-only input vs COD+age+sex input |
+The checked-in specs are organized by tier under `runs/` (profiles, sweeps, thesis, single). See
+[`runs/README.md`](runs/README.md) for the full list and the inheritance design, and the **Reproduce every experiment**
+table near the top of this file for the command behind each result.
 
 ## HPC Usage
 
@@ -300,7 +308,7 @@ Inspect a concrete experiment plan:
 
 ```bash
 uv run --no-sync invoke experiments.plan \
-  --config runs/single/base_small.toml \
+  --config runs/single/codllm_small.toml \
   --profile h100-10h
 ```
 
@@ -308,7 +316,7 @@ Prebuild reusable processed-data and prepared-split caches:
 
 ```bash
 uv run --no-sync invoke hpc.build \
-  --config runs/single/base_small.toml \
+  --config runs/single/codllm_small.toml \
   --profile h100-10h \
   --user lucas
 ```
