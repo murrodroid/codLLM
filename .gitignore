@@ -1,32 +1,45 @@
-src/__pycache__
+# ==== caches & build artifacts ====
 __pycache__/
-api_keys.py
-.vscode
+.venv/
+.venv-gpu/
+.pytest_cache/
+.ipynb_checkpoints/
 .DS_Store
-data/cache/
-jobs/generated/
-logs/
-.claude/
+.vscode
 
-# Secrets
+# ==== secrets (never commit) ====
 .env
+api_keys.py
 
-# Local notes / scratch (never commit)
-Logbog og links.pdf
+# ==== agent & local state ====
+.claude/
+.agents/
+memory/
+artifacts/
+_archive/
+tools/ops/
+skills-lock.json
+
+# ==== local notes & scratch ====
+Logbog og links*.pdf
+logs/
+*.log
+
+# ==== data (raw/ and processed/ are handled by their own nested .gitignore) ====
+data/cache/
 experiments/notebooks/data/
 
-# Local training output
+# ==== run outputs ignored; declarative spec TOMLs are always tracked ====
 runs/run-*/
 runs/*/run-*/
 runs/inference/
+runs_smoke/
+jobs/generated/
 !runs/
 !runs/**/*.toml
-runs_smoke/
 
-# Downloaded model checkpoints (large binaries — fetch from W&B instead)
+# ==== research: heavy results ignored, code kept ====
+experiments/**/results/
 experiments/model_from_wandb/
-
-# Agentic baseline run state (pickled checkpoints, log files)
-experiments/agentic_baseline_claudecode/results/*.pkl
-experiments/agentic_baseline_claudecode/results/*.pkl.tmp
-experiments/agentic_baseline_claudecode/results/*.log
+*.pkl
+*.pkl.tmp
