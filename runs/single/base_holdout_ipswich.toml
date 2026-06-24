@@ -18,3 +18,8 @@ CODLLM_DATALOADER_PERSISTENT_WORKERS = false
 CODLLM_SAVE_TOTAL_LIMIT = 10
 CODLLM_AUTO_RESUME = true
 CODLLM_UNCERTAINTY_EVAL = false
+
+# Eval-only speedup: larger validation batch (train stays 128) uses fine-tune VRAM
+# headroom to cut per-epoch generation passes. 160 worst-case ~73GB of 80GB (Ipswich runs
+# hotter than Belgium, so a smaller bump). No effect on training, the resume, or the run id.
+CODLLM_PER_DEVICE_EVAL_BATCH_SIZE = 160
