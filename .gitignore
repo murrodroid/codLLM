@@ -43,3 +43,9 @@ experiments/**/results/
 experiments/model_from_wandb/
 *.pkl
 *.pkl.tmp
+
+# ==== root-level operational scratch (kept local; never on GitHub) ====
+/_*
+BASE_DEPLOY_FIX_PLAN.md
+COMMITTEE_FIXES.md
+HANDOFF.md
