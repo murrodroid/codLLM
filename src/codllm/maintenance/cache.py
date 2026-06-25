@@ -404,18 +404,24 @@ def _path_size(path: Path) -> int:
 
 
 def _last_activity_ns(path: Path) -> int:
-    """Return the newest access or modification timestamp below a path."""
+    """Return the newest modification timestamp below a path.
+
+    Modification time is the reliable staleness signal: access time is not
+    updated consistently across filesystems (``noatime``/``relatime``) and is
+    bumped by the cleanup scan's own directory traversal, which would make
+    genuinely old paths look freshly used on some CI runners.
+    """
     if not path.exists() and not path.is_symlink():
         return 0
     stats = path.lstat()
-    newest = max(stats.st_atime_ns, stats.st_mtime_ns)
+    newest = stats.st_mtime_ns
     if path.is_symlink() or path.is_file():
         return newest
     for child in path.rglob("*"):
         try:
             child_stats = child.lstat()
             if child.is_symlink() or child.is_file() or child.is_dir():
-                newest = max(newest, child_stats.st_atime_ns, child_stats.st_mtime_ns)
+                newest = max(newest, child_stats.st_mtime_ns)
         except OSError:
             continue
     return newest

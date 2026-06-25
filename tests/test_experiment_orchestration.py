@@ -394,6 +394,9 @@ email = "s234805@dtu.dk"
     monkeypatch.delenv("RUN_STORAGE_DIR", raising=False)
     monkeypatch.delenv("CODLLM_DATA_PROCESSED_DIR", raising=False)
     monkeypatch.delenv("CODLLM_OUTPUT_DIR", raising=False)
+    # CI runners (e.g. setup-uv) preset UV_CACHE_DIR; clear it so the profile
+    # default is exercised instead of the runner's cache path.
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.setenv("VIRTUAL_ENV", "/local/.venv")
 
     env = _maintenance_runtime_env(
