@@ -1,9 +1,36 @@
-# codLLM , coding historical causes of death with language models
+# codLLM: Coding historical causes of death with language models
 
 ![python](https://img.shields.io/badge/python-3.13-blue) ![license](https://img.shields.io/badge/license-MIT-green)
 
-Fine-tuned FLAN-T5 models that map historical, free-text causes of death to **ICD10h** codes, with calibrated
-uncertainty so a historian can accept the confident predictions and defer the rest to expert review.
+**Thesis:** [codLLM_Thesis.pdf](codLLM_Thesis.pdf)
+
+## Abstract
+
+Historical mortality registers record each death as a free-text cause, written in the language and orthography of its
+time and place. Before such data can be analyzed, every entry must be mapped by hand to a standardized historical
+disease code (ICD10h), expert work slow enough to gate whole research projects. This thesis asks whether a fine-tuned,
+task-specific language model can take over the bulk of that coding within a human-in-the-loop workflow, and whether the
+confidence of its predictions can make it safe to deploy.
+
+We fine-tune the FLAN-T5 sequence-to-sequence model at four sizes on roughly 1.5 million hand-coded records from five
+European registers spanning Danish, Dutch, English, French, and Spanish, and evaluate the resulting deployment model,
+`codLLM-base-deploy`, on a locked test split against classical, retrieval-based, and agentic baselines, under
+uncertainty-based selective prediction, and under transfer to an entirely held-out source. On the full test set it
+reaches 0.985 exact-match accuracy, 0.987 micro-F1, and 0.749 macro-F1, against 0.314 macro-F1 for the strongest
+training-free baseline, a TF-IDF classifier, and it far exceeds two frontier agents equipped with tools (0.56 to 0.60
+accuracy on a matched subset) at a fraction of their per-record cost. On the memorization-free unseen-string slice,
+where the model is weakest, it still reaches 0.843 exact-match accuracy and 0.625 macro-F1, so its advantage reflects
+genuine generalization rather than recall of seen strings.
+
+Reading the model's own token-level confidence makes the workflow usable. Auto-accepting the most-confident 80% of
+predictions codes them at near-perfect accuracy (above 0.999) while routing the uncertain remainder to a historical
+demographer, and on the unseen slice the same signal lifts retained accuracy from 0.843 to 0.925, deferring the
+genuinely novel inputs rather than coding them confidently wrong. Transfer to a source the model never trained on is the
+hardest setting: exact-match accuracy on a held-out source ranges from 0.22 to 0.64 and macro-F1 from 0.09 to 0.36, and
+although confidence stays informative, no operating point reaches an accuracy that would license unsupervised coding, so
+on a genuinely new register the model is a decision-support tool rather than an autonomous coder. We treat the dataset's
+heavy duplication explicitly throughout, reporting a memorization-free slice and duplication-aware confidence intervals,
+and recommend the compute-light base model for deployment.
 
 ![codLLM training pipeline](visualizations/codLLM_pipeline.png)
 
