@@ -28,7 +28,7 @@ from tasks import (
 def _lsf_profile(**overrides: object) -> LsfProfile:
     """Return a minimal LsfProfile for duration/override tests."""
     base = dict(
-        name="h100-24h",
+        name="h100",
         queue="gpuh100",
         wall_time="24:00",
         cores=17,
@@ -472,12 +472,14 @@ def test_h100_base_uses_high_throughput_dataloader_settings() -> None:
     assert small.env["CODLLM_PER_DEVICE_TRAIN_BATCH_SIZE"] == "256"
 
 
-def test_h100_lsf_profiles_match_dataloader_worker_capacity() -> None:
-    """H100 LSF profiles should reserve one CPU slot per worker plus the main process."""
+def test_h100_lsf_profile_matches_dataloader_worker_capacity() -> None:
+    """The H100 LSF profile reserves one CPU slot per worker plus the main process."""
     profiles = load_lsf_profiles("hpc/lsf_profiles.toml")
 
-    for profile_name in ("h100-24h", "h100-10h", "h100-5h", "h100-2h"):
-        assert profiles[profile_name].cores == 17
+    assert profiles["h100"].cores == 17
+    # Per-slot wall time is the queue max; campaign length is set via --duration.
+    assert profiles["h100"].wall_time == "24:00"
+    assert profiles["h100"].max_resubmits == 30
 
 
 def test_profile_for_lsf_user_sets_notification_email() -> None:
@@ -510,7 +512,7 @@ def test_maintenance_runtime_env_resolves_lucas_hpc_storage(
     profiles_path = tmp_path / "profiles.toml"
     profiles_path.write_text(
         """
-[h100-10h]
+[h100]
 queue = "gpu"
 wall_time = "00:30"
 cores = 2
@@ -546,7 +548,7 @@ email = "s234805@dtu.dk"
     assert "VIRTUAL_ENV" not in env
 
     inferred_env = _maintenance_runtime_env(
-        profile="h100-10h",
+        profile="h100",
         profiles=str(profiles_path),
         user=None,
         lucas=False,

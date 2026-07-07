@@ -298,7 +298,7 @@ Useful commands:
 ```bash
 uv run invoke --list
 uv run invoke experiments.list
-uv run invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100-10h
+uv run invoke experiments.plan --config runs/sweeps/pretraining.toml --profile h100
 ```
 
 The checked-in specs are organized by tier under `runs/` (profiles, sweeps, thesis, single). See
@@ -328,15 +328,16 @@ List configured LSF profiles:
 uv run --no-sync invoke hpc.profiles
 ```
 
-The default profiles are `h100-2h` through `h100-10h`, `h100-24h`, and `v100`. H100 profiles request 17 CPU cores so
-training specs can use 16 DataLoader workers plus the main process.
+There are two hardware profiles, `h100` and `v100`. Each profile's `wall_time` is the per-slot scheduler ceiling (24 h
+for `h100`), not a campaign length — use `--duration` on `hpc.submit` to run across multiple slots (see *Long runs*
+below). `h100` requests 17 CPU cores so training specs can use 16 DataLoader workers plus the main process.
 
 Inspect a concrete experiment plan:
 
 ```bash
 uv run --no-sync invoke experiments.plan \
   --config runs/single/codllm_small.toml \
-  --profile h100-10h
+  --profile h100
 ```
 
 Prebuild reusable processed-data and prepared-split caches:
@@ -344,7 +345,7 @@ Prebuild reusable processed-data and prepared-split caches:
 ```bash
 uv run --no-sync invoke hpc.build \
   --config runs/single/codllm_small.toml \
-  --profile h100-10h \
+  --profile h100 \
   --user lucas
 ```
 
@@ -353,7 +354,7 @@ For sweep specs, `hpc.build` builds every expanded run by default. Build one run
 ```bash
 uv run --no-sync invoke hpc.build \
   --config runs/sweeps/multicod_pretrain.toml \
-  --profile h100-10h \
+  --profile h100 \
   --user lucas \
   --sweep-index 2
 ```
@@ -363,7 +364,7 @@ Generate an LSF job without submitting it:
 ```bash
 uv run --no-sync invoke hpc.submit \
   --config runs/sweeps/pretraining.toml \
-  --profile h100-10h \
+  --profile h100 \
   --user lucas \
   --dry-run
 ```
@@ -373,7 +374,7 @@ Submit the generated job:
 ```bash
 uv run --no-sync invoke hpc.submit \
   --config runs/sweeps/pretraining.toml \
-  --profile h100-10h \
+  --profile h100 \
   --user lucas
 ```
 
@@ -413,7 +414,7 @@ the per-user limit that kills jobs.
 
 ### Long runs: multi-week campaigns with `--duration`
 
-A single LSF slot is capped by the profile's `wall_time` (24 h on `h100-24h` — the scheduler's hard limit). To train
+A single LSF slot is capped by the profile's `wall_time` (24 h on `h100` — the scheduler's hard limit). To train
 for longer, add `--duration` to `hpc.submit`: the job trains up to the slot wall time, saves a checkpoint, exits
 cleanly (status `0`, not a fake crash), and **resubmits itself** for the next slot until the requested duration is spent
 or training converges. Auto-resume continues from the checkpoint each slot; the final slot runs the
@@ -429,7 +430,7 @@ never resubmit forever. Nothing time-related is hardcoded in the spec.
 # Train for up to two weeks, in 24 h slots (~14 slots):
 uv run --no-sync invoke hpc.submit \
   --config runs/singles/codllm_base.toml \
-  --profile h100-24h \
+  --profile h100 \
   --duration 2w \
   --user lucas
 ```

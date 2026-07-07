@@ -1,4 +1,13 @@
-[h100-24h]
+# LSF submission profiles: cluster hardware + queue limits only.
+#
+# `wall_time` is the per-slot scheduler ceiling (the queue maximum for one job),
+# NOT the length of a training campaign. To train for longer than one slot, pass
+# `invoke hpc.submit --duration <e.g. 2w>`: each slot runs up to `wall_time`,
+# checkpoints, and resubmits until the duration is spent or training finishes.
+# `max_resubmits` is the hard ceiling on those automatic resubmissions so a
+# stuck run can never resubmit forever.
+
+[h100]
 queue = "gpuh100"
 wall_time = "24:00"
 cores = 17
@@ -8,128 +17,7 @@ email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
 storage_folder = "/work3/$USER"
 modules = ["cuda/12.2"]
-
-[h100-20h]
-queue = "gpuh100"
-wall_time = "20:00"
-cores = 17
-memory = "4GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-
-[h100-16h]
-queue = "gpuh100"
-wall_time = "16:00"
-cores = 17
-memory = "4GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-10h]
-queue = "gpuh100"
-wall_time = "10:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-9h]
-queue = "gpuh100"
-wall_time = "9:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-8h]
-queue = "gpuh100"
-wall_time = "8:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-7h]
-queue = "gpuh100"
-wall_time = "7:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-6h]
-queue = "gpuh100"
-wall_time = "6:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-5h]
-queue = "gpuh100"
-wall_time = "5:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-4h]
-queue = "gpuh100"
-wall_time = "4:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-3h]
-queue = "gpuh100"
-wall_time = "3:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
-
-[h100-2h]
-queue = "gpuh100"
-wall_time = "2:00"
-cores = 17
-memory = "12GB"
-gpu = "num=1:mode=exclusive_process"
-email = "s234805@dtu.dk"
-job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
-modules = ["cuda/12.2"]
+max_resubmits = 30
 
 [v100]
 queue = "gpuv100"
@@ -142,3 +30,4 @@ job_name_prefix = "codllm"
 storage_folder = "/work3/$USER"
 modules = ["cuda/12.2"]
 extra_resources = ["select[gpu32gb]"]
+max_resubmits = 30

@@ -31,7 +31,7 @@ runs/thesis/scheduler.toml
 uv run invoke experiments.plan --config runs/thesis/model_size.toml
 
 # submit to the HPC (the --profile here is the LSF submission profile, not runs/profiles/)
-uv run invoke hpc.submit --config runs/thesis/model_size.toml --profile h100-24h --user <name>
+uv run invoke hpc.submit --config runs/thesis/model_size.toml --profile h100 --user <name>
 ```
 
 See the top-level [README](../README.md) for the full reproduce table and HPC bootstrap.

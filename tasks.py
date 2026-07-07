@@ -320,7 +320,7 @@ def maintenance_status(
 def hpc_build(
     ctx: Context,
     config: str,
-    profile: str = "h100-10h",
+    profile: str = "h100",
     profiles: str = str(DEFAULT_PROFILE_PATH),
     user: str | None = None,
     lucas: bool = False,
@@ -360,7 +360,7 @@ def hpc_build(
 def hpc_submit(
     ctx: Context,
     config: str,
-    profile: str = "h100-10h",
+    profile: str = "h100",
     user: str | None = None,
     lucas: bool = False,
     elias: bool = False,
@@ -593,7 +593,7 @@ def _maintenance_runtime_env(
     selected_user = _resolve_lsf_user_alias(user, lucas, elias)
     if profile is None and selected_user is None:
         return os.environ.copy()
-    profile_name = profile or "h100-10h"
+    profile_name = profile or "h100"
     lsf_profile = _resolve_lsf_profile(profile_name, profiles, user, lucas, elias)
     env = os.environ.copy()
     env.update(_hpc_runtime_env_defaults(lsf_profile))
