@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from transformers import TrainerControl, TrainerState, TrainingArguments
 
+from codllm import run_markers
 from codllm.run_directory import (
     _latest_existing_run_dir,
     _looks_like_run_dir,
@@ -120,6 +121,82 @@ class TestTimeBudgetCallback:
     def test_negative_budget_rejected(self) -> None:
         with pytest.raises(ValueError):
             TimeBudgetCallback(max_runtime_seconds=-1)
+
+    def test_job_start_epoch_anchors_budget_to_job_wall_time(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # 100s budget, 10s margin -> stop at 90s of *job* wall time. Pretend the
+        # job started 80s ago (setup), so only ~10s of budget remain.
+        callback = TimeBudgetCallback(
+            max_runtime_seconds=100.0, safety_margin_seconds=10.0
+        )
+        monkeypatch.setenv(
+            TimeBudgetCallback.JOB_START_EPOCH_ENV, str(time.time() - 80)
+        )
+        args, state, control = self._fake_args_state_control()
+        callback.on_train_begin(args, state, control)
+        remaining = callback.remaining_seconds()
+        # deadline 90s from job start, ~80s already elapsed -> ~10s left.
+        assert 0 < remaining < 20
+
+    def test_job_start_epoch_absent_measures_from_training_start(self) -> None:
+        callback = TimeBudgetCallback(
+            max_runtime_seconds=100.0, safety_margin_seconds=10.0
+        )
+        args, state, control = self._fake_args_state_control()
+        callback.on_train_begin(args, state, control)
+        # No env anchor: budget starts now, so ~90s remain.
+        assert 80 < callback.remaining_seconds() <= 90
+
+    def test_writes_resume_marker_on_stop(self, tmp_path: Path) -> None:
+        callback = TimeBudgetCallback(
+            max_runtime_seconds=10.0,
+            safety_margin_seconds=2.0,
+            output_dir=str(tmp_path),
+        )
+        args, state, control = self._fake_args_state_control()
+        callback.on_train_begin(args, state, control)
+        callback._start_time = time.monotonic() - 30
+        callback.on_step_end(args, state, control)
+        marker = run_markers.resume_needed_path(tmp_path)
+        assert marker.exists()
+        assert "max_runtime_seconds=10" in marker.read_text()
+
+
+class TestRunMarkers:
+    def test_state_dir_prefers_env_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(run_markers.RUN_STATE_DIR_ENV, raising=False)
+        assert run_markers.run_state_dir(tmp_path) == tmp_path
+        override = tmp_path / "stable"
+        monkeypatch.setenv(run_markers.RUN_STATE_DIR_ENV, str(override))
+        assert run_markers.run_state_dir(tmp_path / "run-dir") == override
+
+    def test_resume_marker_round_trip(self, tmp_path: Path) -> None:
+        assert not run_markers.is_resume_needed(tmp_path)
+        run_markers.mark_resume_needed(
+            tmp_path, metadata={"safety_margin_seconds": "300"}
+        )
+        assert run_markers.is_resume_needed(tmp_path)
+        assert "safety_margin_seconds=300" in (
+            run_markers.resume_needed_path(tmp_path).read_text()
+        )
+        run_markers.clear_resume_needed(tmp_path)
+        assert not run_markers.is_resume_needed(tmp_path)
+
+    def test_mark_complete_clears_stale_resume_and_stamps(
+        self, tmp_path: Path
+    ) -> None:
+        # A stale resume request from a prior slot must not survive completion.
+        run_markers.mark_resume_needed(tmp_path)
+        run_markers.mark_training_complete(tmp_path)
+        assert not run_markers.is_resume_needed(tmp_path)
+        assert run_markers.is_training_complete(tmp_path)
+        assert run_markers.final_eval_done_path(tmp_path).exists()
+
+    def test_clear_missing_marker_is_silent(self, tmp_path: Path) -> None:
+        run_markers.clear_resume_needed(tmp_path / "does-not-exist")
 
 
 class TestSigtermSaveCallback:

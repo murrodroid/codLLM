@@ -1,7 +1,7 @@
 import logging
+import os
 import signal
 import time
-from pathlib import Path
 from typing import Any, Mapping
 
 from transformers import (
@@ -13,6 +13,7 @@ from transformers import (
     TrainingArguments,
 )
 
+from codllm import run_markers
 from codllm.metrics import (
     reset_metric_artifact_scope,
     reset_metric_source_ids,
@@ -256,18 +257,26 @@ class HoldoutEvaluationCallback(TrainerCallback):
 class TimeBudgetCallback(TrainerCallback):
     """Stop training gracefully before an HPC wall-time limit kicks in.
 
-    Records the wall-clock start of training and on every step end checks
-    elapsed time against ``max_runtime_seconds - safety_margin_seconds``;
-    when that budget is exhausted we set ``should_save`` and
-    ``should_training_stop`` so the trainer writes a clean checkpoint and
-    exits before the scheduler sends SIGKILL.
+    On every step end it checks elapsed time against
+    ``max_runtime_seconds - safety_margin_seconds``; when that budget is
+    exhausted we set ``should_save`` and ``should_training_stop`` so the trainer
+    writes a clean checkpoint and exits before the scheduler sends SIGKILL.
+
+    The budget is normally measured from the start of training, but when the
+    launcher exports ``CODLLM_JOB_START_EPOCH`` (the generated LSF script does)
+    it is instead measured from the start of the *job*, so setup time counts too
+    and ``max_runtime_seconds`` can be set directly to the scheduler ``-W``
+    limit.
 
     Also drops a ``.resume_needed`` marker file at ``output_dir`` when the
-    budget triggers, so downstream automation can distinguish a graceful
-    "this run wants more wall time" exit from an actual crash.
+    budget triggers, so the generated LSF script can distinguish a graceful
+    "this run wants more wall time" exit from an actual crash and resubmit the
+    job. ``output_dir`` here is the resume-stable run state directory (see
+    :mod:`codllm.run_markers`), which the trainer factory resolves for us.
     """
 
-    RESUME_MARKER_FILENAME = ".resume_needed"
+    RESUME_MARKER_FILENAME = run_markers.RESUME_NEEDED_MARKER
+    JOB_START_EPOCH_ENV = "CODLLM_JOB_START_EPOCH"
 
     def __init__(
         self,
@@ -292,14 +301,32 @@ class TimeBudgetCallback(TrainerCallback):
         control: TrainerControl,
         **kwargs: Any,
     ) -> TrainerControl:
-        """Record the training start timestamp."""
+        """Record the budget start timestamp (job start when available)."""
         del state, kwargs
         self._start_time = time.monotonic()
+        # When the launcher recorded a job start, shift the reference back by
+        # the wall time already spent this slot so the budget covers setup too.
+        job_elapsed = self._job_elapsed_seconds()
+        if job_elapsed is not None:
+            self._start_time -= job_elapsed
         self._stopping = False
         # Use the trainer's output_dir if we weren't given one at construction.
         if self.output_dir is None and args is not None:
             self.output_dir = getattr(args, "output_dir", None)
         return control
+
+    @classmethod
+    def _job_elapsed_seconds(cls) -> float | None:
+        """Return wall seconds since job start, or None when not anchored."""
+        raw = os.getenv(cls.JOB_START_EPOCH_ENV)
+        if not raw:
+            return None
+        try:
+            started = float(raw)
+        except ValueError:
+            return None
+        elapsed = time.time() - started
+        return elapsed if elapsed >= 0 else None
 
     def remaining_seconds(self) -> float:
         """Return seconds remaining in the training budget, or +inf when disabled."""
@@ -313,18 +340,13 @@ class TimeBudgetCallback(TrainerCallback):
         """Drop a marker file so resubmit logic can distinguish graceful exit."""
         if not self.output_dir:
             return
-        try:
-            marker = Path(self.output_dir) / self.RESUME_MARKER_FILENAME
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(
-                f"graceful_exit_at={time.time():.0f}\n"
-                f"max_runtime_seconds={self.max_runtime_seconds:.0f}\n"
-                f"safety_margin_seconds={self.safety_margin_seconds:.0f}\n",
-                encoding="utf-8",
-            )
-        except OSError:
-            # Marker is a convenience for automation; never fail training over it.
-            return
+        run_markers.mark_resume_needed(
+            self.output_dir,
+            metadata={
+                "max_runtime_seconds": f"{self.max_runtime_seconds:.0f}",
+                "safety_margin_seconds": f"{self.safety_margin_seconds:.0f}",
+            },
+        )
 
     def on_step_end(
         self,

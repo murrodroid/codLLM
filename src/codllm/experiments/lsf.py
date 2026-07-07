@@ -43,6 +43,10 @@ class LsfProfile:
     extra_resources: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
     sync_env: bool = True
+    # Hard ceiling on automatic time-budget resubmissions, so a stuck run can
+    # never resubmit forever. The submit task derives the actual count from the
+    # requested campaign duration and clamps it to this value.
+    max_resubmits: int = 30
 
 
 @dataclass(frozen=True)
@@ -102,10 +106,17 @@ def prepare_lsf_submission(
     *,
     project_dir: Path | str = ".",
     output_root: Path | str = "jobs/generated",
+    env_overrides: Mapping[str, str] | None = None,
 ) -> GeneratedSubmission:
-    """Write generated LSF scripts and env files for an experiment spec."""
+    """Write generated LSF scripts and env files for an experiment spec.
+
+    ``env_overrides`` are submit-time environment values (e.g. the time-budget
+    and resubmission settings derived from ``--duration``) written into every
+    run env file with the highest precedence.
+    """
     project_path = Path(project_dir).resolve()
     runs = tuple(spec.expanded_runs())
+    overrides = dict(env_overrides or {})
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     submission_dir = project_path / output_root / f"{_job_slug(spec.name)}-{timestamp}"
     env_dir = submission_dir / "env"
@@ -114,17 +125,20 @@ def prepare_lsf_submission(
 
     for index, run in enumerate(runs, start=1):
         env_path = env_dir / f"run-{index}.env"
-        env_path.write_text(format_env_file(run, spec), encoding="utf-8")
+        env_path.write_text(
+            format_env_file(run, spec, env_overrides=overrides), encoding="utf-8"
+        )
 
     script_path = submission_dir / "submit.lsf"
     script_path.write_text(
-        _render_lsf_script(spec, profile, runs, project_path, env_dir), encoding="utf-8"
+        _render_lsf_script(spec, profile, runs, project_path, env_dir, script_path),
+        encoding="utf-8",
     )
     manifest_path = submission_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(
             _manifest_payload(
-                spec, profile, runs, submission_dir, script_path, env_dir
+                spec, profile, runs, submission_dir, script_path, env_dir, overrides
             ),
             indent=2,
             sort_keys=True,
@@ -176,7 +190,18 @@ def _build_profile(name: str, raw: Mapping[str, Any]) -> LsfProfile:
         ),
         env=_string_env_table(raw.get("env")),
         sync_env=_optional_bool(raw.get("sync_env"), "sync_env", default=True),
+        max_resubmits=_optional_max_resubmits(raw.get("max_resubmits")),
     )
+
+
+def _optional_max_resubmits(value: object) -> int:
+    """Read the optional resubmission ceiling, defaulting to 30."""
+    parsed = _optional_int(value, "max_resubmits")
+    if parsed is None:
+        return 30
+    if parsed < 0:
+        raise SpecError("LSF profile 'max_resubmits' must be non-negative.")
+    return parsed
 
 
 def _render_lsf_script(
@@ -185,14 +210,25 @@ def _render_lsf_script(
     runs: tuple[ExperimentRun, ...],
     project_dir: Path,
     env_dir: Path,
+    script_path: Path,
 ) -> str:
     """Render the generated LSF script used for all runs in a submission."""
     run_count = len(runs)
     job_name = _job_name(profile, spec.name, run_count)
+    job_name_base = _job_slug(f"{profile.job_name_prefix}-{spec.name}")[:80]
     output_template = profile.output_template or (
         f"{profile.log_dir}/%J_%I.out" if run_count > 1 else f"{profile.log_dir}/%J.out"
     )
     env_dir_ref = _path_for_script(env_dir, project_dir)
+    state_dir_ref = _path_for_script(env_dir.parent / "state", project_dir)
+    script_ref = _path_for_script(script_path, project_dir)
+    # A resubmission of an array job must re-launch only the current element,
+    # not the whole array; override -J with a single-element array spec.
+    resubmit_command = (
+        f'bsub -J "{job_name_base}[${{RUN_INDEX}}]" < "$SELF_SCRIPT"'
+        if run_count > 1
+        else 'bsub < "$SELF_SCRIPT"'
+    )
     module_lines = "\n".join(
         f"  module load {shlex.quote(module)}" for module in profile.modules
     )
@@ -232,12 +268,23 @@ def _render_lsf_script(
             '  printf "ERROR: generated LSF job failed at line %s with exit code %s\\n" "$LINENO" "$code";',
             '  exit "$code"\' ERR',
             "",
+            "# Anchor the training time budget to this slot's wall clock, so a"
+            " CODLLM_MAX_RUNTIME_SECONDS equal to the LSF -W limit accounts for"
+            " setup time too.",
+            'export CODLLM_JOB_START_EPOCH="$(date +%s)"',
+            "",
             f'PROJECT_DIR="${{LSB_SUBCWD:-{project_dir}}}"',
             'RUN_INDEX="${LSB_JOBINDEX:-1}"',
             f'if [ "{run_count}" = "1" ] && [ "$RUN_INDEX" = "0" ]; then',
             '  RUN_INDEX="1"',
             "fi",
             f'RUN_ENV_FILE="${{CODLLM_RUN_ENV_FILE:-$PROJECT_DIR/{env_dir_ref}/run-${{RUN_INDEX}}.env}}"',
+            # Path to this generated script so a time-budget stop can resubmit it.
+            f'SELF_SCRIPT="${{CODLLM_SELF_SCRIPT:-$PROJECT_DIR/{script_ref}}}"',
+            # Resume-lifecycle markers live in a per-run-index dir that is stable
+            # across resubmissions (the scheduler hands each slot a fresh run dir).
+            f'CODLLM_RUN_STATE_DIR="${{CODLLM_RUN_STATE_DIR:-$PROJECT_DIR/{state_dir_ref}/run-${{RUN_INDEX}}}}"',
+            "export CODLLM_RUN_STATE_DIR",
             'cd "$PROJECT_DIR"',
             "exec 2>&1",
             "",
@@ -317,6 +364,7 @@ def _render_lsf_script(
             '  "$UV_CACHE_DIR" \\',
             '  "$UV_PYTHON_INSTALL_DIR" \\',
             '  "$CODLLM_OUTPUT_DIR" \\',
+            '  "$CODLLM_RUN_STATE_DIR" \\',
             '  "$CODLLM_DATA_PROCESSED_DIR"',
             'mkdir -p "$(dirname "$UV_PROJECT_ENVIRONMENT")"',
             "",
@@ -385,11 +433,62 @@ def _render_lsf_script(
             '  "${inference_cmd[@]}"',
             "}",
             "",
+            "# Self-resubmit for another slot when training stopped for wall time.",
+            "# Only reached when training exited 0 (a real crash trips the ERR trap",
+            "# above and exits non-zero, so crashes never resubmit).",
+            "maybe_resubmit_for_resume() {",
+            '  if [ "${CODLLM_JOB_COMMAND:-train}" != "train" ]; then',
+            "    return 0",
+            "  fi",
+            '  local state_dir="${CODLLM_RUN_STATE_DIR:-}"',
+            '  if [ -z "$state_dir" ]; then',
+            "    return 0",
+            "  fi",
+            '  if [ -f "$state_dir/.training_complete" ]; then',
+            '    echo "Training complete; no resubmission needed."',
+            "    return 0",
+            "  fi",
+            '  if [ ! -f "$state_dir/.resume_needed" ]; then',
+            "    return 0",
+            "  fi",
+            '  if ! is_truthy "${CODLLM_AUTO_RESUME:-0}"; then',
+            '    echo "WARNING: .resume_needed is set but CODLLM_AUTO_RESUME is disabled;"',
+            '    echo "         a resubmitted job would restart from scratch. Not resubmitting."',
+            "    return 0",
+            "  fi",
+            '  local max_resubmits="${CODLLM_MAX_RESUBMITS:-20}"',
+            '  local count_file="$state_dir/.resubmit_count"',
+            "  local done=0",
+            '  if [ -f "$count_file" ]; then',
+            '    done="$(cat "$count_file" 2>/dev/null || echo 0)"',
+            "  fi",
+            '  case "$done" in ""|*[!0-9]*) done=0 ;; esac',
+            '  if [ "$done" -ge "$max_resubmits" ]; then',
+            '    echo "ERROR: reached CODLLM_MAX_RESUBMITS=$max_resubmits without completing training; not resubmitting."',
+            '    : > "$state_dir/.resubmit_exhausted"',
+            "    return 0",
+            "  fi",
+            "  done=$((done + 1))",
+            "  printf '%s\\n' \"$done\" > \"$count_file\"",
+            "  if ! command -v bsub >/dev/null 2>&1; then",
+            '    echo "WARNING: bsub not found; cannot self-resubmit for resume."',
+            "    return 0",
+            "  fi",
+            '  echo "Resume needed; resubmitting job (resubmission $done/$max_resubmits)."',
+            f"  if {resubmit_command}; then",
+            '    echo "Resubmitted for resume."',
+            "  else",
+            '    echo "WARNING: bsub resubmission failed."',
+            "  fi",
+            "}",
+            "",
             'case "${CODLLM_JOB_COMMAND:-train}" in',
             "  train) run_training ;;",
             "  inference) run_inference ;;",
             '  *) echo "ERROR: unsupported CODLLM_JOB_COMMAND: ${CODLLM_JOB_COMMAND:-}"; exit 1 ;;',
             "esac",
+            "",
+            "maybe_resubmit_for_resume",
             "",
             'echo "Job finished successfully."',
         ]
@@ -404,6 +503,7 @@ def _manifest_payload(
     submission_dir: Path,
     script_path: Path,
     env_dir: Path,
+    env_overrides: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return serializable manifest data for generated submissions."""
     return {
@@ -421,12 +521,14 @@ def _manifest_payload(
             "cores": profile.cores,
             "memory": profile.memory,
             "gpu": profile.gpu,
+            "max_resubmits": profile.max_resubmits,
         },
         "paths": {
             "submission_dir": str(submission_dir),
             "script_path": str(script_path),
             "env_dir": str(env_dir),
         },
+        "submit_overrides": dict(env_overrides or {}),
         "runs": [
             {
                 "index": index,

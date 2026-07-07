@@ -4,6 +4,22 @@ description = "simple run to check baseline model performance"
 force_reprocess = false
 
 [env]
+# Checkpoint output root. A relative path resolves under the per-user storage
+# folder ($RUN_STORAGE_DIR, e.g. /work3/<account>/codllm) on the compute node,
+# so checkpoints land at .../codllm/checkpoints/codllm_base/run-*/checkpoint-*.
+# Isolated + resume-stable so auto-resume always continues *this* run.
+CODLLM_OUTPUT_DIR = "checkpoints/codllm_base"
+CODLLM_AUTO_RESUME = 1
+# Per-slot save buffer: stop this many seconds before the slot wall limit.
+CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600
+# The per-slot time budget and resubmission count are set at submit time from
+# the LSF profile's wall time via `invoke hpc.submit --duration <e.g. 2w>`,
+# so they are intentionally not hardcoded here.
+
+# Log the full metric suite and the full run config to W&B.
+CODLLM_WANDB_METRIC_MODE = "all"
+CODLLM_WANDB_RUN_CONFIG_MODE = "full"
+
 CODLLM_TRAINING_INPUT = "cod,age,sex"
 CODLLM_DATASET_SIZE = 1.0
 CODLLM_LR = 2.5e-5
@@ -41,10 +57,6 @@ CODLLM_EARLY_STOPPING_PATIENCE = 10
 # CODLLM_SAVE_TOTAL_LIMIT = 3
 # CODLLM_LOAD_BEST_MODEL_AT_END = 1
 # CODLLM_EARLY_STOPPING_THRESHOLD = 0.0
-# CODLLM_AUTO_RESUME = 1
-# CODLLM_PER_SIZE_OUTPUT_DIR = 1
-# CODLLM_MAX_RUNTIME_SECONDS = 82800
-# CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600
 # CODLLM_BALANCE_PERTURBATIONS = "swap_adjacent_chars,delete_random_char,accent_random_vowel,qwerty_misspell"
 # CODLLM_BALANCE_PERTURBATION_MEAN = 0.05
 # CODLLM_BALANCE_PERTURBATION_VARIANCE = 0.0

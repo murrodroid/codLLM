@@ -909,3 +909,47 @@ def log_wandb_run_metadata(
         if flattened_metadata:
             wandb.config.update(flattened_metadata, allow_val_change=True)
     _log_wandb_metadata_artifact(wandb, metadata)
+
+
+def log_run_status(cfg: Config, status: str) -> None:
+    """Record the codllm lifecycle status on the active W&B run.
+
+    ``status`` is one of ``needs_resume`` (the slot stopped for wall time and
+    the job will be resubmitted) or ``complete`` (training and final evaluation
+    finished). Kept in ``run.summary`` so it is visible in the runs table and
+    survives the resume/finish cycle of one logical run.
+    """
+    del cfg  # status is attached to whatever run is currently active
+    if os.getenv("WANDB_MODE") == "disabled":
+        return
+    try:
+        wandb = _import_wandb()
+    except ImportError:
+        return
+    run = getattr(wandb, "run", None)
+    if run is None:
+        return
+    try:
+        run.summary["codllm/status"] = status
+    except Exception:  # pragma: no cover - never fail a run over telemetry
+        return
+
+
+def finish_wandb_run(cfg: Config) -> None:
+    """Finish the active W&B run cleanly (flush + close) if one is open.
+
+    A planned resume uses a normal exit and finishes the run with the default
+    exit code, so it shows as ``finished`` rather than ``crashed``. The next
+    slot re-opens the same run id via the sidecar with ``resume="allow"``.
+    """
+    del cfg
+    try:
+        wandb = _import_wandb()
+    except ImportError:
+        return
+    if getattr(wandb, "run", None) is None:
+        return
+    try:
+        wandb.finish()
+    except Exception:  # pragma: no cover - defensive: never fail teardown
+        return

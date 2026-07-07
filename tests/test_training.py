@@ -973,6 +973,98 @@ def test_train_uses_validation_split_from_data_handler(
     assert Path(captured["cfg"].output_dir).parent.name == "runs"
 
 
+class _FixedSplitsHandler:
+    """Stub data handler returning fixed splits for lifecycle tests."""
+
+    def __init__(self, splits: DataSplits) -> None:
+        self._splits = splits
+
+    def get_splits(self, force_reprocess: bool = False) -> DataSplits:
+        return self._splits
+
+
+def _lifecycle_cfg_and_handler(tmp_path: Path) -> tuple[Config, _FixedSplitsHandler]:
+    cfg = Config(output_dir=str(tmp_path / "runs"))
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t1", "t2"], "label": ["A00", "A01"]}),
+        val=pd.DataFrame({"text": ["v1"], "label": ["A02"]}),
+        test=pd.DataFrame({"text": ["e1"], "label": ["A03"]}),
+    )
+    return cfg, _FixedSplitsHandler(splits)
+
+
+def test_train_skips_final_eval_when_resume_needed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A time-budget stop must skip final eval and flag the run for resume."""
+    from codllm import run_markers
+
+    cfg, handler = _lifecycle_cfg_and_handler(tmp_path)
+    monkeypatch.setattr(pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None)
+
+    def fake_train(cfg: Config, **_: Any) -> tuple[str, str]:
+        # Simulate the time-budget callback dropping a resume marker.
+        run_markers.mark_resume_needed(run_markers.run_state_dir(cfg.output_dir))
+        return "trainer", "tokenizer"
+
+    eval_calls: list[str] = []
+    status: list[str] = []
+    monkeypatch.setattr(pipeline_module, "_train_from_datasets", fake_train)
+    monkeypatch.setattr(
+        pipeline_module,
+        "_run_final_evaluation",
+        lambda **_: eval_calls.append("ran"),
+    )
+    monkeypatch.setattr(
+        wandb_utils_module, "log_run_status", lambda cfg, s: status.append(s)
+    )
+    monkeypatch.setattr(wandb_utils_module, "finish_wandb_run", lambda cfg: None)
+
+    pipeline_module.train(cfg, data_handler=handler)
+
+    state_dir = run_markers.run_state_dir(cfg.output_dir)
+    assert eval_calls == []  # final evaluation was skipped
+    assert status == ["needs_resume"]
+    assert run_markers.is_resume_needed(state_dir)
+    assert not run_markers.is_training_complete(state_dir)
+
+
+def test_train_runs_final_eval_and_marks_complete_when_finished(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Real completion runs final eval once and stamps the completion markers."""
+    from codllm import run_markers
+
+    cfg, handler = _lifecycle_cfg_and_handler(tmp_path)
+    monkeypatch.setattr(pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None)
+
+    eval_calls: list[str] = []
+    status: list[str] = []
+    monkeypatch.setattr(
+        pipeline_module,
+        "_train_from_datasets",
+        lambda cfg, **_: ("trainer", "tokenizer"),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "_run_final_evaluation",
+        lambda **_: eval_calls.append("ran"),
+    )
+    monkeypatch.setattr(
+        wandb_utils_module, "log_run_status", lambda cfg, s: status.append(s)
+    )
+    monkeypatch.setattr(wandb_utils_module, "finish_wandb_run", lambda cfg: None)
+
+    pipeline_module.train(cfg, data_handler=handler)
+
+    state_dir = run_markers.run_state_dir(cfg.output_dir)
+    assert eval_calls == ["ran"]  # final evaluation ran exactly once
+    assert status == ["complete"]
+    assert run_markers.is_training_complete(state_dir)
+    assert run_markers.final_eval_done_path(state_dir).exists()
+    assert not run_markers.is_resume_needed(state_dir)
+
+
 def test_train_sequence_classification_builds_masterlist_label_space(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

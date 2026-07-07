@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import errno
+import math
 import os
+import re
 import time
 from contextlib import contextmanager
 from dataclasses import replace
@@ -364,21 +366,103 @@ def hpc_submit(
     elias: bool = False,
     profiles: str = str(DEFAULT_PROFILE_PATH),
     output_root: str = "jobs/generated",
+    duration: str | None = None,
     dry_run: bool = False,
 ) -> None:
-    """Generate and optionally submit an LSF job for an experiment specification."""
+    """Generate and optionally submit an LSF job for an experiment specification.
+
+    Pass --duration (e.g. 2w, 14d, 48h) to run a long campaign across scheduler
+    slots: each slot trains up to the profile's wall time, saves a checkpoint,
+    and resubmits itself until the requested duration is spent or training
+    finishes. The profile's max_resubmits is the hard ceiling.
+    """
     spec = load_experiment_spec(config)
     lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
+    env_overrides = _resume_env_overrides(lsf_profile, duration)
     submission = prepare_lsf_submission(
         spec,
         lsf_profile,
         project_dir=Path.cwd(),
         output_root=output_root,
+        env_overrides=env_overrides,
     )
     _print_submission(submission)
+    if env_overrides:
+        _print_resume_plan(lsf_profile, duration, env_overrides)
     if dry_run:
         return
     ctx.run(submission.bsub_command(), pty=True)
+
+
+_DURATION_UNIT_SECONDS = {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
+
+
+def _wall_time_seconds(wall_time: str) -> int:
+    """Convert an LSF wall-time string ('HH:MM' or bare minutes) to seconds."""
+    text = wall_time.strip()
+    if ":" in text:
+        hours_str, _, minutes_str = text.partition(":")
+        seconds = int(hours_str or "0") * 3600 + int(minutes_str or "0") * 60
+    else:
+        seconds = int(text) * 60
+    if seconds <= 0:
+        raise Exit(
+            f"Profile wall_time {wall_time!r} does not parse to a positive duration.",
+            code=2,
+        )
+    return seconds
+
+
+def _parse_duration_seconds(text: str) -> int:
+    """Parse a campaign duration like '2w', '14d', '48h', '30m' into seconds."""
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*([wdhms]?)\s*", text.lower())
+    if not match:
+        raise Exit(
+            f"--duration must look like '2w', '14d', or '48h', got {text!r}.",
+            code=2,
+        )
+    seconds = int(round(float(match.group(1)) * _DURATION_UNIT_SECONDS[match.group(2) or "h"]))
+    if seconds <= 0:
+        raise Exit("--duration must resolve to a positive number of seconds.", code=2)
+    return seconds
+
+
+def _resume_env_overrides(profile: LsfProfile, duration: str | None) -> dict[str, str]:
+    """Return submit-time env that turns a spec into a resumable time campaign."""
+    if duration is None:
+        return {}
+    wall_seconds = _wall_time_seconds(profile.wall_time)
+    slots_needed = math.ceil(_parse_duration_seconds(duration) / wall_seconds)
+    resubmits = min(slots_needed, profile.max_resubmits)
+    if slots_needed > profile.max_resubmits:
+        print(
+            f"WARNING: {duration} needs ~{slots_needed} slot(s) of {profile.wall_time}, "
+            f"but profile '{profile.name}' caps resubmissions at {profile.max_resubmits}; "
+            f"the campaign will stop after ~{profile.max_resubmits + 1} slots. "
+            "Use a longer-wall profile or raise max_resubmits to cover the full duration."
+        )
+    return {
+        "CODLLM_AUTO_RESUME": "1",
+        "CODLLM_MAX_RUNTIME_SECONDS": str(wall_seconds),
+        "CODLLM_MAX_RESUBMITS": str(resubmits),
+    }
+
+
+def _print_resume_plan(
+    profile: LsfProfile, duration: str | None, overrides: dict[str, str]
+) -> None:
+    """Print the derived time-budget campaign so it is visible before submit."""
+    print("Resume campaign:")
+    print(f"  requested duration: {duration}")
+    print(
+        f"  per-slot budget: {profile.wall_time} "
+        f"({overrides['CODLLM_MAX_RUNTIME_SECONDS']}s) via CODLLM_MAX_RUNTIME_SECONDS"
+    )
+    print(
+        f"  max resubmissions: {overrides['CODLLM_MAX_RESUBMITS']} "
+        f"(profile ceiling {profile.max_resubmits})"
+    )
+    print("  auto-resume: enabled")
 
 
 def _select_run(spec: ExperimentSpec, sweep_index: int) -> ExperimentRun:

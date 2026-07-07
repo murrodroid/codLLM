@@ -5,6 +5,7 @@ from typing import Any
 from transformers import Trainer
 
 import codllm.wandb_utils as wandb_utils
+from codllm import run_markers
 from codllm.config import Config
 from codllm.data import (
     DataHandler,
@@ -265,6 +266,11 @@ def train(
 ) -> tuple[Trainer, Any, DataSplits]:
     """Build or load data splits and launch training."""
     prepare_run_output_dir(cfg)
+    # Clear any resume request left by a previous slot so its presence after
+    # training unambiguously reflects *this* slot's outcome (the time-budget
+    # callback re-writes it if the budget triggers again).
+    state_dir = run_markers.run_state_dir(cfg.output_dir)
+    run_markers.clear_resume_needed(state_dir)
     _initialize_wandb_for_data_prep(cfg)
     handler = data_handler or DataHandler(cfg)
     _log_progress("Preparing data splits.")
@@ -416,12 +422,51 @@ def train(
             label2id=classifier_label2id,
             id2label=classifier_id2label,
         )
+    state_dir = run_markers.run_state_dir(cfg.output_dir)
+    if run_markers.is_resume_needed(state_dir):
+        # Wall-time budget stopped training before it finished. A checkpoint is
+        # saved; skip the one-shot final evaluation and let the LSF script
+        # resubmit for another slot. Exit cleanly (status 0) so the run reads as
+        # "needs resume", not "crashed".
+        _log_progress(
+            "Time budget reached before training finished; checkpoint saved and "
+            f"'{run_markers.RESUME_NEEDED_MARKER}' set. Skipping final "
+            "evaluation; the job will be resubmitted to continue."
+        )
+        wandb_utils.log_run_status(cfg, "needs_resume")
+        wandb_utils.finish_wandb_run(cfg)
+        return trainer, tokenizer, splits
+
+    _run_final_evaluation(
+        cfg=cfg,
+        trainer=trainer,
+        tokenizer=tokenizer,
+        splits=splits,
+        label2id=classifier_label2id,
+    )
+    # Training truly finished (epochs exhausted or early stopping) and final
+    # evaluation ran exactly once. Record completion so a stray resubmission
+    # does not re-run training or evaluation.
+    run_markers.mark_training_complete(state_dir)
+    wandb_utils.log_run_status(cfg, "complete")
+    wandb_utils.finish_wandb_run(cfg)
+    return trainer, tokenizer, splits
+
+
+def _run_final_evaluation(
+    cfg: Config,
+    trainer: Any,
+    tokenizer: Any,
+    splits: DataSplits,
+    label2id: dict[str, int] | None = None,
+) -> None:
+    """Run the one-shot final test, full-holdout, and uncertainty evaluation."""
     evaluate_test_split(
         cfg=cfg,
         trainer=trainer,
         tokenizer=tokenizer,
         test_ds=splits.test,
-        label2id=classifier_label2id,
+        label2id=label2id,
     )
     if dataset_row_count(splits.holdout) not in (None, 0):
         evaluate_test_split(
@@ -429,7 +474,7 @@ def train(
             trainer=trainer,
             tokenizer=tokenizer,
             test_ds=splits.holdout,
-            label2id=classifier_label2id,
+            label2id=label2id,
             metric_key_prefix="holdout_full",
         )
     if (
@@ -449,4 +494,3 @@ def train(
             )
         except Exception as exc:  # pragma: no cover - defensive: never fail training
             _log_progress(f"Uncertainty pass skipped due to error: {exc!r}")
-    return trainer, tokenizer, splits

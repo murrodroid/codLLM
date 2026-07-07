@@ -16,10 +16,86 @@ from codllm.experiments import (
 from tasks import (
     _build_run_dependencies,
     _maintenance_runtime_env,
+    _parse_duration_seconds,
     _profile_for_lsf_user,
     _resolve_lsf_profile,
+    _resume_env_overrides,
     _select_runs,
+    _wall_time_seconds,
 )
+
+
+def _lsf_profile(**overrides: object) -> LsfProfile:
+    """Return a minimal LsfProfile for duration/override tests."""
+    base = dict(
+        name="h100-24h",
+        queue="gpuh100",
+        wall_time="24:00",
+        cores=17,
+        memory="12GB",
+    )
+    base.update(overrides)
+    return LsfProfile(**base)  # type: ignore[arg-type]
+
+
+class TestDurationCampaign:
+    def test_wall_time_seconds_parses_hours_and_minutes(self) -> None:
+        assert _wall_time_seconds("24:00") == 86400
+        assert _wall_time_seconds("10:30") == 37800
+        assert _wall_time_seconds("45") == 2700  # bare LSF minutes
+
+    def test_parse_duration_units(self) -> None:
+        assert _parse_duration_seconds("2w") == 1209600
+        assert _parse_duration_seconds("14d") == 1209600
+        assert _parse_duration_seconds("48h") == 172800
+        assert _parse_duration_seconds("90m") == 5400
+        assert _parse_duration_seconds("12") == 43200  # bare number defaults to hours
+
+    def test_no_duration_yields_no_overrides(self) -> None:
+        assert _resume_env_overrides(_lsf_profile(), None) == {}
+
+    def test_duration_sets_per_slot_budget_and_resubmits(self) -> None:
+        overrides = _resume_env_overrides(_lsf_profile(), "2w")
+        # per-slot budget == wall time; 2 weeks / 24h = 14 slots.
+        assert overrides["CODLLM_MAX_RUNTIME_SECONDS"] == "86400"
+        assert overrides["CODLLM_MAX_RESUBMITS"] == "14"
+        assert overrides["CODLLM_AUTO_RESUME"] == "1"
+
+    def test_resubmits_are_clamped_to_profile_ceiling(self) -> None:
+        # 2 weeks of 10h slots would need 34, but the profile caps at 30.
+        profile = _lsf_profile(name="h100-10h", wall_time="10:00", max_resubmits=30)
+        overrides = _resume_env_overrides(profile, "2w")
+        assert overrides["CODLLM_MAX_RESUBMITS"] == "30"
+
+    def test_bad_duration_string_is_rejected(self) -> None:
+        from invoke import Exit
+
+        with pytest.raises(Exit):
+            _resume_env_overrides(_lsf_profile(), "soon")
+
+
+def test_lsf_profile_max_resubmits_parsing(tmp_path: Path) -> None:
+    profiles_path = tmp_path / "lsf_profiles.toml"
+    profiles_path.write_text(
+        """
+[default]
+queue = "gpuh100"
+wall_time = "24:00"
+cores = 4
+memory = "4GB"
+
+[capped]
+queue = "gpuh100"
+wall_time = "24:00"
+cores = 4
+memory = "4GB"
+max_resubmits = 5
+""",
+        encoding="utf-8",
+    )
+    profiles = load_lsf_profiles(profiles_path)
+    assert profiles["default"].max_resubmits == 30  # default ceiling
+    assert profiles["capped"].max_resubmits == 5
 
 
 def test_experiment_spec_inherits_env_and_expands_cartesian_sweep(
@@ -257,6 +333,13 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert "uv run --no-dev python -m codllm.training" in script
     assert "export CODLLM_EXPERIMENT_SWEEP_INDEX=2" in env_file
     assert '"run_count": 2' in manifest
+    # Resume lifecycle: stable per-index state dir + self-resubmit for arrays.
+    assert "export CODLLM_RUN_STATE_DIR" in script
+    assert "state/run-${RUN_INDEX}" in script
+    assert "maybe_resubmit_for_resume" in script
+    # An array resubmission re-launches only the current element.
+    assert 'bsub -J "codllm-sweep[${RUN_INDEX}]" < "$SELF_SCRIPT"' in script
+    assert "CODLLM_MAX_RESUBMITS" in script
 
 
 def test_prepare_lsf_submission_normalizes_single_job_index_zero(
@@ -296,6 +379,53 @@ CODLLM_HF_MODEL = "google/flan-t5-small"
     assert (submission.env_dir / "run-0.env").exists() is False
     assert 'if [ "1" = "1" ] && [ "$RUN_INDEX" = "0" ]; then' in script
     assert 'RUN_INDEX="1"' in script
+    # A single (non-array) job resubmits itself as-is, without a -J override.
+    assert 'bsub < "$SELF_SCRIPT"' in script
+    assert 'bsub -J' not in script
+    # Every slot records its own start so the time budget covers setup.
+    assert 'export CODLLM_JOB_START_EPOCH="$(date +%s)"' in script
+
+
+def test_prepare_lsf_submission_injects_env_overrides(tmp_path: Path) -> None:
+    """Submit-time env overrides win over the spec and land in every run file."""
+    spec_path = tmp_path / "single.toml"
+    spec_path.write_text(
+        """
+name = "single"
+
+[env]
+CODLLM_HF_MODEL = "google/flan-t5-small"
+CODLLM_MAX_RUNTIME_SECONDS = "111"
+""",
+        encoding="utf-8",
+    )
+    spec = load_experiment_spec(spec_path)
+    profile = LsfProfile(
+        name="test", queue="gpu", wall_time="24:00", cores=2, memory="2GB", sync_env=False
+    )
+
+    submission = prepare_lsf_submission(
+        spec,
+        profile,
+        project_dir=tmp_path,
+        output_root="jobs/generated",
+        env_overrides={
+            "CODLLM_MAX_RUNTIME_SECONDS": "86400",
+            "CODLLM_MAX_RESUBMITS": "14",
+            "CODLLM_AUTO_RESUME": "1",
+        },
+    )
+    env_file = (submission.env_dir / "run-1.env").read_text(encoding="utf-8")
+    # Override wins over the spec's value.
+    assert "export CODLLM_MAX_RUNTIME_SECONDS=86400" in env_file
+    assert "export CODLLM_MAX_RUNTIME_SECONDS=111" not in env_file
+    assert "export CODLLM_MAX_RESUBMITS=14" in env_file
+    assert "export CODLLM_AUTO_RESUME=1" in env_file
+    import json
+
+    manifest = json.loads(submission.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["submit_overrides"]["CODLLM_MAX_RESUBMITS"] == "14"
+    assert manifest["profile"]["max_resubmits"] == 30
 
 
 def test_training_inputs_spec_only_sets_sweep_overrides() -> None:

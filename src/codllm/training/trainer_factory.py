@@ -12,6 +12,7 @@ from transformers import (
 )
 
 import codllm.wandb_utils as wandb_utils
+from codllm import run_markers
 from codllm.config import Config
 from codllm.data import (
     prepare_sequence_classification_dataset,
@@ -202,7 +203,9 @@ def run_training_stage(
             TimeBudgetCallback(
                 max_runtime_seconds=float(cfg.max_runtime_seconds),
                 safety_margin_seconds=float(cfg.runtime_safety_margin_seconds),
-                output_dir=args.output_dir,
+                # Markers go to the resume-stable state dir, not the scheduler's
+                # per-slot run dir, so the next slot's LSF script still sees them.
+                output_dir=str(run_markers.run_state_dir(args.output_dir)),
             )
         )
 

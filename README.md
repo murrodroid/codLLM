@@ -411,6 +411,55 @@ Lucas's `/work3/s234805/codllm` storage when the env is not already set. On DTU 
 lines come from the DTU quota scripts; the `filesystem_*` totals are shared filesystem capacity and do not represent
 the per-user limit that kills jobs.
 
+### Long runs: multi-week campaigns with `--duration`
+
+A single LSF slot is capped by the profile's `wall_time` (24 h on `h100-24h` — the scheduler's hard limit). To train
+for longer, add `--duration` to `hpc.submit`: the job trains up to the slot wall time, saves a checkpoint, exits
+cleanly (status `0`, not a fake crash), and **resubmits itself** for the next slot until the requested duration is spent
+or training converges. Auto-resume continues from the checkpoint each slot; the final slot runs the
+test/holdout/uncertainty evaluation exactly once and stops. It stays one logical W&B run throughout, tagged
+`codllm/status = needs_resume` between slots and `complete` at the end.
+
+You only pick two things: **the profile** (per-slot resources + wall time) and **the duration** (how long the whole
+campaign may run). The submit task derives the per-slot budget from the profile wall time and the resubmission count
+from `duration ÷ wall_time`, clamped to the profile's `max_resubmits` safety ceiling (default 30) so a stuck run can
+never resubmit forever. Nothing time-related is hardcoded in the spec.
+
+```bash
+# Train for up to two weeks, in 24 h slots (~14 slots):
+uv run --no-sync invoke hpc.submit \
+  --config runs/singles/codllm_base.toml \
+  --profile h100-24h \
+  --duration 2w \
+  --user lucas
+```
+
+`--duration` accepts `w`/`d`/`h`/`m` suffixes (`2w`, `14d`, `48h`; a bare number is hours). Omit `--duration` for a
+one-slot run (no resubmission). The command prints the derived campaign (per-slot budget, max resubmissions) before
+submitting; the same values are recorded under `submit_overrides` in the submission's `manifest.json`.
+
+The spec only needs auto-resume enabled and, for a long run, an isolated output root so resume always finds *this*
+experiment's checkpoint — both already set in [`runs/singles/codllm_base.toml`](runs/singles/codllm_base.toml):
+
+```toml
+[env]
+CODLLM_OUTPUT_DIR = "runs/codllm_base"        # isolated, resume-stable checkpoint root
+CODLLM_AUTO_RESUME = 1                          # continue from the last checkpoint, don't restart
+CODLLM_RUNTIME_SAFETY_MARGIN_SECONDS = 600      # save this many seconds before the slot wall limit
+```
+
+Lifecycle markers live under `jobs/generated/<submission>/state/run-<index>/` so they survive across slots:
+
+- `.resume_needed` — the slot hit the budget; a checkpoint is saved and the job wants another slot.
+- `.training_complete` / `.final_eval_done` — training finished and final evaluation ran once; no further slots.
+- `.resubmit_count` / `.resubmit_exhausted` — the resubmission counter and the marker written when the guard trips.
+
+`CODLLM_AUTO_RESUME` is mandatory: without it a resubmitted slot would restart from scratch, so the script refuses to
+resubmit and warns instead. A real crash trips the job's error trap and exits non-zero, so crashes never resubmit. The
+per-slot budget is measured from job start (the script exports `CODLLM_JOB_START_EPOCH`), so setup time counts against
+the wall limit and the checkpoint is always saved before the scheduler kills the slot. Raise a profile's `max_resubmits`
+in [`hpc/lsf_profiles.toml`](hpc/lsf_profiles.toml) if a campaign needs more slots than the ceiling allows.
+
 ## Training Options
 
 All runtime behavior is owned by `Config` in `src/codllm/settings/schema.py` and environment overrides in
