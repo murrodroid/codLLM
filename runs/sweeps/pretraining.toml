@@ -1,29 +1,19 @@
-base = "../profiles/h100-small.toml"
-name = "agro_pretraining"
-description = "Sweep masterlist pretraining duration while holding the fine-tuning setup fixed."
+name = "thesis_pretraining"
+command = "train"
+description = """
+Tests: does masterlist pretraining (a stage on ICD-10h code-description pairs before
+fine-tuning) improve coding, especially on rare and zero-shot codes? Sweeps pretraining
+on vs off with the fine-tuning setup fixed at the thesis baseline. Pretraining is off
+in every other ablation for feasibility, so this is the file that evaluates it.
+Inherits the on/off axis and the pretraining-stage hyperparameters from
+runs/sweeps/pretraining.toml.
+"""
+
+SUBMITTED = false
+
+
+base = ["../sweeps/pretraining.toml", "base_thesis.toml"]
 force_reprocess = false
 
-[env]
-CODLLM_TRAINING_INPUT = "cod"
-CODLLM_LR = 2.5e-5
-CODLLM_DATASET_SIZE = 0.5
-CODLLM_NUM_TRAIN_EPOCHS = 32
-CODLLM_SAVE_STRATEGY = "no"
-
-CODLLM_PRETRAIN_LEARNING_RATE = 1e-5
-CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
-CODLLM_PRETRAIN_WARMUP_RATIO = 0.5
-CODLLM_PRETRAIN_LR_SCHEDULER_TYPE = "constant"
-CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 4
-CODLLM_PRETRAIN_UPSAMPLE_ENABLED = true
-CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 8
-CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS = [
-  "swap_adjacent_chars",
-  "delete_random_char",
-  "accent_random_vowel",
-  "qwerty_misspell",
-]
-CODLLM_PRETRAIN_UPSAMPLE_PERTURBATIONS_PER_SAMPLE = 6
-
 [sweep]
-CODLLM_PRETRAIN_ENABLED = [true,false]
+CODLLM_PRETRAIN_ENABLED = [true, false]
