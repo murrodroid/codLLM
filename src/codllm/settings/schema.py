@@ -126,6 +126,11 @@ class Config:
     label_harmonization_masterlist_path: str = "data/raw/ICD10h_Masterlist_2024.xlsx"
     label_harmonization_masterlist_sheet_name: str = "Masterlist"
     label_harmonization_transfer_sheet_name: str = "2020to2024transfer"
+    label_standardization_enabled: bool = True
+    label_standardization_rules_path: str = "data/curation/label_standardization.toml"
+    label_standardization_overrides_path: str = (
+        "data/curation/label_standardization_overrides.csv"
+    )
     hold_out_dataset: Optional[str] = None
     train_excluded_source_ids: list[str] = field(default_factory=list)
     hold_out_evaluate_per: Optional[HoldOutEvaluatePer] = None

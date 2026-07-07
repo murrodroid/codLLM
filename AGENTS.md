@@ -133,6 +133,12 @@ unexpected dependency downloads.
     `Config.label_harmonization_masterlist_path`, `Config.label_harmonization_masterlist_sheet_name`,
     `Config.label_harmonization_transfer_sheet_name`, and the matching `CODLLM_LABEL_HARMONIZATION_*` env vars. Do not
     use `pretrain_*` settings for processed-data harmonization or classifier label vocabulary.
+  * Label standardization is a tracked curation overlay, not a raw-data edit or a processed-cache patch. Use
+    `data/curation/label_standardization.toml` for reviewed dataset-level rules and
+    `data/curation/label_standardization_overrides.csv` for exact row-level exceptions. Runtime behavior is controlled
+    by `Config.label_standardization_enabled`, `Config.label_standardization_rules_path`,
+    `Config.label_standardization_overrides_path`, and the matching `CODLLM_LABEL_STANDARDIZATION_*` env vars. Keep
+    these overlay files in processed-data cache metadata so curation edits trigger rebuilds.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
   * Synthetic multi-COD rows for masterlist pretraining are controlled independently by

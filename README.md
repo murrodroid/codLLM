@@ -188,8 +188,8 @@ expects these files below `data/raw/`:
 Processed rows are written to `Config.data_processed_dir` as `data.parquet` by default. The processed schema includes
 `source_id`, `record_id`, `source_path`, the configured text column, `y_codes`, and the configured label column.
 
-Processed-data caches are validated against source file signatures, source mappings, label harmonization settings, input
-fields, and label settings. Prepared split caches live beside the processed file under:
+Processed-data caches are validated against source file signatures, source mappings, label harmonization and
+standardization settings, input fields, and label settings. Prepared split caches live beside the processed file under:
 
 ```text
 <processed-stem>.splits/<cache-key>/
@@ -450,6 +450,19 @@ Main controls:
 - `CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH`
 - `CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME`
 - `CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME`
+
+### Label Standardization
+
+Label standardization is enabled by default as a tracked no-op overlay under `data/curation/`. Keep raw datasets
+unchanged. Add reviewed dataset-level rules to `data/curation/label_standardization.toml` and exact row-level exceptions
+to `data/curation/label_standardization_overrides.csv`. The overlay runs after masterlist harmonization and is included
+in processed-data cache metadata, so curation edits trigger a rebuild.
+
+Main controls:
+
+- `CODLLM_LABEL_STANDARDIZATION_ENABLED`
+- `CODLLM_LABEL_STANDARDIZATION_RULES_PATH`
+- `CODLLM_LABEL_STANDARDIZATION_OVERRIDES_PATH`
 
 ### Masterlist Pretraining
 

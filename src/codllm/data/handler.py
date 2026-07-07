@@ -49,6 +49,7 @@ from codllm.input import (
     shuffle_multicod_label_order,
 )
 from codllm.input.harmonization import resolve_label_harmonization_workbook_path
+from codllm.input.standardization import build_label_standardization_metadata
 from codllm.input.transform import _coerce_row_codes
 from codllm.runtime.paths import resolve_source_path
 
@@ -177,6 +178,7 @@ class DataHandler:
                 if self.cfg.label_harmonization_enabled
                 else None,
             },
+            "label_standardization": build_label_standardization_metadata(self.cfg),
             "sources": source_metadata,
         }
 

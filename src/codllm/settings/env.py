@@ -636,6 +636,32 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     ):
         cfg.label_harmonization_transfer_sheet_name = cfg.pretrain_transfer_sheet_name
 
+    label_standardization_enabled = _parse_env_bool(
+        "CODLLM_LABEL_STANDARDIZATION_ENABLED"
+    )
+    if label_standardization_enabled is not None:
+        cfg.label_standardization_enabled = label_standardization_enabled
+
+    label_standardization_rules_path = os.getenv(
+        "CODLLM_LABEL_STANDARDIZATION_RULES_PATH"
+    )
+    if (
+        label_standardization_rules_path is not None
+        and label_standardization_rules_path.strip() != ""
+    ):
+        cfg.label_standardization_rules_path = label_standardization_rules_path.strip()
+
+    label_standardization_overrides_path = os.getenv(
+        "CODLLM_LABEL_STANDARDIZATION_OVERRIDES_PATH"
+    )
+    if (
+        label_standardization_overrides_path is not None
+        and label_standardization_overrides_path.strip() != ""
+    ):
+        cfg.label_standardization_overrides_path = (
+            label_standardization_overrides_path.strip()
+        )
+
     pretrain_num_train_epochs = _parse_env_int("CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS")
     if pretrain_num_train_epochs is not None:
         if pretrain_num_train_epochs < 1:

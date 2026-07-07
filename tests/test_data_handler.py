@@ -506,6 +506,141 @@ class TestLoaders:
         )
         assert result.iloc[0]["label"] == "J18.100,R99.900"
 
+    def test_build_processed_dataset_applies_label_standardization_rule(
+        self, tmp_path: Path
+    ) -> None:
+        """Processed labels should apply reviewed dataset-level curation rules."""
+        csv_path = tmp_path / "sample.csv"
+        rules_path = tmp_path / "label_standardization.toml"
+        overrides_path = tmp_path / "label_standardization_overrides.csv"
+        pd.DataFrame(
+            [
+                ["unknown cause", "N19.000", "", "1", "20", "RID-001"],
+                ["pneumonia", "J18.100", "", "2", "40", "RID-002"],
+            ]
+        ).to_csv(csv_path, index=False)
+        rules_path.write_text(
+            """
+[[rules]]
+id = "unknown-cause-to-r99"
+target_codes = ["R99.000"]
+source_ids = ["csv_source"]
+text_regex = "(?i)unknown"
+old_code_blocks = ["N18", "N19"]
+""".lstrip()
+        )
+        overrides_path.write_text(
+            "rule_id,source_id,record_id,old_label,new_label,rationale\n"
+        )
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            max_label_count=1,
+            label_harmonization_enabled=False,
+            label_standardization_rules_path=str(rules_path),
+            label_standardization_overrides_path=str(overrides_path),
+        )
+        result = build_processed_dataset(
+            cfg, mapping_registry={"test_mapping": _make_mapping()}
+        )
+        assert result["y_codes"].tolist() == [["R99.000"], ["J18.100"]]
+        assert result["label"].tolist() == ["R99.000", "J18.100"]
+
+    def test_label_standardization_text_rules_match_cod_segment_only(
+        self, tmp_path: Path
+    ) -> None:
+        """Text rules should not match age or sex fields in processed prompts."""
+        csv_path = tmp_path / "sample.csv"
+        rules_path = tmp_path / "label_standardization.toml"
+        overrides_path = tmp_path / "label_standardization_overrides.csv"
+        pd.DataFrame(
+            [
+                ["pneumonia", "J18.900", "", "1", "", "RID-001"],
+                ["unknown", "J18.900", "", "1", "20", "RID-002"],
+            ]
+        ).to_csv(csv_path, index=False)
+        rules_path.write_text(
+            """
+[[rules]]
+id = "unknown-cause-to-r99"
+target_codes = ["R99.001"]
+source_ids = ["csv_source"]
+text_regex = "(?i)^unknown$"
+old_code_blocks = ["J18"]
+""".lstrip()
+        )
+        overrides_path.write_text(
+            "rule_id,source_id,record_id,old_label,new_label,rationale\n"
+        )
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            training_input=["cod", "age", "sex"],
+            max_label_count=1,
+            label_harmonization_enabled=False,
+            label_standardization_rules_path=str(rules_path),
+            label_standardization_overrides_path=str(overrides_path),
+        )
+        result = build_processed_dataset(
+            cfg, mapping_registry={"test_mapping": _make_mapping()}
+        )
+        assert result["label"].tolist() == ["J18.900", "R99.001"]
+
+    def test_build_processed_dataset_applies_label_standardization_override(
+        self, tmp_path: Path
+    ) -> None:
+        """Row-level overrides should apply after source data is processed."""
+        csv_path = tmp_path / "sample.csv"
+        rules_path = tmp_path / "label_standardization.toml"
+        overrides_path = tmp_path / "label_standardization_overrides.csv"
+        pd.DataFrame([["unknown cause", "N19.000", "", "1", "20", "RID-001"]]).to_csv(
+            csv_path, index=False
+        )
+        rules_path.write_text("")
+        overrides_path.write_text(
+            "\n".join(
+                [
+                    "rule_id,source_id,record_id,old_label,new_label,rationale",
+                    "manual_unknown,csv_source,RID-001,N19.000,R99.000,reviewed",
+                ]
+            )
+            + "\n"
+        )
+
+        cfg = Config(
+            data_raw_dir=str(tmp_path),
+            data_sources=[
+                DataSourceConfig(
+                    source_id="csv_source",
+                    path="sample.csv",
+                    mapping_id="test_mapping",
+                )
+            ],
+            max_label_count=1,
+            label_harmonization_enabled=False,
+            label_standardization_rules_path=str(rules_path),
+            label_standardization_overrides_path=str(overrides_path),
+        )
+        result = build_processed_dataset(
+            cfg, mapping_registry={"test_mapping": _make_mapping()}
+        )
+        assert result.iloc[0]["y_codes"] == ["R99.000"]
+        assert result.iloc[0]["label"] == "R99.000"
+
     def test_get_splits_shuffles_multicod_label_order(self, tmp_path: Path) -> None:
         """Multi-COD labels should be shuffled deterministically from data_seed."""
         csv_path = tmp_path / "sample.csv"
@@ -1456,6 +1591,31 @@ class TestDataHandler:
         assert len(splits.train) == 14
         assert len(splits.val) == 4
         assert len(splits.test) == 2
+
+    def test_processing_metadata_includes_label_standardization_files(
+        self, tmp_path: Path
+    ) -> None:
+        """Processed cache metadata should include curation overlay file signatures."""
+        rules_path = tmp_path / "rules.toml"
+        overrides_path = tmp_path / "overrides.csv"
+        rules_path.write_text("# no active rules\n")
+        overrides_path.write_text(
+            "rule_id,source_id,record_id,old_label,new_label,rationale\n"
+        )
+        cfg = Config(
+            data_sources=[],
+            label_harmonization_enabled=False,
+            label_standardization_rules_path=str(rules_path),
+            label_standardization_overrides_path=str(overrides_path),
+        )
+        metadata = DataHandler(cfg)._build_processing_metadata()
+        standardization = metadata["label_standardization"]
+
+        assert standardization["enabled"] is True
+        assert standardization["rules_file"]["exists"] is True
+        assert standardization["overrides_file"]["exists"] is True
+        assert "sha256" in standardization["rules_file"]
+        assert "sha256" in standardization["overrides_file"]
 
     def test_get_splits_reprocesses_when_metadata_missing(self, tmp_path: Path) -> None:
         """Missing metadata should trigger a processed rebuild."""

@@ -8,6 +8,7 @@ from codllm.settings.schema import Config, DataSourceConfig
 from codllm.settings.types import TrainingInput
 from codllm.input.harmonization import _harmonize_processed_labels
 from codllm.input.mappings import DatasetMapping, MAPPING_REGISTRY
+from codllm.input.standardization import apply_label_standardization
 from codllm.input.transform import (
     MISSING_VALUE_MARKERS,
     UNKNOWN_VALUE,
@@ -341,6 +342,8 @@ def build_processed_dataset(
     processed = pd.concat(processed_frames, ignore_index=True)
     if cfg.label_harmonization_enabled:
         processed = _harmonize_processed_labels(cfg=cfg, dataframe=processed)
+    if cfg.label_standardization_enabled:
+        processed = apply_label_standardization(cfg=cfg, dataframe=processed)
     return processed
 
 

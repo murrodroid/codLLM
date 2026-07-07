@@ -1,0 +1,40 @@
+# Versioned label standardization policy overlay.
+#
+# Keep raw datasets immutable. Add reviewed dataset-level rules here when a
+# source encodes the same semantic category differently from the rest of the
+# training corpus. Rules run after ICD10h masterlist harmonization and before
+# processed-data caches are written.
+#
+# Each rule replaces the current row label with target_codes when all configured
+# selectors match. text_regex is matched against the COD text segment only, not
+# age or sex fields in processed prompts.
+
+[[rules]]
+id = "standalone-unknown-cause-to-r99001"
+description = "Map standalone unknown-cause placeholders to the ICD10h stated-unknown label."
+rationale = "The test split shows literal Madrid 'unknown' rows coded as Z02.702, while Copenhagen and Amsterdam use R99.001 for the same semantic category. Keep this restricted to standalone placeholders so composite causes such as pneumonia plus causa ignota are not collapsed."
+target_codes = ["R99.001"]
+text_regex = '(?i)^\s*(?:-|\?|unknown|onbekend|ukendt|uoplyst|ubekendt|vides ikke|uden kendt(?: \u00e5rsag)?|causa ignota|causa mortis ignota|cause inconnue|cause ind(?:e|\u00e9)termin(?:e|\u00e9)e|indeterminad[ao]|desconocid[ao]|not known)\s*$'
+
+[[rules]]
+id = "belgium-natural-death-unknown-certificate-to-r99001"
+description = "Remove certificate-issue coding from Belgium natural-death unknown-cause rows."
+rationale = "Rows such as 'Mort naturelle, cause inconnue' and 'Mort vraisemblablement naturelle, cause indeterminee' currently carry Z02.702 plus R99.001. Z02.702 is a certification issue, not a cause of death; standardize the training label to R99.001."
+target_codes = ["R99.001"]
+source_ids = ["belgium_1920_1930"]
+text_regex = '(?i)^\s*mort (?:vraisemblablement )?naturelle, (?:de )?cause (?:inconnue|ind(?:e|\u00e9)termin(?:e|\u00e9)e)\s*$'
+old_codes = ["Z02.702"]
+
+[[rules]]
+id = "standalone-uraemia-to-n19002"
+description = "Map standalone uraemia strings to the ICD10h uraemia label."
+rationale = "The same standalone COD concept is labelled as N18.500 in Amsterdam/Ipswich and N19.002 in Madrid/Copenhagen/Belgium. The ICD10h masterlist defines N19.002 as Uraemia, while N18.500 is chronic kidney disease stage 5, so standalone uraemia should be N19.002."
+target_codes = ["N19.002"]
+text_regex = '(?i)^\s*(?:ur(?:aemia|emia|\u00e9mie|emie)|ur\u00e6mia)(?:\s*\([^)]*\))?\s*$'
+
+[[rules]]
+id = "uraemic-coma-to-n18503"
+description = "Map standalone uraemic coma strings to the ICD10h uraemic-coma label."
+rationale = "Uraemic coma is more specific than generic uraemia. The ICD10h masterlist defines N18.503 as Uraemic coma, so rows labelled N19.002 or N18.503,N19.002 for standalone coma uremia variants should use N18.503."
+target_codes = ["N18.503"]
+text_regex = '(?i)^\s*coma\s+ur(?:aemia|emia|\u00e9mico|\u00e9mique|emico|anico)\s*$'

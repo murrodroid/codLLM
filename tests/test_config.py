@@ -93,6 +93,9 @@ ENV_KEYS = [
     "CODLLM_LABEL_HARMONIZATION_MASTERLIST_PATH",
     "CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME",
     "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME",
+    "CODLLM_LABEL_STANDARDIZATION_ENABLED",
+    "CODLLM_LABEL_STANDARDIZATION_RULES_PATH",
+    "CODLLM_LABEL_STANDARDIZATION_OVERRIDES_PATH",
     "CODLLM_INFERENCE_VALIDATE_REGISTRY",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
@@ -146,6 +149,13 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     )
     assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
     assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
+    assert cfg.label_standardization_enabled is True
+    assert cfg.label_standardization_rules_path == (
+        "data/curation/label_standardization.toml"
+    )
+    assert cfg.label_standardization_overrides_path == (
+        "data/curation/label_standardization_overrides.csv"
+    )
     assert cfg.train_excluded_source_ids == []
 
 
@@ -260,6 +270,15 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_LABEL_HARMONIZATION_MASTERLIST_SHEET_NAME", "Masterlist")
     monkeypatch.setenv(
         "CODLLM_LABEL_HARMONIZATION_TRANSFER_SHEET_NAME", "2020to2024transfer"
+    )
+    monkeypatch.setenv("CODLLM_LABEL_STANDARDIZATION_ENABLED", "true")
+    monkeypatch.setenv(
+        "CODLLM_LABEL_STANDARDIZATION_RULES_PATH",
+        "curation/custom_rules.toml",
+    )
+    monkeypatch.setenv(
+        "CODLLM_LABEL_STANDARDIZATION_OVERRIDES_PATH",
+        "curation/custom_overrides.csv",
     )
     monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
@@ -379,6 +398,9 @@ def test_config_from_env_applies_runtime_overrides(
     )
     assert cfg.label_harmonization_masterlist_sheet_name == "Masterlist"
     assert cfg.label_harmonization_transfer_sheet_name == "2020to2024transfer"
+    assert cfg.label_standardization_enabled is True
+    assert cfg.label_standardization_rules_path == "curation/custom_rules.toml"
+    assert cfg.label_standardization_overrides_path == "curation/custom_overrides.csv"
     assert cfg.inference_validate_registry is True
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
