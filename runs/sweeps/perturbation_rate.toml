@@ -6,14 +6,14 @@ runs/sweeps/perturbation_overhaul.toml only compared rate 0.0 vs 1.0 (and found 
 costs ~5.7 macro-F1 points on flan-t5-small); this fills in the middle, sweeping the
 base perturbation rate over {0.0, 0.1, 0.25, 0.5, 1.0} with floor upsampling on, to
 locate the sweet spot and reconfirm that high rates degrade macro-F1 (the model never
-sees clean text yet is evaluated on clean text). Inherits the balance/perturbation
-knobs from perturbation_overhaul; the floor stage is pinned on so only the rate varies.
+sees clean text yet is evaluated on clean text). The floor stage is pinned on so only
+the rate varies.
 """
 
 SUBMITTED = false
 
 
-base = ["../sweeps/perturbation_overhaul.toml", "base_thesis.toml"]
+base = "base_thesis.toml"
 force_reprocess = false
 
 [sweep]

@@ -5,17 +5,19 @@ Tests (generalisation): how well does the coder transfer to a source it never sa
 training? Leave-one-source-out: each cell removes one corpus from the train/val/test
 pool, trains on the remaining four, and evaluates on the held-out corpus, quantifying
 the gap between random-split performance and true cross-source transfer. The reference
-historic-strings source is excluded from training (inherited from
-runs/sweeps/holdout.toml). This is one of the heaviest ablations (one retrain per
-source) and runs the full baseline contract from base_thesis, including the full
-dataset size.
+historic-strings source is excluded from training. This is one of the heaviest
+ablations (one retrain per source) and runs the full baseline contract from
+base_thesis, including the full dataset size.
 """
 
 SUBMITTED = true
 
 
-base = ["../sweeps/holdout.toml", "base_thesis.toml"]
+base = "base_thesis.toml"
 force_reprocess = false
+
+[env]
+CODLLM_TRAIN_EXCLUDED_SOURCE_IDS = "historic_strings_en_2024"
 
 [sweep]
 CODLLM_HOLD_OUT_DATASET = [

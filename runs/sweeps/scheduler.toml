@@ -5,13 +5,12 @@ Tests: does the learning-rate schedule matter? Sweeps cosine vs linear vs
 constant-with-warmup with everything else at the thesis baseline. Confirms or
 refutes the claim that cosine is on par with linear (i.e. that the schedule choice
 is not silently doing the heavy lifting), justifying cosine as the default.
-Inherits the schedule axis from runs/sweeps/scheduler.toml.
 """
 
 SUBMITTED = false
 
 
-base = ["../sweeps/scheduler.toml", "base_thesis.toml"]
+base = "base_thesis.toml"
 force_reprocess = false
 
 [sweep]

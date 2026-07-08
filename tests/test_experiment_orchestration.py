@@ -428,22 +428,19 @@ CODLLM_MAX_RUNTIME_SECONDS = "111"
     assert manifest["profile"]["max_resubmits"] == 30
 
 
-def test_training_inputs_spec_only_sets_sweep_overrides() -> None:
-    """Input-feature sweep should leave config-default training choices implicit."""
-    spec = load_experiment_spec("runs/sweeps/training_inputs.toml")
+def test_input_features_spec_uses_thesis_baseline_and_input_sweep() -> None:
+    """Input-feature sweep should inherit the baseline and vary only input fields."""
+    spec = load_experiment_spec("runs/sweeps/input_features.toml")
 
     assert spec.env["CODLLM_LR"] == "2.5e-05"
-    assert spec.env["CODLLM_NUM_TRAIN_EPOCHS"] == "8"
-    assert spec.env["CODLLM_SAVE_STRATEGY"] == "no"
+    assert spec.env["CODLLM_NUM_TRAIN_EPOCHS"] == "80"
+    assert spec.env["CODLLM_SAVE_STRATEGY"] == "best"
+    assert spec.sweep == {
+        "CODLLM_TRAINING_INPUT": ("cod", "cod,age,sex"),
+    }
 
     for key in {
         "CODLLM_MODEL_TASK",
-        "CODLLM_DATASET_SIZE",
-        "CODLLM_BALANCE_STRATEGY",
-        "CODLLM_WARMUP_RATIO",
-        "CODLLM_TRAIN_SIZE",
-        "CODLLM_VAL_SIZE",
-        "CODLLM_TEST_SIZE",
         "CODLLM_PRETRAIN_ENABLED",
     }:
         assert key not in spec.env

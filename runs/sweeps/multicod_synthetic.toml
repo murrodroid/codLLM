@@ -5,14 +5,13 @@ Tests: does synthesising extra multi-CoD records (by merging single-CoD rows) he
 multi-label fine-tuning, or does it distort the single-vs-multi balance that
 validation and test follow? Sweeps the synthetic ratio over {0, 0.15, 0.3} at the
 thesis baseline (max 3 codes). Confirms or refutes the decision to disable synthetic
-multi-CoD in the final fine-tuning runs. Inherits the multi-CoD setup (separators,
-shuffle) from runs/sweeps/multicod.toml.
+multi-CoD in the final fine-tuning runs.
 """
 
 SUBMITTED = false
 
 
-base = ["../sweeps/multicod.toml", "base_thesis.toml"]
+base = "base_thesis.toml"
 force_reprocess = false
 
 [sweep]
