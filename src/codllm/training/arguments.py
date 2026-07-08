@@ -105,6 +105,9 @@ def build_training_args(
         "data_seed": cfg.resolved_data_seed(),
         "dataloader_num_workers": dataloader_num_workers,
         "dataloader_pin_memory": cfg.dataloader_pin_memory,
+        # Avoid HF's O(completed-steps) dataloader replay on resume, which
+        # otherwise stalls every resubmitted slot with the GPU idle.
+        "ignore_data_skip": cfg.ignore_data_skip,
     }
     if dataloader_num_workers > 0:
         training_kwargs["dataloader_persistent_workers"] = (

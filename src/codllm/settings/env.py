@@ -366,6 +366,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if per_size_output_dir is not None:
         cfg.per_size_output_dir = per_size_output_dir
 
+    ignore_data_skip = _parse_env_bool("CODLLM_IGNORE_DATA_SKIP")
+    if ignore_data_skip is not None:
+        cfg.ignore_data_skip = ignore_data_skip
+
     load_best_model_at_end = _parse_env_bool("CODLLM_LOAD_BEST_MODEL_AT_END")
     if load_best_model_at_end is not None:
         cfg.load_best_model_at_end = load_best_model_at_end

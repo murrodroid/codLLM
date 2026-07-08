@@ -53,7 +53,7 @@ AMSTERDAM_MAPPING = DatasetMapping(
 )
 
 COPENHAGEN_MAPPING = DatasetMapping(
-    text_col=37,
+    text_col=38,
     single_code_col=39,
     multi_code_cols=[],
     sex_col=23,

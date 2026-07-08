@@ -151,6 +151,13 @@ class Config:
 
     auto_resume: bool = False
     per_size_output_dir: bool = False
+    # On resume, skip HuggingFace's replay of the dataloader up to the saved
+    # step. That replay is O(steps already done) and grows every resubmission,
+    # so for wall-time-budget campaigns it can waste an hour+ per slot with the
+    # GPU idle. Ignoring it restarts the interrupted epoch from a fresh shuffle
+    # (optimizer/scheduler/step count still restored) - the right trade for
+    # long multi-slot runs.
+    ignore_data_skip: bool = True
     load_best_model_at_end: bool = False
     early_stopping_patience: int = 0
     early_stopping_threshold: float = 0.0

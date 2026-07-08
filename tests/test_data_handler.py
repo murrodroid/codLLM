@@ -58,17 +58,19 @@ def _sample_df() -> pd.DataFrame:
 
 def _copenhagen_row(
     record_id: str,
-    cod_text: str,
+    tidy_cod: str,
     icd10h_code: str | None,
     sex: str = "Mand",
     age: str = "35",
+    deathcauses: str = "raw deathcause",
 ) -> list[str | None]:
     """Build one Copenhagen-style row with required positional columns populated."""
     row: list[str | None] = [""] * 40
     row[0] = record_id
     row[12] = age
     row[23] = sex
-    row[37] = cod_text
+    row[37] = deathcauses
+    row[38] = tidy_cod
     row[39] = icd10h_code
     return row
 
@@ -385,6 +387,10 @@ class TestLoaders:
         result = build_processed_dataset(cfg)
         assert len(result) == 2
         assert result["record_id"].tolist() == ["CPH-002", "CPH-003"]
+        assert result["text"].tolist() == [
+            "cod: tekst-2 | age: 35 | sex: male",
+            "cod: tekst-3 | age: 35 | sex: male",
+        ]
         assert result["label"].tolist() == ["A00.000", "B01.001"]
 
     def test_build_processed_dataset_combines_sources(self, tmp_path: Path) -> None:
