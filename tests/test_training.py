@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from codllm import run_markers
 import codllm.config as config_module
 import codllm.metrics as metrics_module
 import codllm.run_directory as run_directory_module
@@ -211,6 +212,37 @@ def test_build_training_args_honors_stage_overrides(
         else str(args.lr_scheduler_type)
     )
     assert scheduler == "constant"
+
+
+def test_pretraining_stage_can_disable_best_reload_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact-dose pretraining should not change fine-tuning checkpoint selection."""
+    monkeypatch.setattr(
+        arguments_module.wandb_utils,
+        "resolve_wandb_reporting",
+        lambda _: ("none", None),
+    )
+    cfg = Config(
+        load_best_model_at_end=True,
+        early_stopping_patience=10,
+        pretrain_load_best_model_at_end=False,
+        pretrain_early_stopping_patience=0,
+    )
+    pretrain_stage = stages_module.build_pretraining_stage(cfg)
+    finetune_stage = stages_module.build_finetune_stage(cfg)
+
+    pretrain_args = build_training_args(cfg, has_eval=True, stage=pretrain_stage)
+    finetune_args = build_training_args(cfg, has_eval=True, stage=finetune_stage)
+
+    assert pretrain_args.load_best_model_at_end is False
+    assert finetune_args.load_best_model_at_end is True
+    assert (
+        stages_module.resolved_stage_early_stopping_patience(cfg, pretrain_stage) == 0
+    )
+    assert (
+        stages_module.resolved_stage_early_stopping_patience(cfg, finetune_stage) == 10
+    )
 
 
 def test_build_training_args_disables_fp16_when_requested(
@@ -849,10 +881,10 @@ def test_validate_trainable_model_accepts_non_quantized_model() -> None:
 def test_resolve_wandb_reporting_uses_wandb_with_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Auto mode should enable W&B when credentials are available."""
+    """Auto mode should force online W&B when credentials are available."""
     monkeypatch.delenv("WANDB_PROJECT", raising=False)
     monkeypatch.delenv("WANDB_ENTITY", raising=False)
-    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.setenv("WANDB_MODE", "offline")
     monkeypatch.delenv("WANDB_LOG_MODEL", raising=False)
     monkeypatch.setattr(wandb_utils_module, "has_wandb_credentials", lambda: True)
 
@@ -872,6 +904,7 @@ def test_resolve_wandb_reporting_uses_wandb_with_credentials(
     assert run_name == "unit-run"
     assert wandb_utils_module.os.environ["WANDB_PROJECT"] == "unit-project"
     assert wandb_utils_module.os.environ["WANDB_ENTITY"] == "unit-entity"
+    assert wandb_utils_module.os.environ["WANDB_MODE"] == "online"
     assert wandb_utils_module.os.environ["WANDB_LOG_MODEL"] == "checkpoint"
 
 
@@ -906,6 +939,19 @@ def test_resolve_wandb_reporting_online_mode(
     assert run_name == "online-run"
     assert wandb_utils_module.os.environ["WANDB_MODE"] == "online"
     assert wandb_utils_module.os.environ["WANDB_LOG_MODEL"] == "end"
+
+
+def test_resolve_wandb_reporting_explicit_offline_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit codLLM offline setting should remain authoritative."""
+    monkeypatch.setenv("WANDB_MODE", "online")
+    cfg = Config(wandb=WandbConfig(enabled=True, mode="offline"))
+
+    report_to, _ = wandb_utils_module.resolve_wandb_reporting(cfg)
+
+    assert report_to == ["wandb"]
+    assert wandb_utils_module.os.environ["WANDB_MODE"] == "offline"
 
 
 def test_train_uses_validation_split_from_data_handler(
@@ -1000,7 +1046,9 @@ def test_train_skips_final_eval_when_resume_needed(
     from codllm import run_markers
 
     cfg, handler = _lifecycle_cfg_and_handler(tmp_path)
-    monkeypatch.setattr(pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None)
+    monkeypatch.setattr(
+        pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None
+    )
 
     def fake_train(cfg: Config, **_: Any) -> tuple[str, str]:
         # Simulate the time-budget callback dropping a resume marker.
@@ -1036,7 +1084,9 @@ def test_train_runs_final_eval_and_marks_complete_when_finished(
     from codllm import run_markers
 
     cfg, handler = _lifecycle_cfg_and_handler(tmp_path)
-    monkeypatch.setattr(pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None)
+    monkeypatch.setattr(
+        pipeline_module, "_initialize_wandb_for_data_prep", lambda cfg: None
+    )
 
     eval_calls: list[str] = []
     status: list[str] = []
@@ -1362,6 +1412,35 @@ def test_train_runs_final_test_evaluation(
     assert captured["trainer"] == "trainer"
     assert captured["tokenizer"] == "tokenizer"
     assert captured["test_ds"] is splits.test
+
+
+def test_final_test_evaluation_can_be_disabled_for_tuning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tuning protocols should retain the split without reading test examples."""
+    cfg = Config(final_test_eval_enabled=False, uncertainty_eval=True)
+    splits = DataSplits(
+        train=pd.DataFrame({"text": ["t"], "label": ["A00"]}),
+        val=pd.DataFrame({"text": ["v"], "label": ["A01"]}),
+        test=pd.DataFrame({"text": ["x"], "label": ["A02"]}),
+    )
+
+    def fail_test_eval(**kwargs: Any) -> None:
+        raise AssertionError(f"test evaluation should be disabled: {kwargs}")
+
+    monkeypatch.setattr(pipeline_module, "evaluate_test_split", fail_test_eval)
+    monkeypatch.setattr(
+        pipeline_module,
+        "run_end_of_training_uncertainty",
+        fail_test_eval,
+    )
+
+    pipeline_module._run_final_evaluation(
+        cfg=cfg,
+        trainer=object(),
+        tokenizer=object(),
+        splits=splits,
+    )
 
 
 def test_train_runs_holdout_evaluation_when_available(
@@ -1913,6 +1992,100 @@ def test_trim_wandb_artifact_metadata_caps_top_level_keys() -> None:
     assert trimmed["final_model"] is True
 
 
+def test_transformers_wandb_skips_intermediate_resume_artifact(
+    tmp_path: Path,
+) -> None:
+    """A wall-time stop should flush telemetry without logging a fake final model."""
+    calls: list[str] = []
+
+    class FakeWandbCallback:
+        """Minimal callback stub for the patched train-end hook."""
+
+        def __init__(self) -> None:
+            self._wandb = object()
+
+        def on_train_end(
+            self,
+            args: Any,
+            state: Any,
+            control: Any,
+            model: Any = None,
+            processing_class: Any = None,
+            **kwargs: Any,
+        ) -> str:
+            del args, state, control, model, processing_class, kwargs
+            calls.append("original")
+            return "logged"
+
+    integration_utils = type(
+        "FakeIntegrationUtils",
+        (),
+        {"WandbCallback": FakeWandbCallback},
+    )
+    wandb_utils_module._patch_transformers_wandb_artifact_metadata_limit(
+        integration_utils
+    )
+    run_markers.mark_resume_needed(tmp_path)
+
+    result = integration_utils.WandbCallback().on_train_end(
+        args=type("Args", (), {"output_dir": str(tmp_path)})(),
+        state=object(),
+        control=object(),
+    )
+
+    assert result is None
+    assert calls == []
+
+    run_markers.clear_resume_needed(tmp_path)
+    result = integration_utils.WandbCallback().on_train_end(
+        args=type("Args", (), {"output_dir": str(tmp_path)})(),
+        state=object(),
+        control=object(),
+    )
+
+    assert result == "logged"
+    assert calls == ["original"]
+
+
+def test_log_wandb_text_writes_directly_to_active_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """High-level progress should bypass resumed console-file ambiguity."""
+    written: list[str] = []
+    fake_run = type("Run", (), {"write_logs": written.append})()
+    fake_wandb = type("Wandb", (), {"run": fake_run})()
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
+
+    wandb_utils_module.log_wandb_text("resumed training")
+
+    assert written == ["resumed training\n"]
+
+
+def test_mark_wandb_slot_active_exposes_scheduler_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resumed run should immediately show which LSF allocation attached."""
+    written: list[str] = []
+    fake_run = type(
+        "Run",
+        (),
+        {"summary": {}, "write_logs": written.append},
+    )()
+    fake_wandb = type("Wandb", (), {"run": fake_run})()
+    monkeypatch.setenv("LSB_JOBID", "28895116")
+    monkeypatch.setenv("LSB_JOBINDEX", "3")
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
+
+    wandb_utils_module._mark_wandb_slot_active(fake_wandb)
+
+    assert fake_run.summary["codllm/status"] == "running"
+    assert fake_run.summary["codllm/active_lsf_job_id"] == "28895116"
+    assert fake_run.summary["codllm/active_lsf_job_index"] == "3"
+    assert written == ["codLLM attached to execution slot 28895116[3].\n"]
+
+
 def test_transformers_wandb_setup_filter_does_not_set_config_update_key() -> None:
     """Transformers W&B setup filtering should not assign update on wandb.config."""
 
@@ -2049,6 +2222,31 @@ def test_log_wandb_run_metadata_initializes_and_updates_config(
     assert "holdout/*" in defined_metric_names
     assert "holdout/full/*" in defined_metric_names
     assert "holdout/sample/*" in defined_metric_names
+
+
+def test_log_wandb_run_metadata_resumes_saved_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A resumed slot should explicitly rejoin the saved W&B run."""
+    fake_wandb = _FakeWandbModule()
+    monkeypatch.setattr(wandb_utils_module, "_import_wandb", lambda: fake_wandb)
+    monkeypatch.setenv("WANDB_MODE", "offline")
+    cfg = Config(
+        output_dir=str(tmp_path),
+        wandb=WandbConfig(enabled=True, mode="offline"),
+    )
+    wandb_utils_module._write_wandb_run_id_sidecar(cfg, "saved123")
+
+    wandb_utils_module.log_wandb_run_metadata(
+        cfg=cfg,
+        report_to=["wandb"],
+        run_name="resumed",
+        metadata={},
+    )
+
+    assert fake_wandb.init_calls[0]["id"] == "saved123"
+    assert fake_wandb.init_calls[0]["resume"] == "allow"
 
 
 def test_log_wandb_run_metadata_full_mode_writes_flattened_keys(

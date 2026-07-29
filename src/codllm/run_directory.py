@@ -6,7 +6,7 @@ from filelock import FileLock, Timeout
 
 from codllm.config import Config
 
-LOCAL_RUN_DIR_PATTERN = re.compile(r"^run-(\d+)$")
+LOCAL_RUN_DIR_PATTERN = re.compile(r"^run-(\d+)(?:_(\d+))?$")
 DEFAULT_RUN_DIR_LOCK_TIMEOUT_SECONDS = 120.0
 
 
@@ -90,12 +90,18 @@ def _latest_existing_run_dir(base: Path) -> Path | None:
     """Return the highest-numbered run-NNNN dir under base, or None."""
     if not base.exists():
         return None
+    current_job_index = os.getenv("LSB_JOBINDEX")
+    if current_job_index in {None, "", "0"}:
+        current_job_index = None
     candidates: list[tuple[int, Path]] = []
     for child in base.iterdir():
         if not child.is_dir():
             continue
         match = LOCAL_RUN_DIR_PATTERN.match(child.name)
         if match is None:
+            continue
+        run_job_index = match.group(2)
+        if current_job_index is not None and run_job_index != current_job_index:
             continue
         try:
             candidates.append((int(match.group(1)), child))

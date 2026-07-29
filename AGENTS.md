@@ -56,6 +56,10 @@
     `uv run invoke hpc.submit --config <path> --profile <profile> --user <lucas|elias>`.
     Both `hpc.build` and `hpc.submit` also accept shortcut flags such as `--lucas`.
   * To generate an LSF job without submitting it, add `--dry-run`.
+  * Publication response curves and Bayesian-search setup live under `runs/publication/`; read its `README.md` before
+    submitting. Create a native W&B sweep with `uv run --no-sync invoke experiments.bayes-create`, then submit
+    single-trial agent waves with `uv run --no-sync invoke hpc.bayes-submit --sweep-id <entity/project/sweep-id>`.
+    Bayesian agent jobs deliberately run one trial per allocation and do not use duration-based auto-resume.
 * The project uses `pre-commit` for managing pre-commit hooks. To run all hooks on all files, use
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.
 
@@ -95,6 +99,13 @@ quota scripts are installed; do not interpret shared filesystem totals as availa
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.
+Resumable LSF training persists `wandb_run_id.txt` in the stable `CODLLM_RUN_STATE_DIR`, not a scheduler-slot-specific
+checkpoint path; retain the checkpoint-local read fallback for older runs. Publication specs should set
+`CODLLM_WANDB_MODE=online` explicitly. When `.resume_needed` is present, the Transformers W&B train-end hook must skip
+the intermediate final-model artifact so checkpoint save, telemetry flush, and resubmission fit inside the wall-time
+safety margin.
+Native W&B samples do not automatically become codLLM settings. Use the allowlisted wrapper in
+`src/codllm/experiments/bayesian.py`, keep agent trials single-slot, and isolate every trial's output root.
 Use `[sweep]` for Cartesian environment-variable dimensions. Use `[[variants]]` for lockstep dimensions such as
 model/profile pairs; each variant may set `base = "../profiles/..."` and optional `[variants.env]`, and variants cross
 with `[sweep]` without crossing with one another.
@@ -141,6 +152,12 @@ unexpected dependency downloads.
     these overlay files in processed-data cache metadata so curation edits trigger rebuilds.
   * Pretraining warmup is controlled independently by `Config.pretrain_warmup_ratio` and
     `CODLLM_PRETRAIN_WARMUP_RATIO`; do not reuse fine-tuning `warmup_ratio` for pretraining.
+  * Pretraining early stopping and best-checkpoint reloading are independently controlled by
+    `Config.pretrain_early_stopping_patience`, `Config.pretrain_load_best_model_at_end`,
+    `CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE`, and `CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END`. When unset, these inherit
+    their fine-tuning counterparts.
+  * Final test and test-based uncertainty evaluation can be suppressed during tuning with
+    `Config.final_test_eval_enabled` and `CODLLM_FINAL_TEST_EVAL_ENABLED`; this must not change split construction.
   * Synthetic multi-COD rows for masterlist pretraining are controlled independently by
     `Config.pretrain_multicod_synthetic_ratio`, `Config.pretrain_multicod_synthetic_text_separators`,
     `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO`, and `CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_TEXT_SEPARATORS`; do not reuse

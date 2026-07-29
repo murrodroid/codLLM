@@ -35,7 +35,9 @@ from codllm.uncertainty.end_of_training import run_end_of_training_uncertainty
 def _log_progress(message: str) -> None:
     """Print a timestamped training progress message."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}", flush=True)
+    rendered = f"[{timestamp}] {message}"
+    print(rendered, flush=True)
+    wandb_utils.log_wandb_text(rendered)
 
 
 def _initialize_wandb_for_data_prep(cfg: Config) -> None:
@@ -444,6 +446,7 @@ def train(
         splits=splits,
         label2id=classifier_label2id,
     )
+    wandb_utils.log_optimization_result(cfg, trainer)
     # Training truly finished (epochs exhausted or early stopping) and final
     # evaluation ran exactly once. Record completion so a stray resubmission
     # does not re-run training or evaluation.
@@ -461,13 +464,14 @@ def _run_final_evaluation(
     label2id: dict[str, int] | None = None,
 ) -> None:
     """Run the one-shot final test, full-holdout, and uncertainty evaluation."""
-    evaluate_test_split(
-        cfg=cfg,
-        trainer=trainer,
-        tokenizer=tokenizer,
-        test_ds=splits.test,
-        label2id=label2id,
-    )
+    if cfg.final_test_eval_enabled:
+        evaluate_test_split(
+            cfg=cfg,
+            trainer=trainer,
+            tokenizer=tokenizer,
+            test_ds=splits.test,
+            label2id=label2id,
+        )
     if dataset_row_count(splits.holdout) not in (None, 0):
         evaluate_test_split(
             cfg=cfg,
@@ -478,7 +482,8 @@ def _run_final_evaluation(
             metric_key_prefix="holdout_full",
         )
     if (
-        cfg.uncertainty_eval
+        cfg.final_test_eval_enabled
+        and cfg.uncertainty_eval
         and cfg.model_task == "seq2seq"
         and dataset_row_count(splits.test) not in (None, 0)
     ):

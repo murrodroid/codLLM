@@ -11,6 +11,7 @@ are gitignored; only the specs are tracked, so a clone gives ready-to-submit rec
 |---|---|
 | `profiles/` | Per-model **runtime** profiles (model name, batch size, dataloader): `h100-{small,base,large,xl}.toml`. Distinct from `hpc/lsf_profiles.toml`, which sets the LSF **submission** resources (queue, wall time, cores, memory, GPU). |
 | `sweeps/` | Reusable **sweep building-blocks**: one factor varied over a few values (multicod ratio, LR scheduler, perturbation, pretraining, training inputs). Each inherits a runtime profile. |
+| `publication/` | Publication-grade response curves and W&B Bayesian screening. See `publication/README.md` for test-leakage, output-isolation, and single-slot-agent safeguards. |
 | `thesis/` | The **reported thesis experiments**. Each composes a sweep building-block with the locked thesis base config. `model_size.toml` is the size sweep (small to xl); the others are the one-factor ablations. |
 | `single/` | **Standalone runs**: the five leave-one-source-out holdouts (`base_holdout_*`, RQ3), the deployment recipe (`size_sweep_base_final.toml`), and individual model runs (`codllm_*`). |
 

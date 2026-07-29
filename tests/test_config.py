@@ -82,6 +82,8 @@ ENV_KEYS = [
     "CODLLM_PRETRAIN_LEARNING_RATE",
     "CODLLM_PRETRAIN_WARMUP_RATIO",
     "CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS",
+    "CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE",
+    "CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END",
     "CODLLM_PRETRAIN_LR_SCHEDULER_TYPE",
     "CODLLM_PRETRAIN_UPSAMPLE_ENABLED",
     "CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL",
@@ -97,6 +99,7 @@ ENV_KEYS = [
     "CODLLM_LABEL_STANDARDIZATION_RULES_PATH",
     "CODLLM_LABEL_STANDARDIZATION_OVERRIDES_PATH",
     "CODLLM_INFERENCE_VALIDATE_REGISTRY",
+    "CODLLM_FINAL_TEST_EVAL_ENABLED",
     "CODLLM_OUTPUT_DIR",
     "CODLLM_DATA_RAW_DIR",
     "CODLLM_DATA_PROCESSED_DIR",
@@ -143,6 +146,9 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
     assert cfg.max_grad_norm == 0.5
     assert cfg.warmup_ratio == 0.1
     assert cfg.balance_strategy == "none"
+    assert cfg.final_test_eval_enabled is True
+    assert cfg.resolved_pretrain_early_stopping_patience() == 0
+    assert cfg.resolved_pretrain_load_best_model_at_end() is False
     assert cfg.label_harmonization_enabled is True
     assert cfg.label_harmonization_masterlist_path == (
         "data/raw/ICD10h_Masterlist_2024.xlsx"
@@ -249,6 +255,8 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_PRETRAIN_LEARNING_RATE", "8e-6")
     monkeypatch.setenv("CODLLM_PRETRAIN_WARMUP_RATIO", "0.2")
     monkeypatch.setenv("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS", "10")
+    monkeypatch.setenv("CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE", "0")
+    monkeypatch.setenv("CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END", "false")
     monkeypatch.setenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE", "linear")
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_ENABLED", "true")
     monkeypatch.setenv("CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL", "10")
@@ -281,6 +289,7 @@ def test_config_from_env_applies_runtime_overrides(
         "curation/custom_overrides.csv",
     )
     monkeypatch.setenv("CODLLM_INFERENCE_VALIDATE_REGISTRY", "true")
+    monkeypatch.setenv("CODLLM_FINAL_TEST_EVAL_ENABLED", "false")
     monkeypatch.setenv("CODLLM_OUTPUT_DIR", "/tmp/output")
     monkeypatch.setenv("CODLLM_DATA_RAW_DIR", "/tmp/raw")
     monkeypatch.setenv("CODLLM_DATA_PROCESSED_DIR", "/tmp/processed")
@@ -382,6 +391,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.pretrain_learning_rate == 8e-6
     assert cfg.pretrain_warmup_ratio == 0.2
     assert cfg.pretrain_eval_every_n_epochs == 10
+    assert cfg.pretrain_early_stopping_patience == 0
+    assert cfg.pretrain_load_best_model_at_end is False
     assert cfg.pretrain_lr_scheduler_type == "linear"
     assert cfg.pretrain_upsample_enabled is True
     assert cfg.pretrain_upsample_target_per_label == 10
@@ -402,6 +413,7 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.label_standardization_rules_path == "curation/custom_rules.toml"
     assert cfg.label_standardization_overrides_path == "curation/custom_overrides.csv"
     assert cfg.inference_validate_registry is True
+    assert cfg.final_test_eval_enabled is False
     assert cfg.output_dir == "/tmp/output"
     assert cfg.data_raw_dir == "/tmp/raw"
     assert cfg.data_processed_dir == "/tmp/processed"

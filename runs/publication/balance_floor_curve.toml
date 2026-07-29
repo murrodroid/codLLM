@@ -1,0 +1,50 @@
+name = "publication_balance_floor_curve"
+command = "train"
+description = """
+Measures the balance-floor response at 0, 100, 200, 300, 450, 600, and 900
+while keeping the publication protocol fixed.
+"""
+base = "base.toml"
+force_reprocess = false
+
+[[variants]]
+name = "floor-000"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-000"
+
+[[variants]]
+name = "floor-100"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 100
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-100"
+
+[[variants]]
+name = "floor-200"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 200
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-200"
+
+[[variants]]
+name = "floor-300"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-300"
+
+[[variants]]
+name = "floor-450"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-450"
+
+[[variants]]
+name = "floor-600"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 600
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-600"
+
+[[variants]]
+name = "floor-900"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 900
+CODLLM_OUTPUT_DIR = "checkpoints/publication/balance-floor/floor-900"

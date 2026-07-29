@@ -14,6 +14,7 @@ import warnings
 
 import torch
 
+from codllm import run_markers
 from codllm.config import Config
 from codllm.runtime.paths import resolve_source_path
 
@@ -59,20 +60,33 @@ _WANDB_RUN_ID_SIDECAR_NAME = "wandb_run_id.txt"
 
 
 def _wandb_run_id_sidecar_path(cfg: Config) -> Path:
-    """Return the path used to persist the W&B run id for a given run dir."""
+    """Return the resume-stable path used to persist the W&B run id."""
+    return run_markers.run_state_dir(cfg.output_dir) / _WANDB_RUN_ID_SIDECAR_NAME
+
+
+def _legacy_wandb_run_id_sidecar_path(cfg: Config) -> Path:
+    """Return the former checkpoint-local W&B run-id sidecar path."""
     return Path(cfg.output_dir) / _WANDB_RUN_ID_SIDECAR_NAME
 
 
 def _read_wandb_run_id_sidecar(cfg: Config) -> str | None:
     """Return the saved W&B run id for this run dir, when one exists."""
-    path = _wandb_run_id_sidecar_path(cfg)
-    if not path.exists():
-        return None
-    try:
-        run_id = path.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return run_id or None
+    paths = (
+        _wandb_run_id_sidecar_path(cfg),
+        _legacy_wandb_run_id_sidecar_path(cfg),
+    )
+    for index, path in enumerate(paths):
+        if index > 0 and path == paths[0]:
+            continue
+        if not path.exists():
+            continue
+        try:
+            run_id = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if run_id:
+            return run_id
+    return None
 
 
 def _write_wandb_run_id_sidecar(cfg: Config, run_id: str | None) -> None:
@@ -148,6 +162,10 @@ def resolve_wandb_reporting(cfg: Config) -> tuple[str | list[str], str | None]:
         return ["wandb"], run_name
 
     if has_wandb_credentials():
+        if os.getenv("WANDB_MODE", "").strip().lower() == "disabled":
+            os.environ["WANDB_LOG_MODEL"] = "false"
+            return "none", None
+        os.environ["WANDB_MODE"] = "online"
         return ["wandb"], run_name
 
     os.environ["WANDB_MODE"] = "disabled"
@@ -385,7 +403,7 @@ def _trim_wandb_artifact_metadata(
 
 
 def _patch_transformers_wandb_artifact_metadata_limit(integration_utils: Any) -> None:
-    """Patch Transformers final model artifact logging to avoid W&B metadata limits."""
+    """Patch Transformers model artifacts for resume safety and metadata limits."""
     callback_cls = getattr(integration_utils, "WandbCallback", None)
     if callback_cls is None:
         return
@@ -406,6 +424,14 @@ def _patch_transformers_wandb_artifact_metadata_limit(integration_utils: Any) ->
         processing_class: Any = None,
         **kwargs: Any,
     ) -> Any:
+        state_dir = run_markers.run_state_dir(getattr(args, "output_dir", None))
+        if run_markers.is_resume_needed(state_dir):
+            log_wandb_text(
+                "Wall-time checkpoint saved; skipped the intermediate-slot "
+                "model artifact so W&B can flush live telemetry before resubmission."
+            )
+            return None
+
         wandb = getattr(self, "_wandb", None)
         original_artifact = getattr(wandb, "Artifact", None)
         if not callable(original_artifact):
@@ -796,6 +822,47 @@ def _import_wandb() -> Any:
     return wandb
 
 
+def log_wandb_text(message: str) -> None:
+    """Write one high-level progress line directly to the W&B Logs tab."""
+    if os.getenv("WANDB_MODE") == "disabled":
+        return
+    try:
+        wandb = _import_wandb()
+    except ImportError:
+        return
+    run = getattr(wandb, "run", None)
+    writer = getattr(run, "write_logs", None)
+    if not callable(writer):
+        return
+    try:
+        writer(message.rstrip() + "\n")
+    except Exception:  # pragma: no cover - never fail training over telemetry
+        return
+
+
+def _mark_wandb_slot_active(wandb: Any) -> None:
+    """Expose the scheduler slot that most recently attached to a W&B run."""
+    run = getattr(wandb, "run", None)
+    if run is None:
+        return
+    summary = getattr(run, "summary", None)
+    job_id = os.getenv("LSB_JOBID")
+    job_index = os.getenv("LSB_JOBINDEX")
+    try:
+        if summary is not None:
+            summary["codllm/status"] = "running"
+            if job_id:
+                summary["codllm/active_lsf_job_id"] = job_id
+            if job_index:
+                summary["codllm/active_lsf_job_index"] = job_index
+    except Exception:  # pragma: no cover - never fail training over telemetry
+        pass
+    slot = job_id or "local"
+    if job_index not in {None, "", "0"}:
+        slot = f"{slot}[{job_index}]"
+    log_wandb_text(f"codLLM attached to execution slot {slot}.")
+
+
 def log_wandb_run_metadata(
     cfg: Config,
     report_to: str | list[str] | None,
@@ -817,7 +884,8 @@ def log_wandb_run_metadata(
         )
         return
 
-    if getattr(wandb, "run", None) is None:
+    initialized_here = getattr(wandb, "run", None) is None
+    if initialized_here:
         init_kwargs: dict[str, Any] = {
             "project": os.getenv("WANDB_PROJECT", cfg.wandb.project),
             "entity": cfg.wandb.entity or os.getenv("WANDB_ENTITY"),
@@ -839,6 +907,8 @@ def log_wandb_run_metadata(
         return
 
     _write_wandb_run_id_sidecar(cfg, getattr(wandb.run, "id", None))
+    if initialized_here:
+        _mark_wandb_slot_active(wandb)
 
     # Define epoch as a step metric so eval metrics can be plotted against it
     wandb.define_metric("epoch")
@@ -854,6 +924,7 @@ def log_wandb_run_metadata(
     wandb.define_metric("pretraining/*", step_metric="epoch")
     wandb.define_metric("pretraining/val/*", step_metric="epoch")
     wandb.define_metric("pretraining/test/*", step_metric="epoch")
+    wandb.define_metric("optimization/val_macro_f1", summary="max")
     # Pin key metrics to summary for easy comparison across runs
     for prefix in (
         "val",
@@ -909,6 +980,30 @@ def log_wandb_run_metadata(
         if flattened_metadata:
             wandb.config.update(flattened_metadata, allow_val_change=True)
     _log_wandb_metadata_artifact(wandb, metadata)
+
+
+def log_optimization_result(cfg: Config, trainer: Any) -> None:
+    """Log the completed sweep trial's best validation macro F1 once."""
+    if not os.getenv("WANDB_SWEEP_ID"):
+        return
+    if cfg.save_strategy_best_metric != "macro_f1":
+        return
+    if os.getenv("WANDB_MODE") == "disabled":
+        return
+    try:
+        wandb = _import_wandb()
+    except ImportError:
+        return
+    run = getattr(wandb, "run", None)
+    best_metric = getattr(getattr(trainer, "state", None), "best_metric", None)
+    if run is None or best_metric is None:
+        return
+    try:
+        metric = float(best_metric)
+        wandb.log({"optimization/val_macro_f1": metric})
+        run.summary["optimization/val_macro_f1"] = metric
+    except Exception:  # pragma: no cover - never fail training over telemetry
+        return
 
 
 def log_run_status(cfg: Config, status: str) -> None:

@@ -659,6 +659,11 @@ optional end-of-training uncertainty pass. They are intended for long training r
   `0` disables early stopping.
 - `CODLLM_EARLY_STOPPING_THRESHOLD` is the minimum improvement that resets the patience counter. `0.0` treats any
   strict improvement as fresh progress (a "best yet" criterion).
+- `CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE` and `CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END` override those two controls
+  for the masterlist-pretraining stage. When unset, they inherit the fine-tuning values. Set them to `0` and `false`
+  for an exact pretraining-dose experiment.
+- `CODLLM_FINAL_TEST_EVAL_ENABLED=false` keeps the configured test split intact but suppresses final test scoring and
+  test-based uncertainty evaluation. Use this for response curves and hyperparameter search to avoid test leakage.
 
 #### Wall-time budgeting
 
@@ -678,8 +683,10 @@ runtime callback that periodically checks elapsed time.
   with the LSF resubmit flow so each new slot continues the same logical training run.
 - `CODLLM_PER_SIZE_OUTPUT_DIR=1` puts each model-size run under its own subdirectory so size-sweep slots do not
   collide. Combined with auto-resume, this lets multiple sizes resubmit independently.
-- The W&B sidecar `wandb_run_id.txt` is written next to the checkpoints and reread on resume so all slots write into
-  the same W&B run.
+- The W&B sidecar `wandb_run_id.txt` is written in the resume-stable `CODLLM_RUN_STATE_DIR` and reread on resume so
+  fresh scheduler slots write into the same W&B run. Checkpoint-local sidecars from older runs remain readable.
+- Intermediate wall-time stops do not upload a misleading final-model artifact. This leaves the safety margin
+  available for checkpointing and a clean W&B telemetry flush before resubmission.
 
 #### End-of-training uncertainty pass
 
@@ -701,15 +708,17 @@ to W&B as an `end_of_training_eval` artifact.
 Logging is automatic when W&B credentials are present. All knobs are overridable from env or TOML:
 
 - `CODLLM_WANDB_ENABLED=0` disables W&B entirely for this run.
-- `CODLLM_WANDB_MODE=online|offline|disabled` controls the wandb client mode. `offline` writes data to disk only and
-  requires a later `wandb sync` to upload.
+- `CODLLM_WANDB_MODE=auto|online|offline|disabled` controls the W&B client mode. `auto` uses online mode when
+  credentials are present; `offline` writes data to disk only and requires a later `wandb sync` to upload.
 - `CODLLM_WANDB_PROJECT` and `CODLLM_WANDB_ENTITY` select the destination.
 - `CODLLM_WANDB_RUN_NAME` overrides the auto-generated run name.
 - `CODLLM_WANDB_RUN_CONFIG_MODE=minimal|standard|full` controls how much of the resolved `Config` is shown on the
   W&B run page (with the full version always available as a logged artifact).
 - `CODLLM_WANDB_METRIC_MODE=core|standard|all` filters which metric scopes are logged: `core` keeps the headline
   numbers and skips per-chapter / per-block / per-source breakdowns, `all` logs everything.
-- `CODLLM_WANDB_LOG_MODEL=end|never|all` controls whether model checkpoints are uploaded as artifacts.
+- `CODLLM_WANDB_LOG_MODEL=false|end|checkpoint` controls whether model checkpoints are uploaded as artifacts.
+- High-level codLLM progress messages are sent directly to the W&B Logs tab, including after a scheduler-slot resume.
+  The run summary records the active LSF job id/index and `codllm/status`.
 
 ## Outputs and Metrics
 

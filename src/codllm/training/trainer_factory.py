@@ -38,14 +38,20 @@ from codllm.training.metadata import (
     build_stage_run_metadata,
     print_training_configuration,
 )
-from codllm.training.stages import TrainingStage, should_apply_eval_interval_callback
+from codllm.training.stages import (
+    TrainingStage,
+    resolved_stage_early_stopping_patience,
+    should_apply_eval_interval_callback,
+)
 from codllm.training.visualizations import MetricArtifactLogger
 
 
 def _log_progress(message: str) -> None:
     """Print a timestamped training progress message."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}", flush=True)
+    rendered = f"[{timestamp}] {message}"
+    print(rendered, flush=True)
+    wandb_utils.log_wandb_text(rendered)
 
 
 def run_training_stage(
@@ -190,10 +196,11 @@ def run_training_stage(
         )
         callbacks.append(holdout_callback)
 
-    if cfg.early_stopping_patience > 0 and processed_eval_ds is not None:
+    early_stopping_patience = resolved_stage_early_stopping_patience(cfg, stage)
+    if early_stopping_patience > 0 and processed_eval_ds is not None:
         callbacks.append(
             EarlyStoppingCallback(
-                early_stopping_patience=cfg.early_stopping_patience,
+                early_stopping_patience=early_stopping_patience,
                 early_stopping_threshold=cfg.early_stopping_threshold,
             )
         )
@@ -275,9 +282,7 @@ def run_training_stage(
     resume_arg: bool | str = False
     if cfg.auto_resume and _has_existing_checkpoint(args.output_dir):
         resume_arg = True
-        _log_progress(
-            f"Auto-resume: existing checkpoint found in '{args.output_dir}'."
-        )
+        _log_progress(f"Auto-resume: existing checkpoint found in '{args.output_dir}'.")
     trainer.train(resume_from_checkpoint=resume_arg)
     return trainer
 

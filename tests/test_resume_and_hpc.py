@@ -185,9 +185,7 @@ class TestRunMarkers:
         run_markers.clear_resume_needed(tmp_path)
         assert not run_markers.is_resume_needed(tmp_path)
 
-    def test_mark_complete_clears_stale_resume_and_stamps(
-        self, tmp_path: Path
-    ) -> None:
+    def test_mark_complete_clears_stale_resume_and_stamps(self, tmp_path: Path) -> None:
         # A stale resume request from a prior slot must not survive completion.
         run_markers.mark_resume_needed(tmp_path)
         run_markers.mark_training_complete(tmp_path)
@@ -274,6 +272,43 @@ class TestWandbRunIdSidecar:
         second_mtime = _wandb_run_id_sidecar_path(cfg).stat().st_mtime_ns
         assert first_mtime == second_mtime  # short-circuit avoided rewrite
 
+    def test_uses_resume_stable_state_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fresh scheduler slots should share one W&B run-id sidecar."""
+        from codllm.wandb_utils import (
+            _read_wandb_run_id_sidecar,
+            _wandb_run_id_sidecar_path,
+            _write_wandb_run_id_sidecar,
+        )
+
+        state_dir = tmp_path / "stable-state"
+        monkeypatch.setenv(run_markers.RUN_STATE_DIR_ENV, str(state_dir))
+        first_cfg = SimpleNamespace(output_dir=str(tmp_path / "run-100"))
+        second_cfg = SimpleNamespace(output_dir=str(tmp_path / "run-200"))
+
+        _write_wandb_run_id_sidecar(first_cfg, "shared123")
+
+        assert _wandb_run_id_sidecar_path(first_cfg) == (state_dir / "wandb_run_id.txt")
+        assert _read_wandb_run_id_sidecar(second_cfg) == "shared123"
+
+    def test_reads_legacy_checkpoint_sidecar(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Existing runs should migrate from checkpoint-local sidecars."""
+        from codllm.wandb_utils import _read_wandb_run_id_sidecar
+
+        output_dir = tmp_path / "run-100"
+        output_dir.mkdir()
+        (output_dir / "wandb_run_id.txt").write_text("legacy123\n", encoding="utf-8")
+        monkeypatch.setenv(
+            run_markers.RUN_STATE_DIR_ENV,
+            str(tmp_path / "stable-state"),
+        )
+        cfg = SimpleNamespace(output_dir=str(output_dir))
+
+        assert _read_wandb_run_id_sidecar(cfg) == "legacy123"
+
 
 class TestPrepareRunOutputDirAutoResume:
     def test_auto_resume_picks_existing_run(self, tmp_path: Path) -> None:
@@ -291,6 +326,31 @@ class TestPrepareRunOutputDirAutoResume:
             per_size_output_dir=False,
         )
         resolved = prepare_run_output_dir(cfg)
+        assert resolved == existing
+
+    def test_auto_resume_picks_existing_lsf_array_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Resubmitted array cells should rediscover run-JOBID_INDEX checkpoints."""
+        from codllm.run_directory import prepare_run_output_dir
+
+        base = tmp_path / "runs"
+        base.mkdir()
+        existing = base / "run-28888934_3"
+        existing.mkdir()
+        (base / "run-99999999_2").mkdir()
+        monkeypatch.setenv("LSB_JOBINDEX", "3")
+        cfg = SimpleNamespace(
+            output_dir=str(base),
+            hf_model="google/flan-t5-base",
+            auto_resume=True,
+            per_size_output_dir=False,
+        )
+
+        resolved = prepare_run_output_dir(cfg)
+
         assert resolved == existing
 
     def test_per_size_inserts_model_subdir(self, tmp_path: Path) -> None:

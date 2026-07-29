@@ -337,6 +337,8 @@ CODLLM_NUM_TRAIN_EPOCHS = [1, 2]
     assert "export CODLLM_RUN_STATE_DIR" in script
     assert "state/run-${RUN_INDEX}" in script
     assert "maybe_resubmit_for_resume" in script
+    assert "CODLLM_WANDB_MODE=${CODLLM_WANDB_MODE:-auto}" in script
+    assert "inherited WANDB_MODE=${WANDB_MODE:-<none>}" in script
     # An array resubmission re-launches only the current element.
     assert 'bsub -J "codllm-sweep[${RUN_INDEX}]" < "$SELF_SCRIPT"' in script
     assert "CODLLM_MAX_RESUBMITS" in script
@@ -381,7 +383,7 @@ CODLLM_HF_MODEL = "google/flan-t5-small"
     assert 'RUN_INDEX="1"' in script
     # A single (non-array) job resubmits itself as-is, without a -J override.
     assert 'bsub < "$SELF_SCRIPT"' in script
-    assert 'bsub -J' not in script
+    assert "bsub -J" not in script
     # Every slot records its own start so the time budget covers setup.
     assert 'export CODLLM_JOB_START_EPOCH="$(date +%s)"' in script
 
@@ -401,7 +403,12 @@ CODLLM_MAX_RUNTIME_SECONDS = "111"
     )
     spec = load_experiment_spec(spec_path)
     profile = LsfProfile(
-        name="test", queue="gpu", wall_time="24:00", cores=2, memory="2GB", sync_env=False
+        name="test",
+        queue="gpu",
+        wall_time="24:00",
+        cores=2,
+        memory="2GB",
+        sync_env=False,
     )
 
     submission = prepare_lsf_submission(

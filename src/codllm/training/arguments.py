@@ -5,7 +5,11 @@ from transformers import Seq2SeqTrainingArguments, TrainingArguments
 
 import codllm.wandb_utils as wandb_utils
 from codllm.config import Config
-from codllm.training.stages import TrainingStage, build_train_stage
+from codllm.training.stages import (
+    TrainingStage,
+    build_train_stage,
+    resolved_stage_load_best_model_at_end,
+)
 
 
 def _metric_greater_is_better(metric_name: str) -> bool:
@@ -34,6 +38,10 @@ def build_training_args(
 ) -> TrainingArguments:
     """Build training arguments for seq2seq or classification stages."""
     resolved_stage = stage or build_train_stage(cfg)
+    load_best_model_at_end = resolved_stage_load_best_model_at_end(
+        cfg,
+        resolved_stage,
+    )
     eval_strategy = cfg.eval_strategy if has_eval else "no"
     eval_steps = cfg.eval_steps if eval_strategy == "steps" else None
     metric_inputs_enabled = (
@@ -122,7 +130,7 @@ def build_training_args(
             cfg.save_strategy_best_metric
         )
 
-    if cfg.load_best_model_at_end:
+    if load_best_model_at_end:
         if eval_strategy == "no":
             raise ValueError(
                 "load_best_model_at_end=True requires validation data and "

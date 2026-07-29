@@ -43,6 +43,31 @@ class TrainingStage:
         return payload
 
 
+def is_pretraining_stage(stage: TrainingStage) -> bool:
+    """Return whether a stage is the masterlist pretraining stage."""
+    return stage.name.strip().lower() in {"pretrain", "pretraining"}
+
+
+def resolved_stage_early_stopping_patience(
+    cfg: Config,
+    stage: TrainingStage,
+) -> int:
+    """Return the early-stopping patience for one training stage."""
+    if is_pretraining_stage(stage):
+        return cfg.resolved_pretrain_early_stopping_patience()
+    return cfg.early_stopping_patience
+
+
+def resolved_stage_load_best_model_at_end(
+    cfg: Config,
+    stage: TrainingStage,
+) -> bool:
+    """Return whether one stage reloads its best validation checkpoint."""
+    if is_pretraining_stage(stage):
+        return cfg.resolved_pretrain_load_best_model_at_end()
+    return cfg.load_best_model_at_end
+
+
 def build_train_stage(cfg: Config) -> TrainingStage:
     """Build the default single-stage fine-tuning configuration."""
     return TrainingStage(
@@ -89,12 +114,10 @@ def should_apply_eval_interval_callback(
     has_eval_dataset: bool,
 ) -> bool:
     """Return whether the N-epoch eval callback should be attached."""
-    normalized_stage_name = stage.name.strip().lower()
-    is_pretraining_stage = normalized_stage_name in {"pretrain", "pretraining"}
     return (
         has_eval_dataset
         and eval_strategy_value == "epoch"
-        and is_pretraining_stage
+        and is_pretraining_stage(stage)
         and stage.eval_every_n_epochs > 1
     )
 

@@ -1,0 +1,50 @@
+name = "publication_multicod_synthetic_curve"
+command = "train"
+description = """
+Measures the fine-tuning synthetic multi-COD response from zero through one
+synthetic row per eligible single-label candidate.
+"""
+base = "base.toml"
+force_reprocess = false
+
+[[variants]]
+name = "ratio-000"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.0
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-000"
+
+[[variants]]
+name = "ratio-015"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.15
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-015"
+
+[[variants]]
+name = "ratio-030"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-030"
+
+[[variants]]
+name = "ratio-045"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.45
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-045"
+
+[[variants]]
+name = "ratio-060"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-060"
+
+[[variants]]
+name = "ratio-080"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.80
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-080"
+
+[[variants]]
+name = "ratio-100"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 1.0
+CODLLM_OUTPUT_DIR = "checkpoints/publication/multicod-synthetic/ratio-100"

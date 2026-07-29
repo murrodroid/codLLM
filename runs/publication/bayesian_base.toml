@@ -1,0 +1,19 @@
+name = "publication_bayesian_base"
+command = "train"
+description = """
+Single-slot, medium-fidelity protocol for W&B Bayesian screening. Sampled
+parameters are allowlisted and applied by codllm.experiments.bayesian.
+"""
+base = "base.toml"
+force_reprocess = false
+
+[env]
+CODLLM_OUTPUT_DIR = "checkpoints/publication/bayesian"
+CODLLM_AUTO_RESUME = false
+CODLLM_NUM_TRAIN_EPOCHS = 24
+CODLLM_EARLY_STOPPING_PATIENCE = 6
+CODLLM_WANDB_LOG_MODEL = "false"
+CODLLM_WANDB_METRIC_MODE = "standard"
+CODLLM_WANDB_RUN_CONFIG_MODE = "standard"
+CODLLM_FINAL_TEST_EVAL_ENABLED = false
+CODLLM_UNCERTAINTY_EVAL = false

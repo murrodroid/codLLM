@@ -358,6 +358,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if uncertainty_eval is not None:
         cfg.uncertainty_eval = uncertainty_eval
 
+    final_test_eval_enabled = _parse_env_bool("CODLLM_FINAL_TEST_EVAL_ENABLED")
+    if final_test_eval_enabled is not None:
+        cfg.final_test_eval_enabled = final_test_eval_enabled
+
     auto_resume = _parse_env_bool("CODLLM_AUTO_RESUME")
     if auto_resume is not None:
         cfg.auto_resume = auto_resume
@@ -689,6 +693,22 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         if pretrain_eval_every_n_epochs < 1:
             raise ValueError("CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS must be at least 1.")
         cfg.pretrain_eval_every_n_epochs = pretrain_eval_every_n_epochs
+
+    pretrain_early_stopping_patience = _parse_env_int(
+        "CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE"
+    )
+    if pretrain_early_stopping_patience is not None:
+        if pretrain_early_stopping_patience < 0:
+            raise ValueError(
+                "CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE must be non-negative."
+            )
+        cfg.pretrain_early_stopping_patience = pretrain_early_stopping_patience
+
+    pretrain_load_best_model_at_end = _parse_env_bool(
+        "CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END"
+    )
+    if pretrain_load_best_model_at_end is not None:
+        cfg.pretrain_load_best_model_at_end = pretrain_load_best_model_at_end
 
     pretrain_lr_scheduler_type = os.getenv("CODLLM_PRETRAIN_LR_SCHEDULER_TYPE")
     if (

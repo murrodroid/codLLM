@@ -1,0 +1,57 @@
+name = "publication_pretraining_dose_curve"
+command = "train"
+description = """
+Measures exact pretraining exposure at off, 4, 8, 16, 32, and 48 epochs with
+target-per-label 12 and pretraining synthetic ratio 0.30 fixed.
+"""
+base = "base.toml"
+force_reprocess = false
+
+[env]
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 12
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 4
+CODLLM_PRETRAIN_EARLY_STOPPING_PATIENCE = 0
+CODLLM_PRETRAIN_LOAD_BEST_MODEL_AT_END = false
+
+[[variants]]
+name = "pretrain-off"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = false
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 1
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/off"
+
+[[variants]]
+name = "pretrain-004"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/epochs-004"
+
+[[variants]]
+name = "pretrain-008"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 8
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/epochs-008"
+
+[[variants]]
+name = "pretrain-016"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/epochs-016"
+
+[[variants]]
+name = "pretrain-032"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/epochs-032"
+
+[[variants]]
+name = "pretrain-048"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication/pretraining-dose/epochs-048"

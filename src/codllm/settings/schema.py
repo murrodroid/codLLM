@@ -147,6 +147,7 @@ class Config:
         default_factory=default_multicod_synthetic_text_separators
     )
     inference_validate_registry: bool = False
+    final_test_eval_enabled: bool = True
     uncertainty_eval: bool = True
 
     auto_resume: bool = False
@@ -177,6 +178,8 @@ class Config:
     pretrain_warmup_ratio: float = 0.0
     pretrain_eval_every_n_epochs: int = 1
     pretrain_lr_scheduler_type: LRSchedulerType = "linear"
+    pretrain_early_stopping_patience: int | None = None
+    pretrain_load_best_model_at_end: bool | None = None
     pretrain_upsample_enabled: bool = True
     pretrain_upsample_target_per_label: int = 10
     pretrain_upsample_perturbations: list[str] = field(
@@ -232,6 +235,18 @@ class Config:
     def resolved_data_seed(self) -> int:
         """Return data seed, defaulting to the global seed when unset."""
         return self.seed if self.data_seed is None else self.data_seed
+
+    def resolved_pretrain_early_stopping_patience(self) -> int:
+        """Return pretraining patience, inheriting fine-tuning when unset."""
+        if self.pretrain_early_stopping_patience is None:
+            return self.early_stopping_patience
+        return self.pretrain_early_stopping_patience
+
+    def resolved_pretrain_load_best_model_at_end(self) -> bool:
+        """Return pretraining best-model loading, inheriting when unset."""
+        if self.pretrain_load_best_model_at_end is None:
+            return self.load_best_model_at_end
+        return self.pretrain_load_best_model_at_end
 
     def input_field_prefix(self, feature: TrainingInput) -> str:
         """Return the configured text prefix for one training input field."""

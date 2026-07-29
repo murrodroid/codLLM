@@ -4,6 +4,7 @@ import errno
 import math
 import os
 import re
+import shlex
 import time
 from contextlib import contextmanager
 from dataclasses import replace
@@ -20,6 +21,7 @@ from codllm.experiments import (
     GeneratedSubmission,
     LsfProfile,
     SpecError,
+    build_wandb_agent_spec,
     list_experiment_specs,
     load_experiment_spec,
     load_lsf_profile,
@@ -126,6 +128,38 @@ def experiments_plan(ctx: Context, config: str, profile: str | None = None) -> N
     for index, run in enumerate(spec.expanded_runs(), start=1):
         sweep = _format_sweep(run)
         print(f"{index:>3}. {run.name}{sweep}")
+
+
+@task(name="bayes-create")
+def experiments_bayes_create(
+    ctx: Context,
+    config: str = "runs/publication/bayesian_sweep.yaml",
+    project: str = "codllm",
+    entity: str | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Create the native W&B Bayesian sweep defined by one YAML file."""
+    config_path = Path(config)
+    if not config_path.exists():
+        raise Exit(f"Bayesian sweep config does not exist: {config_path}", code=2)
+    command = [
+        "uv",
+        "run",
+        "--no-sync",
+        "--no-dev",
+        "wandb",
+        "sweep",
+        "--project",
+        project,
+    ]
+    if entity is not None and entity.strip():
+        command.extend(["--entity", entity.strip()])
+    command.append(str(config_path))
+    rendered_command = shlex.join(command)
+    print(f"Create Bayesian sweep with: {rendered_command}")
+    if dry_run:
+        return
+    ctx.run(rendered_command, pty=True)
 
 
 @task(name="profiles")
@@ -394,6 +428,40 @@ def hpc_submit(
     ctx.run(submission.bsub_command(), pty=True)
 
 
+@task(name="bayes-submit")
+def hpc_bayes_submit(
+    ctx: Context,
+    sweep_id: str,
+    agents: int = 4,
+    profile: str = "h100",
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    output_root: str = "jobs/generated",
+    dry_run: bool = False,
+) -> None:
+    """Submit one single-slot W&B Bayesian trial per LSF array element."""
+    if agents < 1:
+        raise Exit("--agents must be at least 1.", code=2)
+    spec = build_wandb_agent_spec(sweep_id, agents)
+    lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
+    submission = prepare_lsf_submission(
+        spec,
+        lsf_profile,
+        project_dir=Path.cwd(),
+        output_root=output_root,
+    )
+    _print_submission(submission)
+    print(
+        "Bayesian agents are single-slot and single-trial: "
+        "no duration-based auto-resubmission is enabled."
+    )
+    if dry_run:
+        return
+    ctx.run(submission.bsub_command(), pty=True)
+
+
 _DURATION_UNIT_SECONDS = {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
 
 
@@ -421,7 +489,9 @@ def _parse_duration_seconds(text: str) -> int:
             f"--duration must look like '2w', '14d', or '48h', got {text!r}.",
             code=2,
         )
-    seconds = int(round(float(match.group(1)) * _DURATION_UNIT_SECONDS[match.group(2) or "h"]))
+    seconds = int(
+        round(float(match.group(1)) * _DURATION_UNIT_SECONDS[match.group(2) or "h"])
+    )
     if seconds <= 0:
         raise Exit("--duration must resolve to a positive number of seconds.", code=2)
     return seconds
@@ -896,11 +966,13 @@ namespace.add_task(sync)
 namespace.add_task(train)
 
 experiments = Collection("experiments")
+experiments.add_task(experiments_bayes_create)
 experiments.add_task(experiments_list)
 experiments.add_task(experiments_plan)
 namespace.add_collection(experiments)
 
 hpc = Collection("hpc")
+hpc.add_task(hpc_bayes_submit)
 hpc.add_task(hpc_build)
 hpc.add_task(hpc_profiles)
 hpc.add_task(hpc_storage)
