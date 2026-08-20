@@ -15,7 +15,7 @@ memory = "12GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
+storage_folder = "$BLACKHOLE"
 modules = ["cuda/12.2"]
 max_resubmits = 30
 
@@ -27,7 +27,7 @@ memory = "6GB"
 gpu = "num=1:mode=exclusive_process"
 email = "s234805@dtu.dk"
 job_name_prefix = "codllm"
-storage_folder = "/work3/$USER"
+storage_folder = "$BLACKHOLE"
 modules = ["cuda/12.2"]
 extra_resources = ["select[gpu32gb]"]
 max_resubmits = 30
