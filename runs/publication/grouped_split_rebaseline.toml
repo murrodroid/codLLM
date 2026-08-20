@@ -19,4 +19,5 @@ name = "grouped-floor-300"
 CODLLM_GROUP_SPLIT_BY_COD = "true"
 CODLLM_BALANCE_FLOOR = 300
 CODLLM_OUTPUT_DIR = "checkpoints/publication/grouped-split/floor-300"
-CODLLM_WANDB_ENTITY = "murromanden_data"
+CODLLM_WANDB_ENTITY = "s234854"
+CODLLM_WANDB_MODE = "offline"
