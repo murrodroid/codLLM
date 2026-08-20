@@ -848,6 +848,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if dataset_label_column is not None and dataset_label_column.strip() != "":
         cfg.dataset_label_column = dataset_label_column.strip()
 
+    group_split_by_cod = _parse_env_bool("CODLLM_GROUP_SPLIT_BY_COD")
+    if group_split_by_cod is not None:
+        cfg.group_split_by_cod = group_split_by_cod
+
     device = os.getenv("CODLLM_DEVICE")
     if device is not None and device.strip() != "":
         normalized_device = device.strip().lower()

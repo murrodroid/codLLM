@@ -80,6 +80,7 @@ class Config:
     max_target_length_buffer: int = 4
     dataset_text_column: str = "text"
     dataset_label_column: str = "label"
+    group_split_by_cod: bool = False
 
     lr: float = 1e-5
     weight_decay: float = 0.0

@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import random
+import re
+import unicodedata
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +13,7 @@ import warnings
 
 from filelock import FileLock, Timeout
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 from codllm.config import Config, DataSourceConfig
 from codllm.data.balancing import (
@@ -227,6 +229,7 @@ class DataHandler:
                 "seed": self.cfg.seed,
                 "data_seed": self.cfg.data_seed,
                 "resolved_data_seed": self.cfg.resolved_data_seed(),
+                "group_split_by_cod": self.cfg.group_split_by_cod,
                 "hold_out_dataset": self.cfg.hold_out_dataset,
                 "train_excluded_source_ids": list(self.cfg.train_excluded_source_ids),
                 "hold_out_evaluate_per": self.cfg.hold_out_evaluate_per,
@@ -1048,6 +1051,9 @@ class DataHandler:
             )
             return DataSplits(train=shuffled, val=empty_df.copy(), test=empty_df.copy())
 
+        if self.cfg.group_split_by_cod:
+            return self._split_grouped_by_cod(df, holdout_size, data_seed)
+
         try:
             train_df, holdout_df = train_test_split(
                 df,
@@ -1085,6 +1091,85 @@ class DataHandler:
             val=val_df.reset_index(drop=True),
             test=test_df.reset_index(drop=True),
         )
+
+    @staticmethod
+    def _cod_group_key(text: Any, field_sep: str) -> str:
+        """Leakage-safe grouping key: the normalized cause string.
+
+        Takes the cause field from the (possibly templated) text, drops a
+        leading 'cod:'-style label, strips accents and punctuation, casefolds,
+        and collapses whitespace. Rows whose causes normalize to the same key
+        are kept on the SAME side of the split.
+        """
+        s = str(text)
+        if field_sep:
+            s = s.split(field_sep, 1)[0]
+        s = re.sub(r"^\s*[A-Za-z][A-Za-z_]*:\s*", "", s)
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        s = s.casefold()
+        s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _group_keys(self, df: pd.DataFrame) -> pd.Series:
+        return df[self.cfg.dataset_text_column].map(
+            lambda t: self._cod_group_key(t, self.cfg.text_field_separator)
+        )
+
+    def _split_grouped_by_cod(
+        self, df: pd.DataFrame, holdout_size: float, data_seed: int
+    ) -> DataSplits:
+        """Group-aware train/val/test split keyed on the normalized cause.
+
+        Uses GroupShuffleSplit so no normalized cause string spans splits, which
+        removes the memorization leakage of a plain random row split.
+        """
+        empty_df = df.iloc[0:0].copy()
+        groups = self._group_keys(df).to_numpy()
+        gss = GroupShuffleSplit(
+            n_splits=1, test_size=holdout_size, random_state=data_seed
+        )
+        train_pos, holdout_pos = next(gss.split(df, groups=groups))
+        train_df = df.iloc[train_pos]
+        holdout_df = df.iloc[holdout_pos]
+
+        if self.cfg.val_size == 0:
+            val_df, test_df = empty_df.copy(), holdout_df
+        elif self.cfg.test_size == 0:
+            val_df, test_df = holdout_df, empty_df.copy()
+        else:
+            test_ratio = self.cfg.test_size / holdout_size
+            holdout_groups = groups[holdout_pos]
+            gss2 = GroupShuffleSplit(
+                n_splits=1, test_size=test_ratio, random_state=data_seed
+            )
+            val_pos, test_pos = next(gss2.split(holdout_df, groups=holdout_groups))
+            val_df = holdout_df.iloc[val_pos]
+            test_df = holdout_df.iloc[test_pos]
+
+        self._assert_no_group_leak(train_df, val_df, test_df)
+        return DataSplits(
+            train=train_df.reset_index(drop=True),
+            val=val_df.reset_index(drop=True),
+            test=test_df.reset_index(drop=True),
+        )
+
+    def _assert_no_group_leak(
+        self, train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd.DataFrame
+    ) -> None:
+        """Hard guarantee that no normalized cause spans train and val/test."""
+        train_keys = set(self._group_keys(train_df))
+        for name, part in (("validation", val_df), ("test", test_df)):
+            if part is None or part.empty:
+                continue
+            overlap = train_keys & set(self._group_keys(part))
+            if overlap:
+                sample = list(overlap)[:3]
+                raise AssertionError(
+                    f"Grouped split leak: {len(overlap)} normalized cod group(s) "
+                    f"appear in both train and {name} (e.g. {sample})."
+                )
 
     def _load_processed_dataset(self) -> pd.DataFrame:
         """Load processed data from CSV or Parquet."""

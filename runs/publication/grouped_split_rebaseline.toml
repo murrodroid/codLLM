@@ -1,0 +1,21 @@
+name = "publication_grouped_split_rebaseline"
+command = "train"
+description = """
+Honest re-baseline of the frozen publication protocol with a LEAKAGE-SAFE split.
+
+Identical to the leaky floor-300 run except CODLLM_GROUP_SPLIT_BY_COD=true, which
+keeps every normalized cause string on one side of the train/val/test split
+(GroupShuffleSplit) instead of the previous plain random row split. Compare its
+macro-F1 / accuracy against the leaky floor-300 run to quantify how much of the
+~98% in-distribution headline was memorization. This grouped number is the honest
+in-distribution figure for the paper; the leaky one becomes a labeled diagnostic.
+"""
+base = "base.toml"
+force_reprocess = false
+
+[[variants]]
+name = "grouped-floor-300"
+[variants.env]
+CODLLM_GROUP_SPLIT_BY_COD = "true"
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_OUTPUT_DIR = "checkpoints/publication/grouped-split/floor-300"
