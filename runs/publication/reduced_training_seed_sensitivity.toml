@@ -1,0 +1,37 @@
+name = "publication_reduced_training_seed_sensitivity"
+command = "train"
+description = "Winner pipeline-seed sensitivity on a fixed 25 percent cohort and fixed split."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 0.25
+CODLLM_DATASET_SAMPLE_SEED = 777
+CODLLM_DATA_SEED = 777
+
+[[variants]]
+name = "seed-111"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_SEED = 111
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-training-seed/seed-111"
+
+[[variants]]
+name = "seed-222"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_SEED = 222
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-training-seed/seed-222"
+
+[[variants]]
+name = "seed-333"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_SEED = 333
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-training-seed/seed-333"
+
+[[variants]]
+name = "seed-444"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_SEED = 444
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-training-seed/seed-444"

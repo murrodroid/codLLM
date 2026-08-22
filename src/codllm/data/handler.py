@@ -53,7 +53,7 @@ from codllm.input.standardization import build_label_standardization_metadata
 from codllm.input.transform import _coerce_row_codes
 from codllm.runtime.paths import resolve_source_path
 
-PREPARED_SPLITS_METADATA_VERSION = 6
+PREPARED_SPLITS_METADATA_VERSION = 7
 
 
 def _log_data_progress(message: str) -> None:
@@ -227,6 +227,10 @@ class DataHandler:
                 "seed": self.cfg.seed,
                 "data_seed": self.cfg.data_seed,
                 "resolved_data_seed": self.cfg.resolved_data_seed(),
+                "dataset_sample_seed": self.cfg.dataset_sample_seed,
+                "resolved_dataset_sample_seed": (
+                    self.cfg.resolved_dataset_sample_seed()
+                ),
                 "hold_out_dataset": self.cfg.hold_out_dataset,
                 "train_excluded_source_ids": list(self.cfg.train_excluded_source_ids),
                 "hold_out_evaluate_per": self.cfg.hold_out_evaluate_per,
@@ -1116,9 +1120,9 @@ class DataHandler:
         if sample_count >= len(df):
             return df.reset_index(drop=True)
 
-        data_seed = self.cfg.resolved_data_seed()
+        sample_seed = self.cfg.resolved_dataset_sample_seed()
         return df.sample(
-            n=sample_count, random_state=data_seed, replace=False
+            n=sample_count, random_state=sample_seed, replace=False
         ).reset_index(drop=True)
 
     def _apply_dataset_size(self, df: pd.DataFrame) -> pd.DataFrame:

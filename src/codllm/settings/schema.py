@@ -56,7 +56,7 @@ class WandbConfig:
 
     enabled: bool = True
     project: str = "codllm"
-    entity: Optional[str] = None
+    entity: Optional[str] = "codllmdev"
     run_name: Optional[str] = None
     mode: WandbMode = "auto"
     log_model: WandbLogModel = "end"
@@ -68,7 +68,7 @@ class WandbConfig:
 class Config:
     """Configuration for Hugging Face training experiments."""
 
-    hf_model: str = "google/flan-t5-small"
+    hf_model: str = "google/flan-t5-base"
     hf_token: Optional[str] = None
     trust_remote_code: bool = False
 
@@ -106,6 +106,7 @@ class Config:
     output_dir: str = "./runs"
     seed: int = 42
     data_seed: Optional[int] = 333
+    dataset_sample_seed: Optional[int] = None
     deterministic_algorithms: bool = True
     deterministic_algorithms_warn_only: bool = True
     cudnn_deterministic: bool = True
@@ -235,6 +236,12 @@ class Config:
     def resolved_data_seed(self) -> int:
         """Return data seed, defaulting to the global seed when unset."""
         return self.seed if self.data_seed is None else self.data_seed
+
+    def resolved_dataset_sample_seed(self) -> int:
+        """Return the cohort-sampling seed, defaulting to the data seed."""
+        if self.dataset_sample_seed is None:
+            return self.resolved_data_seed()
+        return self.dataset_sample_seed
 
     def resolved_pretrain_early_stopping_patience(self) -> int:
         """Return pretraining patience, inheriting fine-tuning when unset."""

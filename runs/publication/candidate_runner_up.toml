@@ -1,0 +1,14 @@
+name = "publication_candidate_runner_up"
+command = "train"
+description = "Central publication runner-up recipe used for paired robustness comparisons."
+base = "base.toml"
+force_reprocess = false
+
+# Provisional values. Freeze these from the completed curves and interaction
+# confirmation before submitting reduced-data sensitivity or later stages.
+[env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/candidates/runner-up"

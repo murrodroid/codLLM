@@ -611,6 +611,7 @@ def build_experiment_metadata(
         "resolved": {
             "max_target_length": cfg.resolved_max_target_length(),
             "data_seed": cfg.resolved_data_seed(),
+            "dataset_sample_seed": cfg.resolved_dataset_sample_seed(),
         },
         "data_sources": _build_source_metadata(cfg),
         "runtime": _runtime_metadata(),
@@ -714,6 +715,8 @@ def _standard_wandb_config_payload(
             "seed.global": cfg.seed,
             "seed.data": cfg.data_seed,
             "seed.resolved_data": cfg.resolved_data_seed(),
+            "seed.dataset_sample": cfg.dataset_sample_seed,
+            "seed.resolved_dataset_sample": cfg.resolved_dataset_sample_seed(),
         }
     )
     runtime = metadata.get("runtime")

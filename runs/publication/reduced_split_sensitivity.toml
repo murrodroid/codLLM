@@ -1,0 +1,65 @@
+name = "publication_reduced_split_sensitivity"
+command = "train"
+description = "Paired winner/runner-up split and preparation sensitivity on one fixed 25 percent cohort."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 0.25
+CODLLM_DATASET_SAMPLE_SEED = 777
+CODLLM_SEED = 777
+
+[[variants]]
+name = "winner_data-seed-101"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATA_SEED = 101
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/winner/data-seed-101"
+
+[[variants]]
+name = "runner-up_data-seed-101"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATA_SEED = 101
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/runner-up/data-seed-101"
+
+[[variants]]
+name = "winner_data-seed-202"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATA_SEED = 202
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/winner/data-seed-202"
+
+[[variants]]
+name = "runner-up_data-seed-202"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATA_SEED = 202
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/runner-up/data-seed-202"
+
+[[variants]]
+name = "winner_data-seed-303"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATA_SEED = 303
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/winner/data-seed-303"
+
+[[variants]]
+name = "runner-up_data-seed-303"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATA_SEED = 303
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/runner-up/data-seed-303"
+
+[[variants]]
+name = "winner_data-seed-404"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATA_SEED = 404
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/winner/data-seed-404"
+
+[[variants]]
+name = "runner-up_data-seed-404"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATA_SEED = 404
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-split/runner-up/data-seed-404"

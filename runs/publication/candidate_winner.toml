@@ -1,0 +1,14 @@
+name = "publication_candidate_winner"
+command = "train"
+description = "Central publication winner recipe used by all post-curve experiments."
+base = "base.toml"
+force_reprocess = false
+
+# Provisional values. Freeze these from the completed curves and interaction
+# confirmation before submitting reduced-data sensitivity or later stages.
+[env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/candidates/winner"

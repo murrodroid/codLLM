@@ -1,0 +1,37 @@
+name = "publication_reduced_data_calibration"
+command = "train"
+description = "Calibrates whether 25 percent preserves finalist ranking relative to a 40 percent check."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SAMPLE_SEED = 777
+CODLLM_SEED = 777
+CODLLM_DATA_SEED = 777
+
+[[variants]]
+name = "winner_size-025"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATASET_SIZE = 0.25
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/winner/size-025"
+
+[[variants]]
+name = "runner-up_size-025"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATASET_SIZE = 0.25
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/runner-up/size-025"
+
+[[variants]]
+name = "winner_size-040"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATASET_SIZE = 0.40
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/winner/size-040"
+
+[[variants]]
+name = "runner-up_size-040"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_DATASET_SIZE = 0.40
+CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/runner-up/size-040"

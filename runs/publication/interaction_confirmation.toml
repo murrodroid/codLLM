@@ -1,0 +1,79 @@
+name = "publication_interaction_confirmation"
+command = "train"
+description = "Full-fidelity 2x2x2 confirmation of floor, synthetic ratio, and pretraining dose interactions."
+base = "base.toml"
+force_reprocess = false
+
+# These are provisional neighborhoods around the current evidence. Update the
+# low/high levels after all three primary response curves are complete.
+[[variants]]
+name = "floor-300_ratio-030_pretrain-016"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-300_ratio-030_pretrain-016"
+
+[[variants]]
+name = "floor-300_ratio-030_pretrain-032"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-300_ratio-030_pretrain-032"
+
+[[variants]]
+name = "floor-300_ratio-060_pretrain-016"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-300_ratio-060_pretrain-016"
+
+[[variants]]
+name = "floor-300_ratio-060_pretrain-032"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 300
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-300_ratio-060_pretrain-032"
+
+[[variants]]
+name = "floor-450_ratio-030_pretrain-016"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-450_ratio-030_pretrain-016"
+
+[[variants]]
+name = "floor-450_ratio-030_pretrain-032"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.30
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-450_ratio-030_pretrain-032"
+
+[[variants]]
+name = "floor-450_ratio-060_pretrain-016"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 16
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-450_ratio-060_pretrain-016"
+
+[[variants]]
+name = "floor-450_ratio-060_pretrain-032"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_PRETRAIN_ENABLED = true
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
+CODLLM_OUTPUT_DIR = "checkpoints/publication/interaction/floor-450_ratio-060_pretrain-032"

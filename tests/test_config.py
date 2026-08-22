@@ -9,6 +9,7 @@ ENV_KEYS = [
     "CODLLM_TRUST_REMOTE_CODE",
     "CODLLM_SEED",
     "CODLLM_DATA_SEED",
+    "CODLLM_DATASET_SAMPLE_SEED",
     "CODLLM_DATALOADER_NUM_WORKERS",
     "CODLLM_DATALOADER_PIN_MEMORY",
     "CODLLM_DATALOADER_PERSISTENT_WORKERS",
@@ -138,6 +139,9 @@ def test_config_defaults_use_stable_seq2seq_training_baseline() -> None:
         "; ",
         " / ",
     ]
+    assert cfg.resolved_dataset_sample_seed() == cfg.resolved_data_seed()
+    assert cfg.wandb.project == "codllm"
+    assert cfg.wandb.entity == "codllmdev"
     assert cfg.input_field_prefixes == {
         "cod": "cod: ",
         "age": "age: ",
@@ -175,6 +179,7 @@ def test_config_from_env_applies_runtime_overrides(
     monkeypatch.setenv("CODLLM_TRUST_REMOTE_CODE", "true")
     monkeypatch.setenv("CODLLM_SEED", "101")
     monkeypatch.setenv("CODLLM_DATA_SEED", "202")
+    monkeypatch.setenv("CODLLM_DATASET_SAMPLE_SEED", "303")
     monkeypatch.setenv("CODLLM_DATALOADER_NUM_WORKERS", "3")
     monkeypatch.setenv("CODLLM_DATALOADER_PIN_MEMORY", "false")
     monkeypatch.setenv("CODLLM_DATALOADER_PERSISTENT_WORKERS", "true")
@@ -314,6 +319,8 @@ def test_config_from_env_applies_runtime_overrides(
     assert cfg.trust_remote_code is True
     assert cfg.seed == 101
     assert cfg.data_seed == 202
+    assert cfg.dataset_sample_seed == 303
+    assert cfg.resolved_dataset_sample_seed() == 303
     assert cfg.dataloader_num_workers == 3
     assert cfg.dataloader_pin_memory is False
     assert cfg.dataloader_persistent_workers is True

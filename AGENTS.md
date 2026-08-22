@@ -85,6 +85,10 @@ Processed raw-data caches live under `Config.data_processed_dir`; prepared split
 under `<processed-stem>.splits/<cache-key>/` and include split-time transformations such as multi-COD synthesis,
 balancing, hold-out sampling, configured train-source exclusions, and masterlist injection. Keep cache-key metadata in
 sync with any option that changes prepared split content.
+For reduced-data studies, `Config.dataset_sample_seed` and `CODLLM_DATASET_SAMPLE_SEED` control cohort subsampling
+independently of `Config.data_seed` and `CODLLM_DATA_SEED`. When unset, the cohort-sampling seed inherits the resolved
+data seed for backward compatibility. Pin the sample seed while varying the data seed to compare split/preparation
+variability on one fixed sampled cohort.
 Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
 Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
 clearing. Broad cache cleanup may delete processed-data caches, prepared split caches, local run/checkpoint directories,
@@ -99,6 +103,8 @@ quota scripts are installed; do not interpret shared filesystem totals as availa
 Generated TOML sweep runs export `CODLLM_EXPERIMENT_SWEEP_ID=codllm-<experiment-name-slug>` and
 `WANDB_RUN_GROUP=<experiment-name>`. Do not auto-generate `WANDB_SWEEP_ID`; W&B treats it as a native sweep id and fails
 unless that sweep exists. Only set `WANDB_SWEEP_ID` explicitly in `[env]` when attaching to a real W&B sweep.
+New runs default to the W&B project `codllmdev/codllm` through `WandbConfig`; use the
+`CODLLM_WANDB_ENTITY` and `CODLLM_WANDB_PROJECT` environment variables only for deliberate per-run overrides.
 Resumable LSF training persists `wandb_run_id.txt` in the stable `CODLLM_RUN_STATE_DIR`, not a scheduler-slot-specific
 checkpoint path; retain the checkpoint-local read fallback for older runs. Publication specs should set
 `CODLLM_WANDB_MODE=online` explicitly. When `.resume_needed` is present, the Transformers W&B train-end hook must skip

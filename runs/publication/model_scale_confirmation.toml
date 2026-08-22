@@ -1,0 +1,29 @@
+name = "publication_model_scale_confirmation"
+command = "train"
+description = "Full-data scale promotion: both finalists on large, then the winner on XL."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 1.0
+CODLLM_SEED = 777
+CODLLM_DATA_SEED = 777
+CODLLM_FINAL_TEST_EVAL_ENABLED = false
+CODLLM_UNCERTAINTY_EVAL = false
+
+[[variants]]
+name = "winner_large"
+base = ["candidate_winner.toml", "../profiles/h100-large.toml"]
+[variants.env]
+CODLLM_OUTPUT_DIR = "checkpoints/publication/model-scale/winner-large"
+
+[[variants]]
+name = "runner-up_large"
+base = ["candidate_runner_up.toml", "../profiles/h100-large.toml"]
+[variants.env]
+CODLLM_OUTPUT_DIR = "checkpoints/publication/model-scale/runner-up-large"
+
+[[variants]]
+name = "winner_xl"
+base = ["candidate_winner.toml", "../profiles/h100-xl.toml"]
+[variants.env]
+CODLLM_OUTPUT_DIR = "checkpoints/publication/model-scale/winner-xl"

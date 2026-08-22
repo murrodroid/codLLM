@@ -1,325 +1,198 @@
-# codLLM publication optimization plan
-
-## Objective
-
-The objective is to select the strongest publishable codLLM model while producing
-defensible evidence for three scientific questions:
-
-1. At what balance floor do further increases stop improving macro F1?
-2. How much synthetic multi-COD training data is beneficial before it distorts the
-   observed single-COD/multi-COD distribution?
-3. How much masterlist pretraining is useful, and does its benefit transfer across
-   historical sources?
-
-The recommended strategy is a staged hybrid: controlled response curves for
-interpretability, Bayesian optimization for interactions, factorial confirmation,
-grouped cross-validation and leave-one-source-out validation for finalists, and
-model-scale optimization last. Pure Bayesian optimization could locate a strong
-configuration, but it would not by itself answer the three scientific questions.
-
-## Evidence from the thesis and latest completed run
-
-The thesis response curves ended before a clear plateau:
-
-| Setting | Thesis values | Best observed |
-|---|---:|---:|
-| Balance floor | 0, 25, 50, 100, 200 | 200 |
-| Fine-tuning synthetic ratio | 0, 0.15, 0.30 | 0.30 |
-| Pretraining | Primarily on/off | Mixed source-transfer benefit |
-
-Balance-floor macro F1 rose from 0.441 at zero to 0.520 at 200. Synthetic
-multi-COD macro F1 rose from 0.467 at zero to 0.545 at 0.30. Both sweeps ended
-while performance was still rising, so they establish promising directions but
-not optima.
-
-The thesis deployment and latest completed run differ as follows:
-
-| Parameter/result | Thesis deployment | Latest run |
-|---|---:|---:|
-| Balance floor | 200 | 300 |
-| Fine-tuning synthetic ratio | 0.30 | 0.50 |
-| Pretraining epochs | 16 | 32 |
-| Pretraining target per label | 8 | 12 |
-| Pretraining synthetic ratio | 0.15 | 0.50 |
-| Approximate pretraining examples presented | 2.1M | 8.1M |
-| Maximum target labels | 3 | 5 |
-| Fine-tuning scheduler | constant with warmup | cosine |
-| Test macro F1 | 0.749 | 0.737 |
-| Unseen-string macro F1 | 0.625 | 0.723 |
-| Exact accuracy | 0.985 | 0.959 |
-
-This is not a controlled comparison. The scheduler, label cardinality, curation,
-data preparation, and test composition changed. It nevertheless shows that
-maximizing augmentation and pretraining does not automatically maximize aggregate
-macro F1. The latest run is a useful search seed, not proof that floor 300,
-synthetic ratio 0.50, and 32 pretraining epochs are optimal.
-
-## Stage 0: freeze the publication protocol
-
-Before using results for model selection, freeze:
-
-- Dataset and curation hashes.
-- Label harmonization and standardization.
-- `max_label_count=5`.
-- COD, age, and sex as training inputs.
-- The data and training seeds for each declared repetition.
-- Split manifests.
-- Metrics and checkpoint-selection rules.
-- Explicit scheduler, warmup, augmentation, and pretraining controls.
-
-The historical test set has already influenced development. It must be described
-as a legacy test set rather than an untouched publication test. For an unbiased
-final estimate, either create a new locked grouped outer test split that remains
-unobserved until selection is complete, or use nested grouped cross-validation if
-no untouched data can be reserved.
-
-Group splits by normalized COD text so identical causes cannot cross folds.
-Approximately stratify folds by source, label frequency, and label cardinality.
-Changing `data_seed` is not a substitute for cross-validation.
-
-The response curves and Bayesian search must not evaluate the test split. Selection
-uses validation macro F1 only. Test, holdout, and uncertainty evaluation are restored
-only for declared finalists.
-
-## Stage 1: measure the three response curves
-
-Use `google/flan-t5-base`, the full training corpus, seed and data seed 777, a
-fixed validation split, and identical controls apart from the parameter being
-measured.
-
-| Question | Values |
-|---|---|
-| Balance floor | 0, 100, 200, 300, 450, 600, 900 |
-| Fine-tuning synthetic ratio | 0, 0.15, 0.30, 0.45, 0.60, 0.80, 1.00 |
-| Pretraining epochs | off, 4, 8, 16, 32, 48 |
-
-For the first pretraining curve, hold target-per-label at 12 and pretraining
-synthetic ratio at 0.30. Follow it with secondary curves over:
-
-- Pretraining synthetic ratio: 0, 0.15, 0.30, 0.50.
-- Pretraining target per label: 8, 12, 16.
-
-Report pretraining dose as:
-
-```text
-pretraining rows × epochs
-optimizer updates
-```
-
-Epochs alone are not comparable when pretraining upsampling and synthetic ratios
-change the pretraining dataset size.
-
-For every curve cell, record:
+# codLLM publication experiment plan
+
+## Goal and selection principle
+
+The goal is the strongest defensible codLLM model, with enough controlled evidence
+to explain:
 
-- Overall macro, micro, and sample F1.
-- Exact-match accuracy.
-- Seen- and unseen-string macro F1.
-- Single-COD and multi-COD subset metrics.
-- Per-source macro F1.
-- Macro F1 by label-support bucket.
-- Mean predicted label count and false multi-label rate.
-- Prepared training rows and generated rows by augmentation type.
-- Pretraining rows, epochs, examples presented, and optimizer updates.
+1. where the balance-floor benefit saturates;
+2. how much fine-tuning synthetic multi-COD data is beneficial;
+3. how much masterlist pretraining is beneficial;
+4. whether the selected recipe is stable to split/preparation and training seeds;
+5. whether it transfers across historical sources and benefits from model scaling.
 
-Use a saturation rule defined before inspecting the curve: stop increasing a
-parameter after two consecutive increases improve mean macro F1 by less than
-0.002 and the upper bound of the paired 95% confidence interval is below 0.005.
-Select the smallest setting within one standard error of the best result.
+Model selection uses validation macro F1. Exact match, micro F1, sample F1,
+Jaccard, seen/unseen-string performance, single/multi-COD subsets, rare-label
+support buckets, per-source results, runtime, and generated-row counts remain
+secondary outcomes. The test set stays disabled until the final frozen model.
 
-The checked-in response curves are single-seed discovery experiments. Repeat the
-plateau neighborhood with at least three training seeds before making a scientific
-saturation claim.
+The historical test set has influenced earlier development and must be described
+as a legacy test set. UniCin or another genuinely external corpus is the preferred
+final generalization assessment when it becomes available in the pipeline.
+
+## Frozen controls
 
-## Stage 2: Bayesian interaction search
+Unless a specification explicitly overrides a setting, all experiments inherit
+`runs/publication/base.toml`:
+
+- `google/flan-t5-base` during recipe selection;
+- full 120-epoch ceiling with validation macro-F1 early stopping;
+- training seed 777 and data seed 777;
+- COD, age, and sex inputs;
+- fixed harmonization, standardization, scheduler, perturbation, and label-count
+  policy;
+- online W&B logging with final test and uncertainty evaluation disabled;
+- exact declared pretraining epochs, without pretraining early stopping.
 
-After locating sensible response-curve ranges, run 40 to 60 W&B Bayesian trials on
-the base model. Use full data and 24 fine-tuning epochs for medium-fidelity
-screening. Each Bayesian trial must fit inside one scheduler slot; it must not use
-the multi-slot codLLM auto-resume lifecycle.
+Each cell has an isolated output directory and may resume across scheduler slots.
+Dataset, curation, code commit, effective configuration, cache key, stopping reason,
+and W&B run ID must be retained.
 
-Recommended search space:
+## Stage 1: full-data response curves
 
-| Parameter | Search space |
-|---|---|
-| Balance floor | quantized 100–900 |
-| Fine-tuning synthetic ratio | 0.10–0.90 |
-| Pretraining epochs | off, 4, 8, 16, 32, 48 |
-| Pretraining synthetic ratio | 0–0.50 |
-| Pretraining target per label | 8, 12, 16 |
-| Learning rate | log-uniform 1e-5–5e-5 |
-| Fine-tuning scheduler | cosine, constant |
-| Warmup ratio | 0.05–0.30 |
-| Base perturbation rate | 0, 0.25, 0.50 |
+Run the three curves on the same full-data split at seed 777:
 
-Seed or compare the optimizer with:
-
-- The thesis recipe: floor 200, ratio 0.30, pretraining 16.
-- The latest recipe: floor 300, ratio 0.50, pretraining 32.
-- A no-pretraining baseline.
-- A low-augmentation baseline.
-
-Optimize a single end-of-run metric,
-`optimization/val_macro_f1`, generated from the trainer's best validation
-`macro_f1`. Retain accuracy, unseen-string macro F1, worst-source macro F1,
-multi-COD performance, training rows, and runtime for offline Pareto analysis.
-Do not hide these tradeoffs inside an arbitrary composite score.
+| Question | File | Values |
+|---|---|---|
+| Balance floor | `balance_floor_curve.toml` | 0, 100, 200, 300, 450, 600, 900 |
+| Fine-tuning synthetic ratio | `multicod_synthetic_curve.toml` | 0, .15, .30, .45, .60, .80, 1.00 |
+| Pretraining epochs | `pretraining_dose_curve.toml` | off, 4, 8, 16, 32, 48 |
 
-Run W&B agents in waves of four, with exactly one trial per LSF allocation. This
-lets Bayesian search incorporate completed observations before assigning most of
-the budget. Do not enable Hyperband until codLLM has an explicit pruned-run
-lifecycle; scheduler termination currently cannot be safely distinguished from
-normal completion.
-
-Promote the best five Bayesian configurations to full 100–120 epoch training with
-fine-tuning early stopping. Treat the Bayesian outcome as a shortlist, not as the
-final scientific estimate.
+The pretraining curve fixes target-per-label at 12 and pretraining synthetic ratio
+at .30. Report its actual pretraining rows, optimizer updates, and examples
+presented; epochs alone do not describe exposure when the generated dataset changes.
 
-## Stage 3: confirm interactions
-
-To determine whether the three key settings work together, perform a local
-factorial confirmation around the Bayesian optimum:
+Plot every cell and do not infer a plateau from the selected maximum alone. A
+practical saturation point is the smallest setting within .002 validation macro F1
+of the best observed value when the next tested increase also improves by less than
+.002. Because this stage has one seed, describe that point as a provisional
+saturation point rather than a confidence-bound conclusion.
 
-- Floor: one level below, the optimum, and one level above.
-- Synthetic ratio: optimum minus 0.15, optimum, and optimum plus 0.15.
-- Pretraining dose: lower, optimum, and higher.
+## Stage 2: full-fidelity interaction confirmation
+
+After all curves finish, set the low/high levels in
+`interaction_confirmation.toml` to the two scientifically plausible neighboring
+values for each of the three variables. Run the resulting 2x2x2 design at full
+fidelity (8 runs). The checked-in provisional levels are:
 
-Run the resulting 27 cells once, then repeat the nine most informative cells with
-three seeds. Estimate main effects and pairwise interactions. This provides a more
-interpretable interaction result than the optimizer's selected point alone.
+- floor: 300 and 450;
+- fine-tuning synthetic ratio: .30 and .60;
+- pretraining: 16 and 32 epochs.
 
-## Stage 4: grouped cross-validation and source transfer
-
-Do not run cross-validation for every Bayesian trial. Use this promotion sequence:
-
-1. Fixed development fold for curves and Bayesian screening.
-2. Top five configurations at full fidelity with three seeds.
-3. Top three configurations across five grouped folds.
-4. Winning configuration across five grouped folds with three seeds.
-5. Winner and runner-up across all leave-one-source-out evaluations.
-
-General grouped cross-validation and leave-one-source-out evaluation answer
-different questions:
-
-- Grouped CV measures robustness to cause strings and ordinary split composition.
-- Leave-one-source-out measures transfer to a distinct historical collection.
-
-Run leave-one-source-out evaluation for Amsterdam, Belgium, Copenhagen, Ipswich,
-and Madrid. Report the mean, standard deviation, worst source, and every individual
-source result.
-
-General fold support requires a committed manifest and configuration such as:
-
-```text
-CODLLM_CV_MANIFEST_PATH
-CODLLM_CV_FOLD
-```
-
-Both fields and the manifest hash must be part of prepared-split cache metadata.
-
-## Stage 5: optimize model scale
-
-The thesis indicated that large and XL models could still improve macro F1. After
-optimizing the recipe on base:
-
-1. Train the top two configurations on `flan-t5-large`.
-2. Train the winning large configuration on `flan-t5-xl`.
-3. Use full-fidelity early stopping.
-4. Repeat the winning final scale with at least three seeds.
-
-Without this stage, the project identifies the best base-model recipe rather than
-the best codLLM model.
-
-For release, publish one reproducible single checkpoint selected by a prespecified
-rule rather than cherry-picking the best seed. Optionally release a three-seed
-ensemble as the maximum-performance system.
-
-## Final evaluation and statistical reporting
-
-Open the locked outer test only after every hyperparameter, seed policy, and model
-scale decision is frozen. Report:
-
-- Overall exact accuracy, macro F1, micro F1, sample F1, and Jaccard metrics.
-- Seen- and unseen-string performance.
-- Single-COD and multi-COD performance.
-- Per-source results.
-- Rare-label support buckets.
-- Chapter and chapter-block results.
-- Label-count error and false multi-label rate.
-- Paired 95% cluster-bootstrap confidence intervals, clustered by normalized COD
-  text.
-- Mean and standard deviation across declared seeds and folds.
-
-If two configurations differ by less than 0.002 macro F1 or their paired interval
-includes zero, prefer the smaller floor, lower synthetic ratio, or shorter
-pretraining dose. This yields a simpler and less expensive model when evidence does
-not support the added data generation.
-
-After final evaluation, train the release checkpoint on all eligible development
-data using the frozen recipe. Do not present that all-data model's training
-performance as an unbiased generalization estimate.
-
-## Compute budget and promotion gates
-
-A thorough programme is approximately:
-
-- 20 response-curve jobs.
-- 40–60 Bayesian screening jobs.
-- 15 full-fidelity finalist jobs.
-- 15 initial grouped-CV jobs.
-- 15 winner fold/seed repetitions.
-- 5–10 source-holdout jobs.
-- 4–8 large/XL jobs.
-
-This is roughly 115–140 base-equivalent runs plus larger-model cost. Promotion
-gates and early stopping keep weak regions from consuming the full budget.
-
-Stop Bayesian screening when the 60-run cap is reached, or when the best
-cross-validation candidate has not improved by more than 0.002 across 15 completed
-trials and the explored high-probability region is stable.
-
-## Reproducibility and storage
-
-For every run, preserve:
-
-- Git commit.
-- Full effective configuration.
-- W&B sweep and group identifiers.
-- Data-source and curation hashes.
-- Prepared-split cache key and fold-manifest hash.
-- Generated-row diagnostics.
-- Training and pretraining exposure.
-- Checkpoint selected and stopping reason.
-- Failed, interrupted, and rejected trials.
-
-Use full W&B configuration and metrics for response curves and final confirmation.
-Use standard W&B configuration and metrics for Bayesian screening to control run
-volume. Never synthesize `WANDB_SWEEP_ID`; set it only to the real identifier
-created by W&B.
-
-Curve cells and Bayesian trials require isolated output roots. This prevents
-parallel runs and W&B run-ID sidecars from sharing checkpoints. Prebuild explicit
-response-curve caches with `hpc.build`; build Bayesian candidates on demand to
-avoid materializing the entire Cartesian data-cache space.
-
-Reusable pretraining checkpoints should eventually be keyed by model, data hash,
-seed, pretraining dose, target-per-label, and pretraining synthetic ratio. This
-would prevent floor and fine-tuning synthetic-ratio trials from repeating
-identical pretraining work.
-
-## Checked-in implementation
-
-The initial implementation lives under `runs/publication/`:
-
-```text
-runs/publication/base.toml
-runs/publication/balance_floor_curve.toml
-runs/publication/multicod_synthetic_curve.toml
-runs/publication/pretraining_dose_curve.toml
-runs/publication/bayesian_base.toml
-runs/publication/bayesian_sweep.yaml
-```
-
-The response curves use seed and data seed 777 and isolated checkpoint roots.
-Bayesian trials use the allowlisted wrapper in
-`src/codllm/experiments/bayesian.py`. Operational commands and safeguards are
-documented in `runs/publication/README.md`.
+Estimate the three main effects and all pairwise interactions. Select a provisional
+winner and runner-up using validation macro F1, with paired secondary-metric checks.
+If candidates differ by less than .002 macro F1, prefer the lower floor, lower
+synthetic ratio, or shorter pretraining dose.
+
+Copy the frozen recipes into `candidate_winner.toml` and
+`candidate_runner_up.toml`. Every later specification inherits these two files, so
+candidate settings must be changed only there.
+
+The broad 24-epoch Bayesian search is not part of the primary publication sequence:
+shortened training may reorder configurations, while full-fidelity Bayesian trials
+cannot safely span the current single-allocation W&B agent lifecycle. The existing
+Bayesian implementation remains available for optional hypothesis generation, but
+it must not replace the full-fidelity curves or confirmation design.
+
+## Stage 3: calibrate the reduced-data robustness study
+
+Run winner and runner-up at 25% and 40% of the data using
+`reduced_data_calibration.toml` (4 runs). Both fractions keep the full 120-epoch
+ceiling and the same early-stopping policy; epochs are not shortened.
+
+Use 25% only if it retains adequate support for the rare-label buckets used in the
+paper and preserves the winner/runner-up ordering and approximate paired difference
+seen at 40%. Otherwise conduct the sensitivity study at 40% by updating its TOMLs
+before submission.
+
+`CODLLM_DATASET_SAMPLE_SEED=777` fixes the sampled cohort independently of
+`CODLLM_DATA_SEED`. This prevents split-seed changes from silently selecting a
+different 25% cohort. Reduced-data runs still repeat full masterlist pretraining, so
+their total compute reduction is less than the fine-tuning fraction suggests.
+
+## Stage 4: estimate seed sensitivity economically
+
+### Split/preparation sensitivity
+
+Use `reduced_split_sensitivity.toml` for paired winner/runner-up comparisons on
+data seeds 101, 202, 303, and 404, while fixing training seed and cohort-sampling
+seed at 777 (8 new runs). Combine these with the seed-777 25% calibration cells to
+obtain five paired split/preparation observations per candidate.
+
+Changing `CODLLM_DATA_SEED` changes the train/validation/test allocation and
+seeded split-time preparation such as synthetic generation and label shuffling.
+Therefore report this as split/preparation sensitivity, not pure split variance.
+
+### Training-pipeline sensitivity
+
+Use `reduced_training_seed_sensitivity.toml` for the winner at training seeds 111,
+222, 333, and 444, with the sampled cohort and data seed fixed at 777 (4 new runs).
+Combine these with the seed-777 winner calibration cell for five observations.
+Because pretraining is rerun, this estimates end-to-end training-pipeline seed
+sensitivity rather than fine-tuning-only variance.
+
+For both analyses publish every seed result, mean, standard deviation, range, and
+paired winner-minus-runner differences. A paired interval across five splits may be
+shown with an explicit small-sample warning. Do not call these reduced-data
+intervals confidence intervals for the full-data model: scale can change both the
+mean and variance.
+
+Test-sample uncertainty is a separate quantity. On final predictions, compute a
+paired cluster bootstrap grouped by normalized COD text so duplicate causes are
+not treated as independent observations.
+
+## Stage 5: model scale
+
+After freezing the recipe, run `model_scale_confirmation.toml`:
+
+1. winner on `flan-t5-large`;
+2. runner-up on `flan-t5-large`;
+3. winner on `flan-t5-xl`.
+
+All three use full data, seed 777, full-fidelity early stopping, and validation-only
+selection. This separates recipe selection from model-scale selection while still
+testing whether the runner-up overtakes the winner at the next scale.
+
+If XL is clearly still improving and affordable, it is the final scale. Otherwise
+prefer the smaller model when the macro-F1 difference is below .002 or the runtime
+and deployment cost are disproportionate to the gain.
+
+## Stage 6: source transfer and external validation
+
+Run `source_transfer_validation.toml` for the frozen base-model winner with each of
+Amsterdam, Copenhagen, Madrid, Belgium, and Ipswich held out in turn (5 runs).
+Report each source, mean, standard deviation, and worst-source result. This measures
+cross-source transfer and is not a substitute for seed sensitivity.
+
+Evaluate UniCin once, without retraining or tuning on UniCin, after its dataset is
+available as a configured source or inference dataset. No runnable UniCin TOML is
+included yet because the repository currently has no UniCin source definition or
+source ID; inventing one would create a job that fails or, worse, evaluates the
+wrong data.
+
+## Stage 7: final frozen evaluation
+
+Choose the scale in `final_model.toml`, freeze all settings, and then run it once.
+This is the only active publication specification with final test and uncertainty
+evaluation enabled. Do not change hyperparameters after viewing these results.
+
+Report:
+
+- exact accuracy, macro/micro/sample F1, Jaccard, hamming metrics;
+- seen/unseen-string and single/multi-COD subsets;
+- per-source and rare-label support buckets;
+- label-count error and false multi-label rate;
+- paired normalized-COD cluster-bootstrap intervals;
+- the reduced-data seed sensitivity results, clearly labeled as reduced-data;
+- parameter count, training exposure, stopping epoch, and compute/runtime.
+
+Release one prespecified checkpoint. An ensemble may be a separate secondary
+system, but the main reported model must not be chosen by taking the best seed.
+
+## Compute budget
+
+The active plan contains:
+
+- 20 primary curve runs;
+- 8 full-data interaction runs;
+- 4 reduced-data calibration runs;
+- 8 additional paired split/preparation runs;
+- 4 additional training-seed runs;
+- 3 scale-confirmation runs;
+- 5 leave-one-source-out runs;
+- 1 final frozen run.
+
+This is 53 runs, of which 16 use reduced fine-tuning data. Stages are gated: do not
+queue interaction jobs before curve review, reduced-data jobs before candidates are
+frozen, scale/source-transfer jobs before robustness review, or final evaluation
+before every selection decision is locked.

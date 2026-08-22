@@ -171,6 +171,10 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     if data_seed is not None:
         cfg.data_seed = data_seed
 
+    dataset_sample_seed = _parse_env_int("CODLLM_DATASET_SAMPLE_SEED")
+    if dataset_sample_seed is not None:
+        cfg.dataset_sample_seed = dataset_sample_seed
+
     dataloader_num_workers = _parse_env_int("CODLLM_DATALOADER_NUM_WORKERS")
     if dataloader_num_workers is not None:
         if dataloader_num_workers < 0:

@@ -1,0 +1,47 @@
+name = "publication_source_transfer_validation"
+command = "train"
+description = "Full-data leave-one-source-out validation of the frozen base-model winner recipe."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 1.0
+CODLLM_SEED = 777
+CODLLM_DATA_SEED = 777
+CODLLM_TRAIN_EXCLUDED_SOURCE_IDS = "historic_strings_en_2024"
+CODLLM_FINAL_TEST_EVAL_ENABLED = false
+CODLLM_UNCERTAINTY_EVAL = false
+
+[[variants]]
+name = "holdout-amsterdam"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "amsterdam_1854_1926"
+CODLLM_OUTPUT_DIR = "checkpoints/publication/source-transfer/amsterdam"
+
+[[variants]]
+name = "holdout-copenhagen"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication/source-transfer/copenhagen"
+
+[[variants]]
+name = "holdout-madrid"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"
+CODLLM_OUTPUT_DIR = "checkpoints/publication/source-transfer/madrid"
+
+[[variants]]
+name = "holdout-belgium"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication/source-transfer/belgium"
+
+[[variants]]
+name = "holdout-ipswich"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "ipswich_1871_1911"
+CODLLM_OUTPUT_DIR = "checkpoints/publication/source-transfer/ipswich"

@@ -1872,6 +1872,21 @@ class TestDataHandler:
         assert len(splits.val) == 1
         assert len(splits.test) == 1
 
+    def test_dataset_sample_seed_fixes_reduced_data_cohort(self) -> None:
+        """A fixed sample seed should isolate cohort selection from data seeds."""
+        source_df = _processed_df(num_rows=100)
+        first_handler = DataHandler(
+            Config(dataset_size=0.25, data_seed=101, dataset_sample_seed=777)
+        )
+        second_handler = DataHandler(
+            Config(dataset_size=0.25, data_seed=202, dataset_sample_seed=777)
+        )
+
+        first_sample = first_handler._apply_dataset_size(source_df)
+        second_sample = second_handler._apply_dataset_size(source_df)
+
+        assert first_sample["record_id"].tolist() == second_sample["record_id"].tolist()
+
     def test_get_splits_holds_out_configured_source_before_sampling(
         self, tmp_path: Path
     ) -> None:
