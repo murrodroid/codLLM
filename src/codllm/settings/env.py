@@ -192,7 +192,11 @@ def config_from_env(base: Optional[Config] = None) -> Config:
         cfg.train_sample_fraction = fraction
     if not 0 < cfg.train_sample_fraction <= 1:
         raise ValueError("CODLLM_TRAIN_SAMPLE_FRACTION must be in (0, 1].")
-    for field_name in ("baseline_max_features", "baseline_max_iter"):
+    for field_name in (
+        "baseline_max_features",
+        "baseline_max_iter",
+        "publication_audit_top_groups",
+    ):
         value = _parse_env_int(f"CODLLM_{field_name.upper()}")
         if value is not None:
             if value <= 0:

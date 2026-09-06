@@ -102,6 +102,10 @@ score-blind support audit. Copenhagen tests Danish without another Danish histor
 tests a new Dutch-language archive with Amsterdam still available. Then extend the same paired
 comparison to all five. Do not choose folds by model scores.
 
+The completed audit supports this as a useful transfer contrast, but the pilot choice remains for Lucas
+to confirm. Copenhagen has zero recorded natural multi-COD targets; do not reuse the pilot rationale
+as evidence that these are two multi-COD benefit tests. Phase 3 mechanism-fold choices are separate.
+
 For each P-source run, select its checkpoint using only validation from the training archives.
 Explicitly disable during-training holdout monitoring with `CODLLM_HOLD_OUT_EVALUATE_PER=none`;
 use final `holdout/full/*` predictions for the comparison. Disabling final test evaluation alone
@@ -119,6 +123,49 @@ is later desired. Check for shared provenance or duplicates with existing source
 If no genuinely external archive becomes available, report P-cod/P-source evidence honestly and narrow
 the external-validity claim. Acquiring one is preferable to calling tuned folds independent tests;
 nested source-wise model selection is a more expensive alternative, not something seed averaging replaces.
+
+### 3.4 Completed Phase 0a audit and decisions still open
+
+The 2026-09-06 HPC audit is preserved in [data_audit.json](data_audit.json). Detailed counts,
+limitations, and decision options are in [publication_data_audit.md](publication_data_audit.md).
+These are score-blind processed-data observations, not model results or final split statistics.
+
+- There are 1,525,598 historical rows after excluding the 3,295-row English reference. Removing the
+  886 missing-COD rows leaves 1,524,712 before any further identity deduplication or sampling.
+- Copenhagen contributes 501,855 rows but only 2,525 distinct CODs and 389 codes. Inspect full-size
+  grouped-split composition and group-size concentration before full screening; a 0.2% smoke test
+  cannot establish that the seed-777 full-data partitions have adequate source/code coverage.
+- Natural multi-COD prevalence is 0% in Copenhagen, 16.05% in Belgium, 18.52% in Amsterdam,
+  42.28% in Ipswich, and 5.08% in Madrid, before missing-COD removal. The source's annotation
+  convention may contribute to these differences; the audit does not establish why.
+- Amsterdam, Copenhagen, and Madrid account for 94.67% of rows after the two stated exclusions.
+  Retain pooled and per-source reporting alongside the already planned equal-source summary.
+- Between 56.2% and 68.0% of codes in the four non-Copenhagen archives have fewer than ten
+  source-local rows. Global, grouped, and cross-lingual support cannot be inferred from those counts.
+- Amsterdam and Copenhagen share 459 distinct CODs (18.18% of Copenhagen's distinct descriptions
+  before splitting). Pairwise text overlap is not an actual training-exposure rate or label overlap.
+
+Readiness adjustment: obtain a score-blind full-size split-support review before committing to the
+eight full-data screening cells. Include source/row/group/code coverage, largest connected groups,
+historically unsupported targets, and historical versus all-adaptation language-transfer eligibility.
+Record raw-source/processed-cache identities as well: the current JSON includes a language-curation
+hash but does not provide those data fingerprints. The new Phase 0c `publication.audit-splits` command
+collects these measurements using training's exact original-partition construction, once for the eight
+Phase 1a cells. Run it with the training profile/user to use the same processed-cache paths. Its real-data
+execution and review remain pending; implementation is not a completed validation.
+
+The report distinguishes source transfer, historical cross-language transfer, and strict planned
+all-adaptation transfer after masterlist exposure. Support is reported as rows, target occurrences,
+distinct codes, CODs, connected groups, and code-language pairs, overall and by source/language.
+Existing prepared-cache original partitions are compared when present. The audit neither trains models
+nor generates augmented datasets; lexical overlap introduced by perturbation/synthesis still requires
+the smoke/runtime provenance checks. It does not choose a support threshold, change a split, or approve a phase.
+
+Lucas retains the choices: confirm the two Phase 2 pilots; choose whether Phase 3 retains a single-COD
+control or uses two multi-COD-rich sources; consider an additional equal-description sensitivity analysis;
+and agree a minimum-support rule for transfer-based tie-breaks after the counts exist. Retain all sparse
+slices descriptively rather than converting unavailable evidence into zero performance. No audit finding
+changes the candidate hyperparameters, sample fraction, or approved phases automatically.
 
 ## 4. Make the transfer metric precise
 
@@ -234,7 +281,8 @@ Selection order:
    proposed practical guardrail, not a proven noninferiority margin. If tradeoffs remain unresolved,
    present the alternatives rather than inventing a universally best model.
 
-Finalize these margins and minimum support rules after the score-blind data audit, before comparison.
+Finalize these margins and minimum support rules after the score-blind split-support review, before comparison.
+The aggregate Phase 0a audit does not contain transfer-eligible support counts and cannot settle that rule.
 Do not collapse all metrics into an arbitrary weighted score or change the primary outcome after seeing
 which one a favorite configuration wins.
 
@@ -251,8 +299,9 @@ No full training campaign yet.
 
 1. Recover selected-checkpoint identities, prediction/row alignment, effective configs, and manifests for
    completed curves where possible. Retrieve existing source-transfer metrics before paying to retrain.
-2. Produce the source/language/label/overlap inventory; choose pilot sources and freeze normalization,
-   protocol IDs, exposure rules, metric definitions, and data versions.
+2. The source/language/label/overlap inventory is complete; see Section 3.4. Run Phase 0c's
+   `publication.audit-splits` and review full-size grouped-split/source/transfer support before freezing
+   the remaining choices and data versions. Retain its JSON, Markdown review, and data/code fingerprints.
 3. Verify the implemented grouped splitting, COD-only novelty, language/provenance-aware transfer,
    and content-addressed selected-model prediction exports against the real-data audit.
 4. Test duplicate COD with different age/sex, same-language different archives, other-language-only
@@ -262,7 +311,8 @@ No full training campaign yet.
    metric persistence, and W&B logging to `codllmdev/codllm`.
 
 Gate: matching manifests and metrics can be audited independently of the W&B run page.
-The CPU fixture is implemented and tested; the HPC smoke and real-data audit remain required.
+The CPU fixture is implemented and tested, and Phase 0a's aggregate audit is complete. The HPC smoke
+and full-size split-support review remain separate requirements; neither is certified by that JSON.
 
 ### Phase 1 — joint recipe screening on unseen descriptions
 
@@ -319,7 +369,9 @@ For the matched short/long pair, hold out each of:
 - `belgium_1920_1930`;
 - `ipswich_1871_1911`.
 
-Start with the two prespecified pilot archives: two recipes x two folds = 4 runs.
+Start with the proposed Copenhagen+Belgium pilot archives after Lucas confirms the source choice:
+two recipes x two folds = 4 runs. Copenhagen tests a single-COD Danish archive; Belgium tests a
+multi-COD-containing Dutch archive with another Dutch archive still in training.
 Then complete the remaining three archives: 6 more runs, reusing the pilot results.
 Total: 10 runs, with internal P-cod checkpoint selection and full natural holdout evaluation.
 
@@ -346,9 +398,14 @@ because other controls also changed. Do not select a new recipe from this second
 
 Repeat the no-pretraining and no-fine-tuning-synthesis ablations on the selected full recipe for two
 prespecified development source folds: 4 additional runs. Phase 1 controls were anchored at floor 0;
-these ablations must instead match the selected recipe in every other setting. Prefer folds with adequate natural
-multi-COD and transfer support, chosen from metadata. These are minimum mechanism checks; use all five
-folds for any claim that the effect holds across archives generally.
+these ablations must instead match the selected recipe in every other setting.
+
+The current TOML uses Copenhagen+Belgium, but the audit changes the interpretation: Copenhagen can
+test single-COD harm or unnecessary extra predictions, not natural multi-COD benefit. Lucas can retain
+that control, use Belgium+Ipswich for two multi-COD-rich folds (still 4 ablation runs), or add Ipswich
+to the existing panel (6 ablation runs). No option is selected by this plan update. Adjust the relevant
+TOML and launch guide only after that choice. These are minimum mechanism checks; use all five folds
+for any claim that the effect holds across archives generally.
 
 Fit inexpensive training-only baselines on the same manifests:
 
@@ -395,6 +452,11 @@ check, not a pure learning curve. A separate training-only learning curve is sup
 Choose the smaller fraction only if its supported rare/transfer slices and paired recipe behavior are
 reasonably consistent with 40%. One matching ranking is a feasibility check, not proof of fidelity.
 If rankings reverse, retain both candidates and use 40% or defer the full-data superiority claim.
+
+The audit implies approximately 381k/610k cohort rows at 25%/40% before augmentation, not uniformly
+distributed independent descriptions. Inspect rare-code, unique-COD, and transfer support per source
+at both fractions. The high source-local rare-code fractions make total row count an insufficient
+criterion. The checked-in 25% seed-study default remains provisional until Lucas reviews calibration.
 
 On the chosen fixed cohort, pin `CODLLM_DATASET_SAMPLE_SEED=777` and perform:
 
@@ -527,7 +589,10 @@ Submission and execution reject missing or stale approvals. These are reproducib
 automatic scientific judgment: inspect run results before approving, and choose new output roots when
 changing already-run recipes. Later stages are prepared but cannot be scientifically frozen in advance.
 
-`invoke publication.audit` writes score-blind data summaries; `publication.report` recovers selected
+`invoke publication.audit` writes aggregate score-blind data summaries; `publication.audit-splits`
+checks original split integrity/support and planned masterlist exposure without training. It writes
+`logs/publication/split_audit.json` and `.md`; integrity failures return exit code 2, while passing
+checks remain explicitly subject to scientific review. `publication.report` recovers selected
 results directly from local/HPC artifacts; `publication.bootstrap` compares aligned prediction files.
 The frozen evaluator validates manifest checksums, records the evaluated checkpoint's SHA256, and uses
 the original validation partition for uncertainty calibration. Final baseline jobs deterministically

@@ -459,8 +459,29 @@ class DataHandler:
                 "Set CODLLM_PROCESSED_LOCK_TIMEOUT_SECONDS to a larger value."
             ) from exc
 
-    def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
-        """Build prepared split dataframes from processed rows."""
+    def prepare_original_splits(
+        self, processed_df: pd.DataFrame
+    ) -> tuple[DataSplits, list[dict[str, Any]]]:
+        """Construct the exact original partitions and exclusion ledger before augmentation."""
+        ledger: list[dict[str, Any]] = []
+
+        def record(stage: str, frame: pd.DataFrame) -> None:
+            """Record sequential source counts without retaining additional dataframes."""
+            ledger.append(
+                {
+                    "stage": stage,
+                    "rows": len(frame),
+                    "source_rows": frame["source_id"]
+                    .fillna("")
+                    .astype(str)
+                    .value_counts()
+                    .to_dict()
+                    if "source_id" in frame
+                    else {},
+                }
+            )
+
+        record("processed", processed_df)
         if self.cfg.publication_eval_enabled or self.cfg.evaluation_protocol == "cod":
             from codllm.evaluation.provenance import annotate_provenance
 
@@ -469,9 +490,11 @@ class DataHandler:
                 processed_df = processed_df.loc[
                     processed_df["cod_key"].ne("")
                 ].reset_index(drop=True)
+            record("after_missing_cod_policy", processed_df)
             processed_df = processed_df.drop_duplicates("row_uid").reset_index(
                 drop=True
             )
+        record("after_identity_deduplication", processed_df)
         _log_data_progress(f"Preparing split source rows: rows={len(processed_df)}.")
         processed_source_ids = (
             set(processed_df["source_id"].fillna("").astype(str).tolist())
@@ -479,6 +502,7 @@ class DataHandler:
             else set()
         )
         training_pool_df, holdout_df = self._partition_hold_out_dataset(processed_df)
+        record("after_holdout_removal", training_pool_df)
         if holdout_df is not None:
             _log_data_progress(
                 "Partitioned hold-out dataset: "
@@ -488,7 +512,9 @@ class DataHandler:
             training_pool_df,
             processed_source_ids=processed_source_ids,
         )
+        record("after_reference_exclusions", training_pool_df)
         sampled_df = self._apply_dataset_size(training_pool_df)
+        record("sampled_cohort", sampled_df)
         if len(sampled_df) != len(training_pool_df):
             _log_data_progress(
                 f"Applied dataset_size={self.cfg.dataset_size}: rows={len(sampled_df)}."
@@ -501,10 +527,21 @@ class DataHandler:
             )
         if self.cfg.publication_eval_enabled:
             splits.original_train = splits.train.copy()
+        splits.holdout = holdout_df
+        record("original_train", splits.train)
+        record("val", splits.val)
+        record("test", splits.test)
+        if holdout_df is not None:
+            record("holdout", holdout_df)
         _log_data_progress(
             "Initial split sizes: "
             f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
         )
+        return splits, ledger
+
+    def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
+        """Build prepared split dataframes from the shared original-partition construction."""
+        splits, _ = self.prepare_original_splits(processed_df)
         if self.cfg.max_label_count >= 2 and (
             self.cfg.multicod_synthetic_ratio > 0 or self.cfg.multicod_shuffle_labels
         ):
@@ -516,8 +553,8 @@ class DataHandler:
             "After multi-COD preparation: "
             f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
         )
-        if holdout_df is not None:
-            splits.holdout = shuffle_multicod_label_order(holdout_df, self.cfg)
+        if splits.holdout is not None:
+            splits.holdout = shuffle_multicod_label_order(splits.holdout, self.cfg)
             splits.holdout_eval = self._build_holdout_eval_dataframe(splits.holdout)
         if not splits.train.empty:
             if (

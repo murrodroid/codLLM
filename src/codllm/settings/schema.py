@@ -113,6 +113,7 @@ class Config:
     evaluation_language_overrides_path: str | None = None
     evaluation_drop_missing_cod: bool = False
     prediction_export_enabled: bool = False
+    publication_audit_top_groups: int = 10
     publication_gate: str | None = None
     publication_decisions_path: str = "runs/publication/decisions.json"
     evaluation_checkpoint: str | None = None

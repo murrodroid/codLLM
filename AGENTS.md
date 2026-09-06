@@ -71,6 +71,23 @@ recovers selected-checkpoint scalars; `publication.bootstrap --first <parquet> -
 aligned predictions. Do not approve scientific phase gates without the user's actual review/decision.
 Candidate/language/reduced-protocol edits invalidate recorded approvals. Never silently overwrite a
 completed recipe's output root to rerun different settings.
+Reviewed aggregate audit snapshots may be tracked under `docs/publication/`; `data_audit.json` is the
+2026-09-06 HPC snapshot and `publication_data_audit.md` records its findings and unresolved choices.
+Do not mix data-audit observations into the training-results-only `publication_progress.md`, or treat
+aggregate source counts as evidence of actual split coverage or cross-lingual eligibility.
+Before Phase 1a, `uv run --no-sync invoke publication.audit-splits --config
+runs/publication/interaction_confirmation.toml --profile h100 --lucas` audits its shared original
+partition without training or generating augmented datasets. Profile/user flags mirror training's raw
+and processed-data paths; they do not allocate a GPU. Outputs are private
+`logs/publication/split_audit.json` and `.md`. Integrity failures return exit code 2; otherwise the report
+remains `review_required`, never automatic scientific approval. `--sweep-index` selects one cell if a
+different spec contains incompatible original partitions. Keep training and auditing on the shared
+`DataHandler.prepare_original_splits` path. Display-only `Config.publication_audit_top_groups` /
+`CODLLM_PUBLICATION_AUDIT_TOP_GROUPS` must not change prepared split identity or the frozen training-recipe
+digest. The audit reports planned
+code/language support from original history plus the unaugmented pretraining masterlist; it rejects
+cross-source synthesis, mixed within-source synthesis languages, and masterlist injection rather than
+assuming their augmented exposure is unchanged. It does not audit augmented lexical overlaps.
 
 Experiment commands `publication-evaluate` and `publication-baseline` dispatch to
 `python -m codllm.evaluation`; `hpc.build` validates frozen evaluation inputs or prepares baseline splits.

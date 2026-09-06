@@ -1017,6 +1017,40 @@ def publication_audit(
     print(f"Wrote {output}; {len(report['sources'])} source inventories.")
 
 
+@task(name="audit-splits")
+def publication_audit_splits(
+    ctx: Context,
+    config: str = "runs/publication/interaction_confirmation.toml",
+    output: str = "logs/publication/split_audit.json",
+    sweep_index: int = 0,
+    profile: str | None = None,
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+) -> None:
+    """Audit original split support without training, using the selected HPC data paths."""
+    from codllm.evaluation.split_audit import audit_splits
+
+    spec = load_experiment_spec(config)
+    runs = _select_runs(spec, sweep_index)
+    if any(run.command != "train" for run in runs):
+        raise Exit("Split auditing requires training experiment cells.", code=2)
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    configs = []
+    for run in runs:
+        with _temporary_environ(runtime_env | run.env_with_runtime_metadata(spec)):
+            configs.append(config_from_env())
+    report = audit_splits(
+        configs, [run.name for run in runs], output, specification=config
+    )
+    print(
+        f"Wrote {output} and {Path(output).with_suffix('.md')}; status={report['status']}."
+    )
+    if report["status"] == "integrity_failed":
+        raise Exit("Integrity checks failed; review the saved audit before Phase 1a.", code=2)
+
+
 @task(name="approve")
 def publication_approve(
     ctx: Context,
@@ -1069,6 +1103,7 @@ namespace.add_collection(experiments)
 
 publication = Collection("publication")
 publication.add_task(publication_audit)
+publication.add_task(publication_audit_splits)
 publication.add_task(publication_approve)
 publication.add_task(publication_report)
 publication.add_task(publication_bootstrap)

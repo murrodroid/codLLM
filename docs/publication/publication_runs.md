@@ -28,12 +28,16 @@ Their original TOMLs and results remain unchanged. All new jobs use `checkpoints
 
 ## Phase 0a. Data audit
 
+Complete for the 2026-09-06 data snapshot: [audit JSON](data_audit.json) and
+[findings / choices](publication_data_audit.md). Rerun only when a refreshed inventory is needed.
+
 ```shell
 uv run --no-sync invoke publication.audit --config runs/publication/protocol_v1.toml
 ```
 
-Review `logs/publication/data_audit.json` before training. Copenhagen and Belgium are the prespecified pilot sources.
-Belgian Flemish and Amsterdam both use language `nl`.
+Future output remains `logs/publication/data_audit.json`; preserve the reviewed snapshot separately.
+Copenhagen and Belgium remain the proposed pilots pending your confirmation. Belgian Flemish and Amsterdam
+both use language `nl`. Copenhagen has no recorded natural multi-COD targets.
 
 ## Phase 0b. Smoke test — 1 run
 
@@ -44,7 +48,29 @@ uv run --no-sync invoke hpc.build --config runs/publication/smoke.toml --profile
 uv run --no-sync invoke hpc.submit --config runs/publication/smoke.toml --profile h100 --lucas --duration 1w
 ```
 
+## Phase 0c. Full-size split audit — no training
+
+Run after syncing the new audit code to HPC. No `hpc.build` is needed first.
+
+```shell
+uv run --no-sync invoke publication.audit-splits --config runs/publication/interaction_confirmation.toml --profile h100 --lucas
+```
+
+Outputs: `logs/publication/split_audit.md` (review) and `logs/publication/split_audit.json` (detailed counts).
+Uses CPU/RAM, not a GPU; `--profile h100 --lucas` selects the same data paths as training, not an allocation.
+Use an interactive CPU allocation for the full dataset. It constructs one shared original split for all
+eight cells, reads the pretraining masterlist, and may build the processed cache if missing or stale.
+It does not build augmented training datasets, train models, or submit jobs.
+
+Review source/code/COD-group coverage, group concentration, unsupported targets, and source/language
+transfer support before Phase 1a. `review_required` means integrity checks passed, not scientific approval;
+`integrity_failed` exits with code 2. Keep these small-count reports private until reviewed.
+
 ## Phase 1a. Joint recipe screening — 8 runs
+
+Before this full wave: complete the smoke check and review Phase 0c's full-size split audit. The aggregate
+Phase 0a audit and small smoke test alone do not establish full-size coverage. No phase approval is
+recorded automatically; see [review choices](publication_data_audit.md#decisions-for-lucas--no-settings-changed).
 
 Floor 0/450 × synthesis 0.30/0.60 × pretraining 4/48.
 
@@ -64,7 +90,7 @@ uv run --no-sync invoke hpc.submit --config runs/publication/screening_controls.
 
 ## Review 1. Choose the paired recipes
 
-Update `candidate_winner.toml` and `candidate_runner_up.toml` with the selected shared floor/synthesis settings. Keep the matched 48- and 4-epoch doses. They currently contain provisional floor 0 / synthesis 0.30.
+Confirm the pilot sources and update `candidate_winner.toml` and `candidate_runner_up.toml` with the selected shared floor/synthesis settings. Keep the matched 48- and 4-epoch doses. They currently contain provisional floor 0 / synthesis 0.30.
 
 ```shell
 read -r -p "Decision and supporting run IDs: " PUBLICATION_REVIEW_NOTE
@@ -107,7 +133,10 @@ uv run --no-sync invoke hpc.submit --config runs/publication/row_split_confirmat
 
 ## Phase 3b. Source ablations — 4 runs
 
-No pretraining / no fine-tuning synthesis, each on Copenhagen and Belgium.
+Confirm the source choice before submitting. The unchanged TOML runs no pretraining / no fine-tuning
+synthesis on Copenhagen and Belgium: one single-COD control and one multi-COD benefit test.
+Options using Ipswich are documented in [the audit review](publication_data_audit.md#decisions-for-lucas--no-settings-changed)
+but are not applied to these commands or TOMLs.
 
 ```shell
 uv run --no-sync invoke hpc.build --config runs/publication/source_ablation_controls.toml --profile h100 --lucas

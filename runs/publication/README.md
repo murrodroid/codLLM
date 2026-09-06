@@ -4,6 +4,16 @@ Design: [publication_plan.md](../../docs/publication/publication_plan.md).
 Exact preparation/submission commands: [publication_runs.md](../../docs/publication/publication_runs.md).
 Results: [publication_progress.md](../../docs/publication/publication_progress.md).
 Open ideas: [publication_thoughts.md](../../docs/publication/publication_thoughts.md).
+Completed Phase 0a: [audit findings and decisions](../../docs/publication/publication_data_audit.md).
+
+The aggregate audit is complete, but full-size split/source/transfer support remains to be reviewed
+before full screening. Copenhagen has no recorded natural multi-COD targets. The current source
+TOMLs remain unchanged pending Lucas's choice of transfer pilots and mechanism-test archives.
+Run Phase 0c's `publication.audit-splits --config runs/publication/interaction_confirmation.toml
+--profile h100 --lucas` after sourcing `hpc/env.sh`. It constructs one shared original split for the
+eight cells, without augmentation or model training. The profile selects data paths, not GPU execution.
+Review `logs/publication/split_audit.md` and its detailed `.json` before Phase 1a; passing integrity checks
+does not approve scientific decisions. Exact shell commands are in the launch guide.
 
 ## Legacy versus v1
 

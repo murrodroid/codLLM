@@ -36,7 +36,8 @@ fine-tuning-only sensitivity rather than end-to-end sensitivity.
 
 ## 3. Evaluate new descriptions, sources, and languages separately
 
-Status: grouped splitting and language-aware metrics implemented; real-data audit and external curation remain.
+Status: grouped splitting and language-aware metrics implemented; aggregate audit complete;
+split-specific support review and external curation remain.
 
 Use COD-only novelty, globally COD-grouped splitting, and early paired leave-one-source-out comparisons.
 Retain row-split performance as a complementary setting. Age/sex differences must not create novelty.
@@ -68,6 +69,16 @@ Separate those mechanisms only when the observed behavior justifies a controlled
 Natural multi-COD performance matters more than success solely on synthetically composed evaluation.
 COD-only versus COD+age+sex is a useful portability comparison, not a reason to silently reinterpret
 the old metadata-assisted curves.
+
+The [completed audit](publication_data_audit.md) adds a source-selection question: Copenhagen has no
+recorded natural multi-COD targets, whereas Belgium has 16.05% and Ipswich 42.28%. The Phase 2 transfer
+pilots and Phase 3 mechanism tests need not use the same pair. Keeping Copenhagen tests single-COD
+harm; replacing it with Ipswich tests benefit on a second multi-COD-rich source. Adding Ipswich costs
+two more ablation runs. This choice remains with Lucas; the source TOMLs are unchanged.
+
+Also consider a secondary equal-description analysis if a few recurrent strings dominate case-weighted
+scores: Copenhagen has 501,855 rows but only 2,525 distinct CODs. Retain natural case-weighted results
+for archival workload; do not delete legitimate repeated cases or silently change the primary estimand.
 
 ## 5. Use Bayesian search selectively
 

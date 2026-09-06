@@ -141,6 +141,7 @@ def persist_training_contract(
             "runtime_safety_margin_seconds",
             "auto_resume",
             "publication_gate",
+            "publication_audit_top_groups",
             "publication_decisions_path",
             "evaluation_checkpoint",
             "evaluation_reference_dir",
