@@ -1,0 +1,27 @@
+name = "publication_v1_baselines_grouped"
+command = "publication-baseline"
+description = "Lookup, character-linear, and masterlist-retrieval comparisons on one fixed partition."
+
+[env]
+CODLLM_HOLD_OUT_DATASET = ""
+
+[[variants]]
+name = "lookup"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "lookup"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/grouped/lookup"
+
+[[variants]]
+name = "linear"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "linear"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/grouped/linear"
+
+[[variants]]
+name = "retrieval"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "retrieval"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/grouped/retrieval"

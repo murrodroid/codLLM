@@ -413,6 +413,25 @@ def hpc_submit(
     spec = load_experiment_spec(config)
     lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
     env_overrides = _resume_env_overrides(lsf_profile, duration)
+    if spec.command in {"publication-evaluate", "publication-baseline"}:
+        for name in (
+            "CODLLM_EVALUATION_CHECKPOINT",
+            "CODLLM_EVALUATION_REFERENCE_DIR",
+            "CODLLM_EVALUATION_DATA_PATH",
+        ):
+            if os.getenv(name):
+                env_overrides[name] = os.environ[name]
+    if not dry_run:
+        from codllm.evaluation.workflow import validate_publication_config
+
+        for run in spec.expanded_runs():
+            with _temporary_environ(run.env):
+                cfg = config_from_env()
+                validate_publication_config(cfg)
+                if run.command == "publication-evaluate":
+                    from codllm.evaluation.cli import validate_evaluation_inputs
+
+                    validate_evaluation_inputs(cfg)
     submission = prepare_lsf_submission(
         spec,
         lsf_profile,
@@ -421,7 +440,7 @@ def hpc_submit(
         env_overrides=env_overrides,
     )
     _print_submission(submission)
-    if env_overrides:
+    if duration:
         _print_resume_plan(lsf_profile, duration, env_overrides)
     if dry_run:
         return
@@ -562,9 +581,9 @@ def _build_run_dependencies(
     dry_run: bool = False,
 ) -> None:
     """Build cached data artifacts for one expanded experiment run."""
-    if run.command != "train":
+    if run.command not in {"train", "publication-evaluate", "publication-baseline"}:
         raise Exit(
-            f"Task 'hpc.build' only supports command='train' runs, got {run.command!r}.",
+            f"Task 'hpc.build' supports train, publication-evaluate, or publication-baseline; got {run.command!r}.",
             code=2,
         )
 
@@ -587,6 +606,29 @@ def _build_run_dependencies(
     )
     with _temporary_environ(run_env):
         cfg = config_from_env()
+        from codllm.evaluation.workflow import validate_publication_config
+
+        validate_publication_config(cfg)
+        if run.command == "publication-evaluate":
+            from codllm.evaluation.cli import validate_evaluation_inputs
+
+            validate_evaluation_inputs(cfg)
+            print(
+                "  frozen checkpoint, training manifests, and evaluation input validated"
+            )
+            return
+        if run.command == "publication-baseline" and cfg.publication_gate == "final":
+            from codllm.evaluation.artifacts import load_manifest
+
+            if not cfg.evaluation_reference_dir:
+                raise Exit(
+                    "Final baselines require CODLLM_EVALUATION_REFERENCE_DIR from the original frozen run.",
+                    code=2,
+                )
+            for name in ("original_train", "val", "test"):
+                load_manifest(Path(cfg.evaluation_reference_dir), name)
+            print("  original frozen baseline partitions validated")
+            return
         print(f"  CODLLM_DATA_RAW_DIR={cfg.data_raw_dir}")
         print(f"  CODLLM_DATA_PROCESSED_DIR={cfg.data_processed_dir}")
         print(f"  CODLLM_OUTPUT_DIR={cfg.output_dir}")
@@ -961,6 +1003,60 @@ def _age_days(last_activity_ns: int) -> float:
     return max(0.0, (time.time_ns() - last_activity_ns) / 1_000_000_000 / 86400)
 
 
+@task(name="audit")
+def publication_audit(
+    ctx: Context,
+    config: str = "runs/publication/protocol_v1.toml",
+    output: str = "logs/publication/data_audit.json",
+) -> None:
+    """Write a score-blind source/language/overlap audit without training."""
+    from codllm.evaluation.workflow import audit_dataset
+
+    with _config_environment(config, 1):
+        report = audit_dataset(config_from_env(), output)
+    print(f"Wrote {output}; {len(report['sources'])} source inventories.")
+
+
+@task(name="approve")
+def publication_approve(
+    ctx: Context,
+    stage: str,
+    note: str,
+    decisions: str = "runs/publication/decisions.json",
+) -> None:
+    """Record a reviewed candidate/phase decision before later-stage submission."""
+    from codllm.evaluation.workflow import approve_stage
+
+    approve_stage(stage, decisions, note)
+    print(f"Recorded '{stage}' decision in {decisions}.")
+
+
+@task(name="report")
+def publication_report(
+    ctx: Context, root: str, output: str = "logs/publication/selected_results.csv"
+) -> None:
+    """Aggregate selected-checkpoint results recovered from local/HPC artifacts."""
+    from codllm.evaluation.analysis import summarize_runs
+
+    results = summarize_runs(root, output)
+    print(f"Wrote {len(results)} selected evaluation summaries to {output}.")
+
+
+@task(name="bootstrap")
+def publication_bootstrap(
+    ctx: Context,
+    first: str,
+    second: str,
+    output: str = "logs/publication/bootstrap.json",
+    replicates: int = 2000,
+    seed: int = 777,
+) -> None:
+    """Compute a paired COD-cluster bootstrap from aligned prediction artifacts."""
+    from codllm.evaluation.analysis import paired_bootstrap
+
+    print(paired_bootstrap(first, second, output, replicates, seed))
+
+
 namespace = Collection()
 namespace.add_task(sync)
 namespace.add_task(train)
@@ -970,6 +1066,13 @@ experiments.add_task(experiments_bayes_create)
 experiments.add_task(experiments_list)
 experiments.add_task(experiments_plan)
 namespace.add_collection(experiments)
+
+publication = Collection("publication")
+publication.add_task(publication_audit)
+publication.add_task(publication_approve)
+publication.add_task(publication_report)
+publication.add_task(publication_bootstrap)
+namespace.add_collection(publication)
 
 hpc = Collection("hpc")
 hpc.add_task(hpc_bayes_submit)

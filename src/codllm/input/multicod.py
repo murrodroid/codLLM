@@ -1,5 +1,6 @@
 import random
 import re
+import json
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -317,6 +318,12 @@ def build_synthetic_multicod_rows(
     synthetic_record_ids: list[str] = []
     synthetic_source_paths: list[str] = []
     synthetic_source_id_sets: list[str] = []
+    synthetic_parent_uids: list[str] = []
+    synthetic_languages: list[str] = []
+    row_uids = _candidate_source_values(dataframe, "row_uid", "").tolist()
+    language_values = _candidate_source_values(
+        dataframe, "language_candidates", "und"
+    ).tolist()
     progress_interval = max(50_000, synthetic_count // 10)
 
     for idx, group_key in enumerate(sampled_group_keys):
@@ -363,6 +370,20 @@ def build_synthetic_multicod_rows(
         synthetic_record_ids.append(f"{synthetic_source_id}:{idx:06d}")
         synthetic_source_paths.append("; ".join(source_paths))
         synthetic_source_id_sets.append("; ".join(source_ids))
+        synthetic_parent_uids.append(
+            json.dumps([row_uids[position] for position in sampled_positions])
+        )
+        synthetic_languages.append(
+            ",".join(
+                sorted(
+                    {
+                        code
+                        for position in sampled_positions
+                        for code in language_values[position].split(",")
+                    }
+                )
+            )
+        )
 
     if not anchor_positions:
         _log_multicod_progress("no synthetic rows were assembled.")
@@ -380,6 +401,20 @@ def build_synthetic_multicod_rows(
         for labels in sampled_label_sets
     ]
     synthetic_df["synthetic_source_ids"] = synthetic_source_id_sets
+    if cfg.publication_eval_enabled:
+        from codllm.evaluation.provenance import cod_from_input, normalize_cod
+
+        synthetic_df["row_uid"] = synthetic_record_ids
+        synthetic_df["synthetic_parent_uids"] = synthetic_parent_uids
+        synthetic_df["language_candidates"] = synthetic_languages
+        synthetic_df["language"] = [
+            "mul" if "," in value else value for value in synthetic_languages
+        ]
+        synthetic_df["cod_text"] = [
+            cod_from_input(value, cfg) for value in merged_texts
+        ]
+        synthetic_df["cod_key"] = synthetic_df["cod_text"].map(normalize_cod)
+        synthetic_df["data_role"] = "synthetic"
     _log_multicod_progress(f"built {len(synthetic_df)} synthetic rows.")
     return synthetic_df
 

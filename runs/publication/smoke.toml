@@ -1,0 +1,15 @@
+name = "publication_v1_smoke"
+command = "train"
+description = "Publication v1 experiment."
+base = "protocol_v1.toml"
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 0.002
+CODLLM_NUM_TRAIN_EPOCHS = 1
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 1
+CODLLM_PRETRAIN_EVAL_EVERY_N_EPOCHS = 1
+CODLLM_PRETRAIN_UPSAMPLE_TARGET_PER_LABEL = 1
+CODLLM_PRETRAIN_MULTICOD_SYNTHETIC_RATIO = 0
+CODLLM_EARLY_STOPPING_PATIENCE = 0
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/smoke"

@@ -1,8 +1,8 @@
 # Experiments
 
 Research code for the thesis. Each subdirectory is a self-contained study. Heavy
-outputs (`results/`) are gitignored and regenerated from the commands in the top-level
-[README](../README.md).
+outputs (`results/`) are gitignored and regenerated from the commands in the
+[project guide](../docs/guide.md).
 
 | Directory | What it is | Research question |
 |---|---|---|

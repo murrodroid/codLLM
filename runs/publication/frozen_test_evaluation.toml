@@ -1,0 +1,11 @@
+name = "publication_v1_frozen_test"
+command = "publication-evaluate"
+base = "candidate_winner.toml"
+description = "Evaluate an explicitly selected checkpoint on its original frozen test manifest; no retraining."
+
+[env]
+CODLLM_PUBLICATION_GATE = "final"
+CODLLM_EVALUATION_SCOPE = "test"
+CODLLM_UNCERTAINTY_EVAL = true
+CODLLM_AUTO_RESUME = false
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/frozen-test"

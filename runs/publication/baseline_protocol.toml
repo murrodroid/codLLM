@@ -1,0 +1,13 @@
+name = "publication_v1_baseline_protocol"
+command = "publication-baseline"
+base = "protocol_v1.toml"
+
+[env]
+CODLLM_PUBLICATION_GATE = "recipe"
+CODLLM_PRETRAIN_ENABLED = false
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.0
+CODLLM_BASE_PERTURBATION_RATE = 0.0
+CODLLM_AUTO_RESUME = false
+CODLLM_UNCERTAINTY_EVAL = false
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines"

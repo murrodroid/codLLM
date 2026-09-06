@@ -107,6 +107,23 @@ class Config:
     seed: int = 42
     data_seed: Optional[int] = 333
     dataset_sample_seed: Optional[int] = None
+    evaluation_protocol: str = "row"
+    publication_eval_enabled: bool = False
+    evaluation_language_metadata_path: str = "data/curation/source_languages.toml"
+    evaluation_language_overrides_path: str | None = None
+    evaluation_drop_missing_cod: bool = False
+    prediction_export_enabled: bool = False
+    publication_gate: str | None = None
+    publication_decisions_path: str = "runs/publication/decisions.json"
+    evaluation_checkpoint: str | None = None
+    evaluation_reference_dir: str | None = None
+    evaluation_data_path: str | None = None
+    evaluation_scope: str = "external"
+    publication_baseline: str = "lookup"
+    baseline_max_features: int = 100000
+    baseline_max_iter: int = 25
+    baseline_alpha: float = 1e-5
+    baseline_thresholds: list[float] = field(default_factory=lambda: [0.2, 0.35, 0.5, 0.65])
     deterministic_algorithms: bool = True
     deterministic_algorithms_warn_only: bool = True
     cudnn_deterministic: bool = True
@@ -167,6 +184,7 @@ class Config:
     runtime_safety_margin_seconds: int = 300
 
     dataset_size: float = 0.5
+    train_sample_fraction: float = 1.0
     train_size: float = 0.9
     val_size: float = 0.05
     test_size: float = 0.05

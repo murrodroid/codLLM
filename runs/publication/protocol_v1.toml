@@ -1,0 +1,27 @@
+name = "publication_v1_protocol"
+command = "train"
+description = "New grouped-COD protocol; historical curves retain base.toml unchanged."
+base = "base.toml"
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_EVAL_ENABLED = true
+CODLLM_EVALUATION_PROTOCOL = "cod"
+CODLLM_EVALUATION_DROP_MISSING_COD = true
+CODLLM_PREDICTION_EXPORT_ENABLED = true
+CODLLM_EVALUATION_LANGUAGE_METADATA_PATH = "data/curation/source_languages.toml"
+CODLLM_EVALUATION_LANGUAGE_OVERRIDES_PATH = ""
+CODLLM_PUBLICATION_GATE = ""
+CODLLM_TRAINING_INPUT = "cod"
+CODLLM_PROCESSED_FILENAME = "publication-v1.parquet"
+CODLLM_TRAIN_EXCLUDED_SOURCE_IDS = "historic_strings_en_2024"
+CODLLM_HOLD_OUT_DATASET = ""
+CODLLM_HOLD_OUT_EVALUATE_PER = "none"
+CODLLM_DATASET_SIZE = 1
+CODLLM_TRAIN_SAMPLE_FRACTION = 1
+CODLLM_DATASET_SAMPLE_SEED = 777
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/protocol"
+CODLLM_IGNORE_DATA_SKIP = false

@@ -14,6 +14,7 @@ class TokenizedSeq2SeqDataset(Dataset):
         self,
         features: dict[str, list[Any]],
         source_ids: list[str] | None = None,
+        evaluation_metadata: list[dict[str, str]] | None = None,
     ) -> None:
         if not features:
             raise ValueError("Tokenized features must not be empty.")
@@ -27,6 +28,11 @@ class TokenizedSeq2SeqDataset(Dataset):
         self.source_ids: list[str] | None = (
             list(source_ids) if source_ids is not None else None
         )
+        if evaluation_metadata is not None and len(evaluation_metadata) != self.length:
+            raise ValueError(
+                "Evaluation metadata length must match tokenized feature length."
+            )
+        self.evaluation_metadata = evaluation_metadata
 
     def __len__(self) -> int:
         """Return number of rows."""
@@ -72,7 +78,14 @@ def _tokenize_dataframe(
     source_ids: list[str] | None = None
     if "source_id" in dataframe.columns:
         source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
-    return TokenizedSeq2SeqDataset(model_inputs, source_ids=source_ids)
+    metadata = None
+    if cfg.publication_eval_enabled:
+        from codllm.evaluation.provenance import evaluation_records
+
+        metadata = evaluation_records(dataframe, cfg)
+    return TokenizedSeq2SeqDataset(
+        model_inputs, source_ids=source_ids, evaluation_metadata=metadata
+    )
 
 
 def prepare_training_dataset(
@@ -151,7 +164,14 @@ def _tokenize_dataframe_for_sequence_classification(
     source_ids: list[str] | None = None
     if "source_id" in dataframe.columns:
         source_ids = dataframe["source_id"].fillna("").astype(str).tolist()
-    return TokenizedSeq2SeqDataset(model_inputs, source_ids=source_ids)
+    metadata = None
+    if cfg.publication_eval_enabled:
+        from codllm.evaluation.provenance import evaluation_records
+
+        metadata = evaluation_records(dataframe, cfg)
+    return TokenizedSeq2SeqDataset(
+        model_inputs, source_ids=source_ids, evaluation_metadata=metadata
+    )
 
 
 def prepare_sequence_classification_dataset(

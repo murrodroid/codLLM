@@ -1,16 +1,11 @@
-name = "publication_final_model"
+name = "publication_v1_final_model"
 command = "train"
-description = "Frozen full-data publication model with final test and uncertainty evaluation enabled."
-base = ["candidate_winner.toml", "../profiles/h100-xl.toml"]
+description = "Optional independently identified final training/refit; prefer evaluating an existing frozen checkpoint when suitable."
+base = "candidate_winner.toml"
 force_reprocess = false
 
-# Change the model-profile base above only if scale confirmation selects large
-# or base. Do not change hyperparameters after this run evaluates the test set.
 [env]
-CODLLM_OUTPUT_DIR = "checkpoints/publication/final-model"
-CODLLM_DATASET_SIZE = 1.0
-CODLLM_SEED = 777
-CODLLM_DATA_SEED = 777
+CODLLM_PUBLICATION_GATE = "final"
 CODLLM_FINAL_TEST_EVAL_ENABLED = true
 CODLLM_UNCERTAINTY_EVAL = true
-CODLLM_WANDB_LOG_MODEL = "true"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/final"

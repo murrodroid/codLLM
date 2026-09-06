@@ -1,0 +1,20 @@
+name = "publication_v1_screening_controls"
+command = "train"
+description = "Publication v1 experiment."
+force_reprocess = false
+
+[env]
+
+[[variants]]
+name = "no-pretraining"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_PRETRAIN_ENABLED = false
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen/no-pretraining"
+
+[[variants]]
+name = "no-synthesis"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen/no-synthesis"

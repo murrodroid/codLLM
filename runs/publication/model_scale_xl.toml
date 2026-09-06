@@ -1,0 +1,13 @@
+name = "publication_v1_scale_xl"
+command = "train"
+description = "Publication v1 experiment."
+base = ["candidate_winner.toml","../profiles/h100-xl.toml"]
+force_reprocess = false
+
+[env]
+CODLLM_DETERMINISTIC_ALGORITHMS = true
+CODLLM_CUDNN_DETERMINISTIC = true
+CODLLM_CUDNN_BENCHMARK = false
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 6
+CODLLM_PUBLICATION_GATE = "recipe"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/scale/xl/winner"

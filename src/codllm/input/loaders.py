@@ -285,6 +285,8 @@ def load_source_dataset(
             )
         ]
     result["source_path"] = [str(source_path)] * len(filtered_raw_df)
+    result["cod_text"] = _normalize_raw_values(_raw_column(filtered_raw_df, mapping.text_col)).fillna("")
+    result["row_uid"] = [f"{source.source_id}:row:{index}" for index in source_row_indices]
     result[effective_text_column] = _build_text_values(
         raw_df=filtered_raw_df,
         mapping=mapping,

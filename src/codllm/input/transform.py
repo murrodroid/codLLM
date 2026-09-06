@@ -20,6 +20,8 @@ def _processed_columns(text_column: str, label_column: str) -> list[str]:
         "source_id",
         "record_id",
         "source_path",
+        "cod_text",
+        "row_uid",
         text_column,
         "y_codes",
         label_column,

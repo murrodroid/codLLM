@@ -1,0 +1,9 @@
+name = "publication_v1_reduced_protocol"
+command = "train"
+description = "Chosen fixed cohort fraction: review .25 against .40 calibration, then freeze before seed sensitivity."
+force_reprocess = false
+
+[env]
+CODLLM_DATASET_SIZE = 0.25
+CODLLM_TRAIN_SAMPLE_FRACTION = 1
+CODLLM_DATASET_SAMPLE_SEED = 777

@@ -1,0 +1,25 @@
+name = "publication_v1_scale_source"
+command = "train"
+description = "Selected larger-scale transfer check; default large, update profile and isolated output if XL is selected."
+force_reprocess = false
+
+[env]
+CODLLM_DETERMINISTIC_ALGORITHMS = true
+CODLLM_CUDNN_DETERMINISTIC = true
+CODLLM_CUDNN_BENCHMARK = false
+CODLLM_GRADIENT_ACCUMULATION_STEPS = 2
+CODLLM_PUBLICATION_GATE = "recipe"
+
+[[variants]]
+name = "copenhagen"
+base = ["candidate_winner.toml","../profiles/h100-large.toml"]
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/scale-source/large/copenhagen"
+
+[[variants]]
+name = "belgium"
+base = ["candidate_winner.toml","../profiles/h100-large.toml"]
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/scale-source/large/belgium"

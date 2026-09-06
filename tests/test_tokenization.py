@@ -34,6 +34,7 @@ class _StubTokenizer:
 
 @dataclass
 class _StubConfig:
+    publication_eval_enabled: bool = False
     """Minimal config exposing only the fields the tokenization helpers use."""
 
     max_source_length: int = 32

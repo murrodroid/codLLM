@@ -1,0 +1,28 @@
+name = "publication_v1_baselines_row"
+command = "publication-baseline"
+base = "baselines_grouped.toml"
+description = "Matched familiar-description baseline comparison under record-grouped row splitting."
+
+[env]
+CODLLM_EVALUATION_PROTOCOL = "row"
+
+[[variants]]
+name = "lookup"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "lookup"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/row/lookup"
+
+[[variants]]
+name = "linear"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "linear"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/row/linear"
+
+[[variants]]
+name = "retrieval"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "retrieval"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/row/retrieval"

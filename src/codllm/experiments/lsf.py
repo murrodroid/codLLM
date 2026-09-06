@@ -500,6 +500,8 @@ def _render_lsf_script(
             "",
             'case "${CODLLM_JOB_COMMAND:-train}" in',
             "  train) run_training ;;",
+            "  publication-evaluate) uv run --no-dev python -m codllm.evaluation ;;",
+            "  publication-baseline) uv run --no-dev python -m codllm.evaluation ;;",
             "  inference) run_inference ;;",
             "  wandb-agent) run_wandb_agent ;;",
             '  *) echo "ERROR: unsupported CODLLM_JOB_COMMAND: ${CODLLM_JOB_COMMAND:-}"; exit 1 ;;',

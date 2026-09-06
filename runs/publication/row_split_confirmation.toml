@@ -1,0 +1,10 @@
+name = "publication_v1_row_confirmation"
+command = "train"
+description = "Publication v1 experiment."
+base = "candidate_winner.toml"
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_GATE = "recipe"
+CODLLM_EVALUATION_PROTOCOL = "row"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/row-confirmation"

@@ -1,0 +1,39 @@
+name = "publication_v1_source_ablations"
+command = "train"
+description = "Publication v1 experiment."
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_GATE = "recipe"
+
+[[variants]]
+name = "no-pretraining-copenhagen"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/ablations/no-pretraining/copenhagen"
+CODLLM_PRETRAIN_ENABLED = false
+
+[[variants]]
+name = "no-synthesis-copenhagen"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/ablations/no-synthesis/copenhagen"
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
+
+[[variants]]
+name = "no-pretraining-belgium"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/ablations/no-pretraining/belgium"
+CODLLM_PRETRAIN_ENABLED = false
+
+[[variants]]
+name = "no-synthesis-belgium"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/ablations/no-synthesis/belgium"
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0

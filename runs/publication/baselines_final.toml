@@ -1,0 +1,28 @@
+name = "publication_v1_baselines_final"
+command = "publication-baseline"
+description = "Prespecified baselines refitted deterministically on unchanged training manifests; reserved test and optional external inference."
+
+[env]
+CODLLM_PUBLICATION_GATE = "final"
+CODLLM_FINAL_TEST_EVAL_ENABLED = true
+
+[[variants]]
+name = "lookup"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "lookup"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/final/lookup"
+
+[[variants]]
+name = "linear"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "linear"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/final/linear"
+
+[[variants]]
+name = "retrieval"
+base = "baseline_protocol.toml"
+[variants.env]
+CODLLM_PUBLICATION_BASELINE = "retrieval"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/baselines/final/retrieval"

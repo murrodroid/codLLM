@@ -1,0 +1,35 @@
+version = 1
+evidence = "codLLM_Thesis.pdf, Table 5.1 (printed p.20), sections 5.5 and 8 (English masterlist)."
+
+[sources.amsterdam_1854_1926]
+languages = ["nl"]
+
+[sources.copenhagen_may2025]
+languages = ["da"]
+
+[sources.madrid_1905_1927]
+languages = ["es"]
+
+[sources.belgium_1920_1930]
+languages = ["nl"]
+variety = "Flemish / Belgian Dutch"
+evidence = "Dataset owner clarification, 2026-09-06: all Belgian records are Flemish; supersedes thesis Table 5.1."
+
+[sources.ipswich_1871_1911]
+languages = ["en"]
+
+[sources.historic_strings_en_2024]
+languages = ["en"]
+role = "reference"
+
+[sources.masterlist_pretrain]
+languages = ["en"]
+role = "masterlist"
+
+[sources.masterlist_inject]
+languages = ["en"]
+role = "masterlist"
+
+[sources.masterlist_labels]
+languages = ["en"]
+role = "masterlist"

@@ -1,0 +1,11 @@
+name = "publication_v1_external"
+command = "publication-evaluate"
+base = "candidate_winner.toml"
+description = "Frozen external assessment of an explicitly supplied canonical table; no invented UniCin source mapping."
+
+[env]
+CODLLM_PUBLICATION_GATE = "final"
+CODLLM_EVALUATION_SCOPE = "external"
+CODLLM_UNCERTAINTY_EVAL = true
+CODLLM_AUTO_RESUME = false
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/external"

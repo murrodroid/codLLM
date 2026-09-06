@@ -1,14 +1,12 @@
-name = "publication_candidate_runner_up"
+name = "publication_v1_candidate_runner_up"
 command = "train"
-description = "Central publication runner-up recipe used for paired robustness comparisons."
-base = "base.toml"
+description = "Provisional 4-epoch candidate from legacy curves, not a validated v1 winner. Review after screening and paired source transfer."
+base = "protocol_v1.toml"
 force_reprocess = false
 
-# Provisional values. Freeze these from the completed curves and interaction
-# confirmation before submitting reduced-data sensitivity or later stages.
 [env]
-CODLLM_BALANCE_FLOOR = 300
-CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.60
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
 CODLLM_PRETRAIN_ENABLED = true
-CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 32
-CODLLM_OUTPUT_DIR = "checkpoints/publication/candidates/runner-up"
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/candidates/runner_up"

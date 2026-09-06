@@ -89,6 +89,7 @@ def build_training_args(
     )
     dataloader_num_workers = cfg.dataloader_num_workers
     training_kwargs: dict[str, Any] = {
+        "use_cpu": cfg.device.type == "cpu",
         "output_dir": resolved_stage.output_dir,
         "learning_rate": resolved_stage.learning_rate,
         "lr_scheduler_type": resolved_stage.lr_scheduler_type,

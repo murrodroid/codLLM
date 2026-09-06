@@ -63,6 +63,22 @@
 * The project uses `pre-commit` for managing pre-commit hooks. To run all hooks on all files, use
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.
 
+Publication v1 uses `runs/publication/protocol_v1.toml`; preserve the completed curve specs and legacy
+`base.toml`. Exact per-stage prep/submission commands live in `docs/publication/publication_runs.md`.
+`invoke publication.audit` writes a score-blind inventory; `publication.approve --stage
+<source_pair|recipe|reduced|final> --note "..."` records reviewed decisions; `publication.report --root <path>`
+recovers selected-checkpoint scalars; `publication.bootstrap --first <parquet> --second <parquet>` compares
+aligned predictions. Do not approve scientific phase gates without the user's actual review/decision.
+Candidate/language/reduced-protocol edits invalidate recorded approvals. Never silently overwrite a
+completed recipe's output root to rerun different settings.
+
+Experiment commands `publication-evaluate` and `publication-baseline` dispatch to
+`python -m codllm.evaluation`; `hpc.build` validates frozen evaluation inputs or prepares baseline splits.
+These are single-allocation jobs, not duration-based auto-resume campaigns. `hpc.submit` captures explicitly
+exported `CODLLM_EVALUATION_CHECKPOINT`, `CODLLM_EVALUATION_REFERENCE_DIR`, and `CODLLM_EVALUATION_DATA_PATH`
+into generated job environments. Frozen evaluation needs the matching original run's private `publication/`
+directory; never reconstruct a fresh split or train again merely to evaluate an existing checkpoint.
+
 # Application overview
 
 codLLM trains and evaluates transformer models for mapping historical free-text causes of death to ICD10h labels.
@@ -89,6 +105,23 @@ For reduced-data studies, `Config.dataset_sample_seed` and `CODLLM_DATASET_SAMPL
 independently of `Config.data_seed` and `CODLLM_DATA_SEED`. When unset, the cohort-sampling seed inherits the resolved
 data seed for backward compatibility. Pin the sample seed while varying the data seed to compare split/preparation
 variability on one fixed sampled cohort.
+Publication evaluation settings belong to `Config` and `config_from_env`: `evaluation_protocol=row|cod`,
+`publication_eval_enabled`, language inventory/override paths, missing-COD policy, `prediction_export_enabled`,
+and `train_sample_fraction`. `CODLLM_PROCESSED_FILENAME` selects a versioned processed filename. Include all
+split-changing settings and language-curation content digests in prepared-cache identity. Keep
+`DataSplits.original_train` before augmentation, and preserve raw `cod_text`, stable `row_uid`, source/record
+identities, and reviewed language metadata through processing, split caching, and tokenization metadata;
+do not pass provenance columns into model tensors. Synthetic rows must retain all original constituent UIDs.
+Use conservative full-COD NFC/case/whitespace grouping, globally across sources and linked records.
+
+Reviewed language metadata is `data/curation/source_languages.toml`; Belgium is Flemish/Belgian Dutch (`nl`)
+following the dataset owner's clarification, as is Amsterdam. Source transfer is not language transfer.
+New `pub_v1_*` metrics use original historical exposure and a separate all-adaptation exposure inventory;
+unknown/mixed language invalidates strict absence claims. Keep legacy metric semantics unchanged.
+Private content-addressed prediction exports and frozen text-bearing manifests live below each run's
+`publication/` directory, not in source control or automatic W&B artifacts. Preserve these for recovery;
+new scalar reporting must not depend on successful W&B synchronization. Tests must use synthetic CPU
+fixtures/local random models, not download pretrained models or require access to private archives.
 Repository maintenance helpers live under `src/codllm/maintenance/` and are exposed via `invoke maintenance.*` tasks.
 Keep dataset cache cleanup config-driven and dry-run by default; do not delete raw data as part of maintenance cache
 clearing. Broad cache cleanup may delete processed-data caches, prepared split caches, local run/checkpoint directories,
@@ -212,6 +245,18 @@ unexpected dependency downloads.
 
 # Documentation
 
+* Project documentation lives under `docs/`, with publication plans, submission commands, and results under
+  `docs/publication/`. Keep the root `README.md` as a short navigation entrypoint and retain `AGENTS.md` at the
+  repository root for agent discovery. Run and experiment directory READMEs stay beside the files they describe.
+* Keep `docs/publication/publication_progress.md` concise: training results and status in the order of
+  `publication_runs.md`, with brief provisional interpretations. Exclude cleanup, quota, and operational logs.
+  Keep substantial unresolved research ideas in `docs/publication/publication_thoughts.md`; update existing entries
+  rather than duplicating them, and keep agreed study design in `publication_plan.md`.
+* The revised publication plan separates row, grouped-COD, source-held-out, and external evaluation.
+  Treat existing publication TOMLs as the previous campaign until explicitly migrated; documentation of a planned
+  protocol or metric does not establish runtime support. Preserve legacy metric semantics and curve provenance.
+  Existing `source_transfer_label_*` metrics index sources, not languages; do not describe them as verified
+  cross-lingual transfer without a separate language/exposure audit.
 * Use existing docstring style.
 * Ensure all functions and classes have docstrings.
 * Use Google style for docstrings.

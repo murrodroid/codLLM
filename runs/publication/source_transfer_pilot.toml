@@ -1,0 +1,35 @@
+name = "publication_v1_source_pilot"
+command = "train"
+description = "Pilot contrast: Danish-only Copenhagen and Dutch-overlap Belgium; review source inventory before approval."
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_GATE = "source_pair"
+
+[[variants]]
+name = "winner-copenhagen"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/copenhagen"
+
+[[variants]]
+name = "runner_up-copenhagen"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/copenhagen"
+
+[[variants]]
+name = "winner-belgium"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/belgium"
+
+[[variants]]
+name = "runner_up-belgium"
+base = "candidate_runner_up.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/belgium"

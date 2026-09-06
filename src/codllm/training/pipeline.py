@@ -27,7 +27,7 @@ from codllm.training.stages import (
     build_train_stage,
     release_stage_trainer_memory,
 )
-from codllm.training.trainer_factory import run_training_stage
+from codllm.training.trainer_factory import _has_existing_checkpoint, run_training_stage
 from codllm.training.visualizations import log_data_visualizations
 from codllm.uncertainty.end_of_training import run_end_of_training_uncertainty
 
@@ -65,6 +65,7 @@ def _train_from_datasets(
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
+    publication_reference: Any | None = None,
 ) -> tuple[Trainer, Any]:
     """Run one fine-tuning job from prepared datasets."""
     _log_progress(f"Initializing model and tokenizer for stage '{stage.name}'.")
@@ -85,6 +86,11 @@ def _train_from_datasets(
         run_data_metadata=run_data_metadata,
         label2id=label2id,
         id2label=id2label,
+        **(
+            {"publication_reference": publication_reference}
+            if cfg.publication_eval_enabled
+            else {}
+        ),
     )
     return trainer, tokenizer
 
@@ -100,6 +106,7 @@ def _train_with_pretraining(
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
+    publication_reference: Any | None = None,
 ) -> tuple[Trainer, Any]:
     """Run optional pretraining first, then continue with regular fine-tuning."""
     _log_progress("Initializing model and tokenizer for pretraining flow.")
@@ -108,6 +115,29 @@ def _train_with_pretraining(
         label2id=label2id,
         id2label=id2label,
     )
+    if cfg.auto_resume and _has_existing_checkpoint(finetune_stage.output_dir):
+        _log_progress(
+            "Resuming fine-tuning directly; existing checkpoint already includes pretraining."
+        )
+        trainer = run_training_stage(
+            cfg=cfg,
+            stage=finetune_stage,
+            model=model,
+            tokenizer=tokenizer,
+            disable_fp16=disable_fp16,
+            train_ds=train_ds,
+            eval_ds=eval_ds,
+            holdout_eval_ds=holdout_eval_ds,
+            run_data_metadata=run_data_metadata,
+            label2id=label2id,
+            id2label=id2label,
+            **(
+                {"publication_reference": publication_reference}
+                if cfg.publication_eval_enabled
+                else {}
+            ),
+        )
+        return trainer, tokenizer
     pretrain_trainer = run_training_stage(
         cfg=cfg,
         stage=pretrain_stage,
@@ -121,6 +151,8 @@ def _train_with_pretraining(
         label2id=label2id,
         id2label=id2label,
     )
+    if run_markers.is_resume_needed(run_markers.run_state_dir(cfg.output_dir)):
+        return pretrain_trainer, tokenizer
     release_stage_trainer_memory(cfg=cfg, trainer=pretrain_trainer)
     # Drop the caller's own reference so gc inside release can actually collect
     # the pretraining trainer (otherwise it stays alive until this function
@@ -138,6 +170,11 @@ def _train_with_pretraining(
         run_data_metadata=run_data_metadata,
         label2id=label2id,
         id2label=id2label,
+        **(
+            {"publication_reference": publication_reference}
+            if cfg.publication_eval_enabled
+            else {}
+        ),
     )
     return trainer, tokenizer
 
@@ -267,6 +304,10 @@ def train(
     force_reprocess: bool = False,
 ) -> tuple[Trainer, Any, DataSplits]:
     """Build or load data splits and launch training."""
+    if cfg.publication_eval_enabled:
+        from codllm.evaluation.workflow import validate_publication_config
+
+        validate_publication_config(cfg)
     prepare_run_output_dir(cfg)
     # Clear any resume request left by a previous slot so its presence after
     # training unambiguously reflects *this* slot's outcome (the time-budget
@@ -339,6 +380,26 @@ def train(
     if callable(pretrain_loader):
         _log_progress("Preparing optional pretraining dataset.")
     pretrain_ds = pretrain_loader() if callable(pretrain_loader) else None
+    publication_reference = None
+    if cfg.publication_eval_enabled:
+        from codllm.evaluation.artifacts import persist_training_contract
+        from codllm.evaluation.reference import build_reference
+        from codllm.evaluation.splitting import validate_group_integrity
+
+        validate_group_integrity(splits, cfg)
+        if splits.original_train is None:
+            raise ValueError(
+                "Publication splits are missing the unaugmented training manifest."
+            )
+        publication_reference = build_reference(
+            splits.original_train, splits.train, pretrain_ds, cfg
+        )
+        persist_training_contract(cfg, splits, publication_reference)
+        run_data_metadata["publication"] = {
+            "protocol": cfg.evaluation_protocol,
+            "reference_fingerprint": publication_reference.fingerprint,
+            "normalization": "nfc-casefold-whitespace-v1",
+        }
     if pretrain_ds is not None:
         _log_progress(f"Prepared pretraining dataset: train={int(len(pretrain_ds))}.")
     pretrain_upsampling_metrics_loader = getattr(
@@ -412,6 +473,11 @@ def train(
             run_data_metadata=run_data_metadata,
             label2id=classifier_label2id,
             id2label=classifier_id2label,
+            **(
+                {"publication_reference": publication_reference}
+                if cfg.publication_eval_enabled
+                else {}
+            ),
         )
     else:
         trainer, tokenizer = _train_from_datasets(
@@ -423,6 +489,11 @@ def train(
             run_data_metadata=run_data_metadata,
             label2id=classifier_label2id,
             id2label=classifier_id2label,
+            **(
+                {"publication_reference": publication_reference}
+                if cfg.publication_eval_enabled
+                else {}
+            ),
         )
     state_dir = run_markers.run_state_dir(cfg.output_dir)
     if run_markers.is_resume_needed(state_dir):
@@ -464,6 +535,12 @@ def _run_final_evaluation(
     label2id: dict[str, int] | None = None,
 ) -> None:
     """Run the one-shot final test, full-holdout, and uncertainty evaluation."""
+    reporter = getattr(trainer, "publication_reporter", None)
+    if cfg.publication_eval_enabled and reporter is not None:
+        reporter.exporting = True
+        evaluate_test_split(
+            cfg, trainer, tokenizer, splits.val, label2id, metric_key_prefix="eval"
+        )
     if cfg.final_test_eval_enabled:
         evaluate_test_split(
             cfg=cfg,
@@ -499,3 +576,5 @@ def _run_final_evaluation(
             )
         except Exception as exc:  # pragma: no cover - defensive: never fail training
             _log_progress(f"Uncertainty pass skipped due to error: {exc!r}")
+    if reporter is not None:
+        reporter.exporting = False

@@ -66,6 +66,7 @@ def run_training_stage(
     run_data_metadata: dict[str, Any] | None = None,
     label2id: dict[str, int] | None = None,
     id2label: dict[int, str] | None = None,
+    publication_reference: Any | None = None,
 ) -> Trainer:
     """Preprocess datasets and run one training stage."""
     target_max_length = cfg.resolved_max_target_length()
@@ -173,6 +174,13 @@ def run_training_stage(
     )
     print_training_configuration(cfg, args, stage_run_data_metadata)
     metric_artifact_logger = MetricArtifactLogger(cfg)
+    publication_reporter = None
+    if cfg.publication_eval_enabled and stage.name not in {"pretrain", "pretraining"}:
+        from codllm.evaluation.artifacts import PublicationReporter
+
+        if publication_reference is None:
+            raise ValueError("Publication training requires an original-training exposure inventory.")
+        publication_reporter = PublicationReporter(cfg, publication_reference)
 
     callbacks: list[TrainerCallback] = []
     eval_strategy_value = (
@@ -237,6 +245,7 @@ def run_training_stage(
                     artifact_logger=metric_artifact_logger,
                     metric_mode=cfg.wandb.metric_mode,
                     save_metric=cfg.save_strategy_best_metric,
+                    publication_reporter=publication_reporter,
                 )
                 if (
                     (
@@ -269,6 +278,7 @@ def run_training_stage(
                     artifact_logger=metric_artifact_logger,
                     metric_mode=cfg.wandb.metric_mode,
                     save_metric=cfg.save_strategy_best_metric,
+                    publication_reporter=publication_reporter,
                 )
                 if processed_eval_ds is not None
                 or processed_holdout_eval_ds is not None
@@ -278,6 +288,9 @@ def run_training_stage(
 
     if holdout_callback is not None:
         holdout_callback.attach_trainer(trainer)
+    trainer.publication_reporter = publication_reporter
+    if publication_reporter is not None:
+        publication_reporter.trainer = trainer
 
     resume_arg: bool | str = False
     if cfg.auto_resume and _has_existing_checkpoint(args.output_dir):

@@ -53,7 +53,7 @@ from codllm.input.standardization import build_label_standardization_metadata
 from codllm.input.transform import _coerce_row_codes
 from codllm.runtime.paths import resolve_source_path
 
-PREPARED_SPLITS_METADATA_VERSION = 7
+PREPARED_SPLITS_METADATA_VERSION = 8
 
 
 def _log_data_progress(message: str) -> None:
@@ -216,8 +216,20 @@ class DataHandler:
 
     def _build_prepared_splits_metadata(self) -> dict[str, Any]:
         """Build metadata that defines whether prepared split caches are reusable."""
+        from codllm.evaluation.provenance import provenance_signature
+
         return {
             "version": PREPARED_SPLITS_METADATA_VERSION,
+            "publication": {
+                "enabled": self.cfg.publication_eval_enabled,
+                "protocol": self.cfg.evaluation_protocol,
+                "drop_missing_cod": self.cfg.evaluation_drop_missing_cod,
+                "train_sample_fraction": self.cfg.train_sample_fraction,
+                "normalization": "nfc-casefold-whitespace-v1",
+                "languages": provenance_signature(self.cfg)
+                if self.cfg.publication_eval_enabled
+                else None,
+            },
             "processing": self._build_processing_metadata(),
             "split_config": {
                 "dataset_size": self.cfg.dataset_size,
@@ -328,6 +340,7 @@ class DataHandler:
             "test": splits.test,
             "holdout": splits.holdout,
             "holdout_eval": splits.holdout_eval,
+            "original_train": splits.original_train,
         }
         present_frames: dict[str, bool] = {}
         for name, dataframe in frames.items():
@@ -374,7 +387,14 @@ class DataHandler:
             return None
 
         loaded_frames: dict[str, pd.DataFrame | None] = {}
-        for name in ("train", "val", "test", "holdout", "holdout_eval"):
+        for name in (
+            "train",
+            "val",
+            "test",
+            "holdout",
+            "holdout_eval",
+            "original_train",
+        ):
             present = bool(frame_presence.get(name, False))
             if not present:
                 loaded_frames[name] = None
@@ -399,6 +419,7 @@ class DataHandler:
             test=loaded_frames["test"],
             holdout=loaded_frames["holdout"],
             holdout_eval=loaded_frames["holdout_eval"],
+            original_train=loaded_frames["original_train"],
         )
 
     def ensure_processed(self, force_reprocess: bool = False) -> pd.DataFrame:
@@ -440,6 +461,17 @@ class DataHandler:
 
     def _prepare_splits_from_processed(self, processed_df: pd.DataFrame) -> DataSplits:
         """Build prepared split dataframes from processed rows."""
+        if self.cfg.publication_eval_enabled or self.cfg.evaluation_protocol == "cod":
+            from codllm.evaluation.provenance import annotate_provenance
+
+            processed_df = annotate_provenance(processed_df, self.cfg)
+            if self.cfg.evaluation_drop_missing_cod:
+                processed_df = processed_df.loc[
+                    processed_df["cod_key"].ne("")
+                ].reset_index(drop=True)
+            processed_df = processed_df.drop_duplicates("row_uid").reset_index(
+                drop=True
+            )
         _log_data_progress(f"Preparing split source rows: rows={len(processed_df)}.")
         processed_source_ids = (
             set(processed_df["source_id"].fillna("").astype(str).tolist())
@@ -463,6 +495,12 @@ class DataHandler:
             )
         _log_data_progress("Splitting train/validation/test dataframes.")
         splits = self.split_dataframe(sampled_df)
+        if self.cfg.train_sample_fraction < 1:
+            splits.train = self._sample_dataframe_by_fraction(
+                splits.train, self.cfg.train_sample_fraction, "train_sample_fraction"
+            )
+        if self.cfg.publication_eval_enabled:
+            splits.original_train = splits.train.copy()
         _log_data_progress(
             "Initial split sizes: "
             f"train={len(splits.train)}, val={len(splits.val)}, test={len(splits.test)}."
@@ -606,6 +644,10 @@ class DataHandler:
         )
         self._validate_required_columns(masterlist_df)
         self._validate_label_quality(masterlist_df)
+        if self.cfg.publication_eval_enabled:
+            from codllm.evaluation.provenance import annotate_provenance
+
+            masterlist_df = annotate_provenance(masterlist_df, self.cfg)
         return masterlist_df.reset_index(drop=True)
 
     def _load_pretraining_source(self) -> pd.DataFrame:
@@ -1041,6 +1083,14 @@ class DataHandler:
 
         if df.empty:
             raise ValueError("Cannot split an empty dataframe.")
+
+        if self.cfg.publication_eval_enabled or self.cfg.evaluation_protocol == "cod":
+            from codllm.evaluation.provenance import annotate_provenance
+            from codllm.evaluation.splitting import grouped_split
+
+            if "cod_key" not in df:
+                df = annotate_provenance(df, self.cfg)
+            return grouped_split(df, self.cfg)
 
         holdout_size = round(self.cfg.val_size + self.cfg.test_size, 10)
         empty_df = df.iloc[0:0].copy()

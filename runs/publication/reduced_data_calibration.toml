@@ -1,37 +1,35 @@
-name = "publication_reduced_data_calibration"
+name = "publication_v1_reduced_calibration"
 command = "train"
-description = "Calibrates whether 25 percent preserves finalist ranking relative to a 40 percent check."
+description = "Whole-cohort 25%/40% calibration: evaluation populations differ; seeds reuse the matching fixed cohort."
 force_reprocess = false
 
 [env]
-CODLLM_DATASET_SAMPLE_SEED = 777
-CODLLM_SEED = 777
-CODLLM_DATA_SEED = 777
+CODLLM_PUBLICATION_GATE = "recipe"
 
 [[variants]]
-name = "winner_size-025"
+name = "winner-0.25"
 base = "candidate_winner.toml"
 [variants.env]
 CODLLM_DATASET_SIZE = 0.25
-CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/winner/size-025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/reduced-calibration/winner/0.25"
 
 [[variants]]
-name = "runner-up_size-025"
+name = "winner-0.4"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_DATASET_SIZE = 0.4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/reduced-calibration/winner/0.4"
+
+[[variants]]
+name = "runner_up-0.25"
 base = "candidate_runner_up.toml"
 [variants.env]
 CODLLM_DATASET_SIZE = 0.25
-CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/runner-up/size-025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/reduced-calibration/runner_up/0.25"
 
 [[variants]]
-name = "winner_size-040"
-base = "candidate_winner.toml"
-[variants.env]
-CODLLM_DATASET_SIZE = 0.40
-CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/winner/size-040"
-
-[[variants]]
-name = "runner-up_size-040"
+name = "runner_up-0.4"
 base = "candidate_runner_up.toml"
 [variants.env]
-CODLLM_DATASET_SIZE = 0.40
-CODLLM_OUTPUT_DIR = "checkpoints/publication/reduced-calibration/runner-up/size-040"
+CODLLM_DATASET_SIZE = 0.4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/reduced-calibration/runner_up/0.4"

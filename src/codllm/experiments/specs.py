@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
-SUPPORTED_COMMANDS = {"train", "inference", "wandb-agent"}
+SUPPORTED_COMMANDS = {"train", "inference", "wandb-agent", "publication-evaluate", "publication-baseline"}
 
 
 class SpecError(ValueError):

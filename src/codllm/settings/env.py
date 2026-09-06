@@ -151,6 +151,73 @@ def config_from_env(base: Optional[Config] = None) -> Config:
     """Create runtime config with environment overrides for training and reproducibility."""
     cfg = deepcopy(base) if base is not None else Config()
 
+    for field_name in (
+        "publication_eval_enabled",
+        "evaluation_drop_missing_cod",
+        "prediction_export_enabled",
+    ):
+        value = _parse_env_bool(f"CODLLM_{field_name.upper()}")
+        if value is not None:
+            setattr(cfg, field_name, value)
+    for field_name in (
+        "evaluation_language_metadata_path",
+        "processed_filename",
+        "evaluation_language_overrides_path",
+        "publication_gate",
+        "publication_decisions_path",
+        "evaluation_checkpoint",
+        "evaluation_reference_dir",
+        "evaluation_data_path",
+        "evaluation_scope",
+        "publication_baseline",
+    ):
+        value = os.getenv(f"CODLLM_{field_name.upper()}")
+        if value is not None:
+            if not value.strip() and field_name in {
+                "evaluation_language_metadata_path",
+                "processed_filename",
+                "publication_decisions_path",
+                "evaluation_scope",
+                "publication_baseline",
+            }:
+                raise ValueError(f"CODLLM_{field_name.upper()} must not be empty.")
+            setattr(cfg, field_name, value.strip() or None)
+    protocol = os.getenv("CODLLM_EVALUATION_PROTOCOL")
+    if protocol is not None:
+        cfg.evaluation_protocol = protocol.strip().lower()
+    if cfg.evaluation_protocol not in {"row", "cod"}:
+        raise ValueError("CODLLM_EVALUATION_PROTOCOL must be row or cod.")
+    fraction = _parse_env_float("CODLLM_TRAIN_SAMPLE_FRACTION")
+    if fraction is not None:
+        cfg.train_sample_fraction = fraction
+    if not 0 < cfg.train_sample_fraction <= 1:
+        raise ValueError("CODLLM_TRAIN_SAMPLE_FRACTION must be in (0, 1].")
+    for field_name in ("baseline_max_features", "baseline_max_iter"):
+        value = _parse_env_int(f"CODLLM_{field_name.upper()}")
+        if value is not None:
+            if value <= 0:
+                raise ValueError(f"{field_name} must be positive.")
+            setattr(cfg, field_name, value)
+    alpha = _parse_env_float("CODLLM_BASELINE_ALPHA")
+    if alpha is not None:
+        if alpha <= 0:
+            raise ValueError("CODLLM_BASELINE_ALPHA must be positive.")
+        cfg.baseline_alpha = alpha
+    thresholds = os.getenv("CODLLM_BASELINE_THRESHOLDS")
+    if thresholds is not None:
+        values = json.loads(thresholds)
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(
+                isinstance(value, (int, float)) and 0 < value < 1 for value in values
+            )
+        ):
+            raise ValueError(
+                "CODLLM_BASELINE_THRESHOLDS must be a non-empty JSON list of numbers in (0, 1)."
+            )
+        cfg.baseline_thresholds = values
+
     hf_model = os.getenv("CODLLM_HF_MODEL")
     if hf_model is not None and hf_model.strip() != "":
         cfg.hf_model = hf_model.strip()

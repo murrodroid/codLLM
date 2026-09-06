@@ -1,0 +1,28 @@
+name = "publication_v1_metadata"
+command = "train"
+description = "Publication v1 experiment."
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_GATE = "recipe"
+CODLLM_TRAINING_INPUT = "cod,age,sex"
+
+[[variants]]
+name = "grouped"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/metadata/grouped"
+
+[[variants]]
+name = "winner-copenhagen"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/metadata/winner/copenhagen"
+
+[[variants]]
+name = "winner-belgium"
+base = "candidate_winner.toml"
+[variants.env]
+CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/metadata/winner/belgium"

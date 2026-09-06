@@ -154,7 +154,7 @@ def filter_metrics_for_logging(
         raise ValueError("metric logging mode must be one of: all, core, standard.")
     if save_metric:
         allowed.add(save_metric.strip().lower())
-    extra_prefixes = (_PER_SOURCE_METRIC_PREFIX, *_HIERARCHY_METRIC_PREFIXES)
+    extra_prefixes = (_PER_SOURCE_METRIC_PREFIX, *_HIERARCHY_METRIC_PREFIXES, "pub_v1_")
     return {
         key: value
         for key, value in metrics.items()
@@ -890,6 +890,7 @@ def build_exact_match_accuracy_metric(
     artifact_logger: MetricArtifactLogger | None = None,
     metric_mode: str = "all",
     save_metric: str | None = None,
+    publication_reporter: Callable[..., dict[str, float]] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build a compute_metrics callback with exact-match and overlap metrics.
 
@@ -1015,6 +1016,8 @@ def build_exact_match_accuracy_metric(
                     label_universe=train_classes,
                 )
             )
+        if publication_reporter is not None:
+            result.update(publication_reporter(predicted_code_sets, label_code_sets))
         if artifact_logger is not None:
             artifact_logger(
                 metric_scope=current_metric_artifact_scope(),
@@ -1041,6 +1044,7 @@ def build_sequence_classification_metric(
     artifact_logger: MetricArtifactLogger | None = None,
     metric_mode: str = "all",
     save_metric: str | None = None,
+    publication_reporter: Callable[..., dict[str, float]] | None = None,
 ) -> Callable[[Any], dict[str, float]]:
     """Build compute_metrics callback for single-label sequence classification."""
     normalized_id2label = {int(key): str(value) for key, value in id2label.items()}
@@ -1139,6 +1143,8 @@ def build_sequence_classification_metric(
                     multi_label=False,
                 )
             )
+        if publication_reporter is not None:
+            result.update(publication_reporter(predicted_code_sets, label_code_sets))
         if artifact_logger is not None:
             artifact_logger(
                 metric_scope=current_metric_artifact_scope(),

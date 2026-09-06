@@ -20,6 +20,7 @@ from codllm.metrics import (
     set_metric_artifact_scope,
     set_metric_source_ids,
 )
+from codllm.evaluation.context import evaluation_rows
 
 logger = logging.getLogger(__name__)
 
@@ -467,9 +468,11 @@ class StageScopedSeq2SeqTrainer(Seq2SeqTrainer):
         )
         eval_dataset = _eval_dataset_from_evaluate_call(self.eval_dataset, args, kwargs)
         source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
+        rows_token = evaluation_rows.set(getattr(eval_dataset, "evaluation_metadata", None))
         try:
             return super().evaluate(*args, **kwargs)
         finally:
+            evaluation_rows.reset(rows_token)
             reset_metric_source_ids(source_ids_token)
             reset_metric_artifact_scope(scope_token)
 
@@ -499,8 +502,10 @@ class StageScopedTrainer(Trainer):
         )
         eval_dataset = _eval_dataset_from_evaluate_call(self.eval_dataset, args, kwargs)
         source_ids_token = set_metric_source_ids(_resolve_source_ids(eval_dataset))
+        rows_token = evaluation_rows.set(getattr(eval_dataset, "evaluation_metadata", None))
         try:
             return super().evaluate(*args, **kwargs)
         finally:
+            evaluation_rows.reset(rows_token)
             reset_metric_source_ids(source_ids_token)
             reset_metric_artifact_scope(scope_token)
