@@ -1,0 +1,97 @@
+{
+  "cod_overlap": {
+    "amsterdam_1854_1926__belgium_1920_1930": 279,
+    "amsterdam_1854_1926__copenhagen_may2025": 459,
+    "amsterdam_1854_1926__historic_strings_en_2024": 155,
+    "amsterdam_1854_1926__ipswich_1871_1911": 128,
+    "amsterdam_1854_1926__madrid_1905_1927": 152,
+    "belgium_1920_1930__copenhagen_may2025": 52,
+    "belgium_1920_1930__historic_strings_en_2024": 42,
+    "belgium_1920_1930__ipswich_1871_1911": 60,
+    "belgium_1920_1930__madrid_1905_1927": 45,
+    "copenhagen_may2025__historic_strings_en_2024": 85,
+    "copenhagen_may2025__ipswich_1871_1911": 74,
+    "copenhagen_may2025__madrid_1905_1927": 69,
+    "historic_strings_en_2024__ipswich_1871_1911": 145,
+    "historic_strings_en_2024__madrid_1905_1927": 56,
+    "ipswich_1871_1911__madrid_1905_1927": 54
+  },
+  "language_signatures": {
+    "data/curation/source_languages.toml": "1baeaf350ac42d3bfeb76b75b2b99d6ef81ee5c906714917fe62c2a1bcb871cd"
+  },
+  "sources": [
+    {
+      "codes": 2207,
+      "codes_with_fewer_than_10_rows": 1241,
+      "languages": {
+        "nl": 576163
+      },
+      "missing_cod": 0,
+      "natural_multicod_rows": 106711,
+      "rows": 576163,
+      "source_id": "amsterdam_1854_1926",
+      "unique_cods": 51122
+    },
+    {
+      "codes": 986,
+      "codes_with_fewer_than_10_rows": 656,
+      "languages": {
+        "nl": 42037
+      },
+      "missing_cod": 0,
+      "natural_multicod_rows": 6747,
+      "rows": 42037,
+      "source_id": "belgium_1920_1930",
+      "unique_cods": 8345
+    },
+    {
+      "codes": 389,
+      "codes_with_fewer_than_10_rows": 24,
+      "languages": {
+        "da": 501855
+      },
+      "missing_cod": 0,
+      "natural_multicod_rows": 0,
+      "rows": 501855,
+      "source_id": "copenhagen_may2025",
+      "unique_cods": 2525
+    },
+    {
+      "codes": 1382,
+      "codes_with_fewer_than_10_rows": 1350,
+      "languages": {
+        "en": 3295
+      },
+      "missing_cod": 0,
+      "natural_multicod_rows": 0,
+      "rows": 3295,
+      "source_id": "historic_strings_en_2024",
+      "unique_cods": 3295
+    },
+    {
+      "codes": 1168,
+      "codes_with_fewer_than_10_rows": 794,
+      "languages": {
+        "en": 39261
+      },
+      "missing_cod": 24,
+      "natural_multicod_rows": 16601,
+      "rows": 39261,
+      "source_id": "ipswich_1871_1911",
+      "unique_cods": 15815
+    },
+    {
+      "codes": 1705,
+      "codes_with_fewer_than_10_rows": 1034,
+      "languages": {
+        "es": 366282
+      },
+      "missing_cod": 862,
+      "natural_multicod_rows": 18603,
+      "rows": 366282,
+      "source_id": "madrid_1905_1927",
+      "unique_cods": 24875
+    }
+  ],
+  "version": 1
+}
