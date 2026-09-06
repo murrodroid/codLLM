@@ -61,7 +61,7 @@ Floor 0 / synthesis .30 with 48 versus 4 pretraining epochs is provisional, not 
 
 | Launch phase | Status | Brief interpretation |
 |---|---|---|
-| 0b: HPC smoke | Not started | Required before full screening. |
+| 0b: HPC smoke | [Complete](https://wandb.ai/codllmdev/codllm/runs/9bhbzqz8) | 1 pretraining + 1 fine-tuning epoch; 138 validation rows. Accuracy/micro F1/macro F1 = 0; exports and metrics verified. Execution check, not performance evidence; resumption not exercised. |
 | 1a–b: joint screening + controls | Not started | Test the combined curve settings. |
 | 2a–b: paired five-source panel | Not started | Determines the transfer-supported recipe. |
 | 3a–f: row comparison, source ablations, baselines | Not started | Awaiting candidate selection. |

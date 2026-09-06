@@ -4,6 +4,9 @@ Audit snapshot: 2026-09-06. Model scores were not examined for this review.
 Source: [data_audit.json](data_audit.json), copied byte-for-byte from HPC
 `~/codLLM/logs/publication/data_audit.json`.
 
+This page preserves the Phase 0a inventory review. The completed Phase 0c full-size split findings and
+current readiness decisions are in [publication_split_audit_review.md](publication_split_audit_review.md).
+
 ## Provenance and scope
 
 - HPC repository revision: `755cb4d88acbe10b5964cde997bc293a196de367`.
@@ -140,17 +143,18 @@ Do not automatically change the already paired five-source Phase 2 panel.
 ## What remains before expensive selection
 
 1. Keep the completed Phase 0a snapshot; no audit rerun is needed solely to obtain this same report.
-2. Run the prepared smoke test when desired. It is not scientific approval of seed 777.
-3. Obtain a score-blind full-size split-support report: source/row/group/label counts, unsupported targets,
-   group-size concentration, training-only source/language transfer eligibility, and missing-COD
-   exclusion counts. Preserve processed-cache/raw-source identities with that report.
-4. Review those results and the choices above. Do not repair a problematic split after seeing model scores
+2. The smoke execution was verified; it is not scientific approval of seed 777 or a test of automatic resumption.
+3. The full-size split-support report is now complete: [snapshot](split_audit.json) and
+   [interpretation](publication_split_audit_review.md). All 14 integrity checks passed; data/code
+   fingerprints and actual support counts are recorded. Augmentation caches were not built by the audit.
+4. Review the current split-audit decisions and the source choices above. Do not repair a split after seeing model scores
    or assume group disjointness alone establishes good coverage.
 
 The aggregate `publication.audit` command does not generate that split-support report. A second command,
-`publication.audit-splits`, is now prepared as Phase 0c in [the launch guide](publication_runs.md#phase-0c-full-size-split-audit--no-training).
-It checks the full-size original partitions shared by the eight Phase 1a recipes without model training.
-The real-data split audit has not yet been run or reviewed; the findings above still refer only to Phase 0a.
+`publication.audit-splits`, completed Phase 0c in [the launch guide](publication_runs.md#phase-0c-full-size-split-audit--no-training).
+It checked the full-size original partitions shared by the eight Phase 1a recipes without model training.
+The findings earlier on this page still refer only to Phase 0a; the separate split review supersedes
+its unresolved split-count questions, not Lucas's unmade scientific decisions.
 
 Its JSON and Markdown outputs include sequential exclusion counts; source allocations; per-code,
 per-source, and connected-group support/concentration; cross-partition identity/COD overlap; historical

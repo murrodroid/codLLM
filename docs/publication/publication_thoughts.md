@@ -36,8 +36,8 @@ fine-tuning-only sensitivity rather than end-to-end sensitivity.
 
 ## 3. Evaluate new descriptions, sources, and languages separately
 
-Status: grouped splitting and language-aware metrics implemented; aggregate audit complete;
-split-specific support review and external curation remain.
+Status: grouped splitting, language-aware metrics, and both data audits complete;
+support-policy decisions and external curation remain.
 
 Use COD-only novelty, globally COD-grouped splitting, and early paired leave-one-source-out comparisons.
 Retain row-split performance as a complementary setting. Age/sex differences must not create novelty.
@@ -47,6 +47,11 @@ and report true cross-lingual eligibility separately, including whether the mast
 target-language supervision. Unknown/mixed language needs an explicit unresolved category.
 If natural support is sparse, consider controlled code-language withholding as a later experiment;
 do not manufacture a cross-lingual claim by renaming source transfer.
+
+The [full-size split audit](publication_split_audit_review.md) now quantifies that concern: historical
+cross-language validation has only 62 COD groups / 60 codes, with 44 singleton codes. Strict transfer
+has 42 groups / 40 codes and no English eligibility after masterlist supervision. Keep this optional
+direction open, but first inspect support in the planned source folds; no extra experiment is adopted.
 
 Lucas clarified that the Belgian dataset is Flemish. Treat it as Dutch (`nl`), like Amsterdam,
 with the Flemish variety recorded separately. It is not a fifth language or automatically French/Dutch
@@ -76,9 +81,10 @@ pilots and Phase 3 mechanism tests need not use the same pair. Keeping Copenhage
 harm; replacing it with Ipswich tests benefit on a second multi-COD-rich source. Adding Ipswich costs
 two more ablation runs. This choice remains with Lucas; the source TOMLs are unchanged.
 
-Also consider a secondary equal-description analysis if a few recurrent strings dominate case-weighted
-scores: Copenhagen has 501,855 rows but only 2,525 distinct CODs. Retain natural case-weighted results
-for archival workload; do not delete legitimate repeated cases or silently change the primary estimand.
+A secondary equal-description analysis is now a concrete consideration: the ten largest COD groups
+contain 37.31% of full-size validation rows and 66.25% of test rows; Copenhagen test has only 114 CODs.
+Retain natural case-weighted results for archival workload; do not delete legitimate repeated cases or
+silently change the primary estimand. The new weighting is not implemented or approved automatically.
 
 ## 5. Use Bayesian search selectively
 

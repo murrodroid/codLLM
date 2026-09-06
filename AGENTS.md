@@ -75,6 +75,9 @@ Reviewed aggregate audit snapshots may be tracked under `docs/publication/`; `da
 2026-09-06 HPC snapshot and `publication_data_audit.md` records its findings and unresolved choices.
 Do not mix data-audit observations into the training-results-only `publication_progress.md`, or treat
 aggregate source counts as evidence of actual split coverage or cross-lingual eligibility.
+The completed Phase 0c snapshots are `docs/publication/split_audit.json` and `split_audit.md`;
+preserve their bytes. `publication_split_audit_review.md` records interpretation and unresolved decisions.
+Passing original-split integrity does not certify adequate transfer support or that augmented caches exist.
 Before Phase 1a, `uv run --no-sync invoke publication.audit-splits --config
 runs/publication/interaction_confirmation.toml --profile h100 --lucas` audits its shared original
 partition without training or generating augmented datasets. Profile/user flags mirror training's raw

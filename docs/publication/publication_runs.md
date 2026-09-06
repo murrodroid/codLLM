@@ -41,7 +41,9 @@ both use language `nl`. Copenhagen has no recorded natural multi-COD targets.
 
 ## Phase 0b. Smoke test — 1 run
 
-Confirm checkpointing, local prediction exports, and W&B logging before Phase 1.
+Completed and verified: [smoke run](https://wandb.ai/codllmdev/codllm/runs/9bhbzqz8).
+Checkpoint saving, prediction exports, and W&B logging passed; automatic resumption was not exercised.
+Commands below are retained for reference, not a request to repeat the completed smoke.
 
 ```shell
 uv run --no-sync invoke hpc.build --config runs/publication/smoke.toml --profile h100 --lucas
@@ -50,7 +52,9 @@ uv run --no-sync invoke hpc.submit --config runs/publication/smoke.toml --profil
 
 ## Phase 0c. Full-size split audit — no training
 
-Run after syncing the new audit code to HPC. No `hpc.build` is needed first.
+Completed 2026-09-06: [review and decisions](publication_split_audit_review.md),
+[audit JSON](split_audit.json), [generated summary](split_audit.md). All 14 integrity checks passed.
+Rerun only after changing relevant data/configuration or to refresh the snapshot. No `hpc.build` is needed first.
 
 ```shell
 uv run --no-sync invoke publication.audit-splits --config runs/publication/interaction_confirmation.toml --profile h100 --lucas
@@ -68,9 +72,11 @@ transfer support before Phase 1a. `review_required` means integrity checks passe
 
 ## Phase 1a. Joint recipe screening — 8 runs
 
-Before this full wave: complete the smoke check and review Phase 0c's full-size split audit. The aggregate
-Phase 0a audit and small smoke test alone do not establish full-size coverage. No phase approval is
-recorded automatically; see [review choices](publication_data_audit.md#decisions-for-lucas--no-settings-changed).
+Smoke execution has been verified and Phase 0c is complete. Before this full wave, review the
+[split-audit decisions](publication_split_audit_review.md#decisions-for-lucas): retain the split,
+decide on equal-description sensitivity, and agree how sparse transfer slices may be used.
+No phase approval is recorded automatically. The four prepared caches were not built at audit time;
+retain the preparation command below. The eight recipe settings are unchanged.
 
 Floor 0/450 × synthesis 0.30/0.60 × pretraining 4/48.
 

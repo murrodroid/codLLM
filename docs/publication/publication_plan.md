@@ -145,14 +145,24 @@ These are score-blind processed-data observations, not model results or final sp
 - Amsterdam and Copenhagen share 459 distinct CODs (18.18% of Copenhagen's distinct descriptions
   before splitting). Pairwise text overlap is not an actual training-exposure rate or label overlap.
 
-Readiness adjustment: obtain a score-blind full-size split-support review before committing to the
-eight full-data screening cells. Include source/row/group/code coverage, largest connected groups,
-historically unsupported targets, and historical versus all-adaptation language-transfer eligibility.
-Record raw-source/processed-cache identities as well: the current JSON includes a language-curation
-hash but does not provide those data fingerprints. The new Phase 0c `publication.audit-splits` command
-collects these measurements using training's exact original-partition construction, once for the eight
-Phase 1a cells. Run it with the training profile/user to use the same processed-cache paths. Its real-data
-execution and review remain pending; implementation is not a completed validation.
+Phase 0c is now complete: [split audit review](publication_split_audit_review.md),
+[exact JSON](split_audit.json), and [generated summary](split_audit.md). All 14 integrity checks passed.
+The original split is 1,372,247 / 75,536 / 76,929 train/validation/test rows, with all five archives
+represented and zero cross-partition COD/record/row-ID overlap. The four augmented prepared caches
+were not built at audit time; a passing cache check does not replace `hpc.build`.
+
+The key interpretation limits are now measured. The ten largest COD groups account for 37.31% of
+validation rows and 66.25% of test rows; Copenhagen test has only 114 distinct CODs. Historical
+cross-language validation covers 1,412 rows but just 60 codes / 62 COD groups, with 44 singleton codes;
+strict planned-adaptation transfer covers 1,392 rows / 40 codes / 42 groups and no eligible English rows.
+All 72 historically unseen validation codes are supplied by the pretraining masterlist. Historical
+unseen-COD status also does not exclude exact masterlist-description exposure (1,137 validation rows).
+
+Recommendation for Lucas's review: retain seed 777 and the eight-cell design, keep the current primary,
+consider equal-description sensitivity as a secondary analysis, and treat these sparse natural transfer
+slices descriptively until a support rule is agreed. These are not automatically adopted analysis changes.
+The audit now records raw-source/processed-cache identities and matching code/specification fingerprints.
+It does not measure source-held-out folds or reduced-cohort coverage, or approve a scientific phase.
 
 The report distinguishes source transfer, historical cross-language transfer, and strict planned
 all-adaptation transfer after masterlist exposure. Support is reported as rows, target occurrences,
@@ -282,7 +292,9 @@ Selection order:
    present the alternatives rather than inventing a universally best model.
 
 Finalize these margins and minimum support rules after the score-blind split-support review, before comparison.
-The aggregate Phase 0a audit does not contain transfer-eligible support counts and cannot settle that rule.
+Phase 0c now provides pooled-split support counts: 62 historical / 42 strict cross-language validation
+COD groups, with many singleton codes. Its review recommends descriptive use pending an agreed support
+rule; the counts do not establish adequate support for a tie-break or predict the source-fold support.
 Do not collapse all metrics into an arbitrary weighted score or change the primary outcome after seeing
 which one a favorite configuration wins.
 
@@ -299,9 +311,9 @@ No full training campaign yet.
 
 1. Recover selected-checkpoint identities, prediction/row alignment, effective configs, and manifests for
    completed curves where possible. Retrieve existing source-transfer metrics before paying to retrain.
-2. The source/language/label/overlap inventory is complete; see Section 3.4. Run Phase 0c's
-   `publication.audit-splits` and review full-size grouped-split/source/transfer support before freezing
-   the remaining choices and data versions. Retain its JSON, Markdown review, and data/code fingerprints.
+2. Both the aggregate inventory and Phase 0c full-size split-support audit are complete; see Section 3.4.
+   Review their interpretation limits before freezing the remaining choices. Exact JSON/Markdown
+   snapshots and data/code fingerprints are retained; rerun only for relevant input changes or a refresh.
 3. Verify the implemented grouped splitting, COD-only novelty, language/provenance-aware transfer,
    and content-addressed selected-model prediction exports against the real-data audit.
 4. Test duplicate COD with different age/sex, same-language different archives, other-language-only
@@ -311,8 +323,10 @@ No full training campaign yet.
    metric persistence, and W&B logging to `codllmdev/codllm`.
 
 Gate: matching manifests and metrics can be audited independently of the W&B run page.
-The CPU fixture is implemented and tested, and Phase 0a's aggregate audit is complete. The HPC smoke
-and full-size split-support review remain separate requirements; neither is certified by that JSON.
+The CPU fixture, HPC smoke execution, and both data audits are complete. Smoke prediction exports,
+checksums, metric reproduction, split integrity, and W&B completion were verified; automatic resumption
+was not exercised by its single allocation. Lucas's split/analysis decisions remain open. Successful
+execution and clean integrity checks do not establish representative coverage or trained-model quality.
 
 ### Phase 1 — joint recipe screening on unseen descriptions
 
