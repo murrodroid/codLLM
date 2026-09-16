@@ -303,12 +303,38 @@ def train(
     data_handler: DataHandler | None = None,
     force_reprocess: bool = False,
 ) -> tuple[Trainer, Any, DataSplits]:
+    """Train normally, or lock and validate an explicitly prepared continuation branch."""
+    if not cfg.continuation_source_run_dir:
+        return _train(cfg, data_handler, force_reprocess)
+    from filelock import FileLock
+    from codllm.training.continuation import storage_path, validate_continuation
+
+    cfg.output_dir = str(storage_path(cfg.output_dir))
+    validate_continuation(cfg)
+    with FileLock(str(Path(cfg.output_dir) / ".continuation-training.lock"), timeout=0):
+        if run_markers.is_training_complete(cfg.output_dir) or run_markers.is_training_complete(
+            run_markers.run_state_dir(cfg.output_dir)
+        ):
+            raise ValueError("Continuation already completed; refusing a duplicate training submission.")
+        result = _train(cfg, data_handler, force_reprocess)
+        if run_markers.is_training_complete(run_markers.run_state_dir(cfg.output_dir)):
+            run_markers.mark_training_complete(cfg.output_dir)
+        return result
+
+
+def _train(
+    cfg: Config,
+    data_handler: DataHandler | None = None,
+    force_reprocess: bool = False,
+) -> tuple[Trainer, Any, DataSplits]:
     """Build or load data splits and launch training."""
     if cfg.publication_eval_enabled:
         from codllm.evaluation.workflow import validate_publication_config
 
         validate_publication_config(cfg)
     prepare_run_output_dir(cfg)
+    if (Path(cfg.output_dir) / "continuation.json").exists() and not cfg.continuation_source_run_dir:
+        raise ValueError("This output is a continuation branch; use its explicit continuation specification.")
     # Clear any resume request left by a previous slot so its presence after
     # training unambiguously reflects *this* slot's outcome (the time-budget
     # callback re-writes it if the budget triggers again).
@@ -539,7 +565,8 @@ def _run_final_evaluation(
     if cfg.publication_eval_enabled and reporter is not None:
         reporter.exporting = True
         evaluate_test_split(
-            cfg, trainer, tokenizer, splits.val, label2id, metric_key_prefix="eval"
+            cfg, trainer, tokenizer, splits.val, label2id,
+            metric_key_prefix="selected_val" if cfg.continuation_source_run_dir else "eval",
         )
     if cfg.final_test_eval_enabled:
         evaluate_test_split(

@@ -33,6 +33,9 @@ dev = [
     "pytest>=9.0.2",
 ]
 
+[project.scripts]
+connect = "codllm.hpc_connection:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

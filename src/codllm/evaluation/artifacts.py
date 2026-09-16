@@ -128,7 +128,20 @@ def persist_training_contract(
         "manifests": manifests,
         "reference_fingerprint": reference.fingerprint,
     }
-    recipe = {
+    contract["training_recipe_digest"] = content_digest(training_recipe(configuration))
+    previous = directory / "contract.json"
+    if previous.exists() and json.loads(previous.read_text()) != contract:
+        raise ValueError(
+            "Publication split manifests changed or training recipe changed on resume; use a new output root."
+        )
+    write_json(previous, contract)
+    write_json(directory / "effective_config.json", configuration)
+    return directory
+
+
+def training_recipe(configuration: dict[str, Any]) -> dict[str, Any]:
+    """Extract the frozen recipe, keeping legacy digests stable for operational additions."""
+    return {
         key: value
         for key, value in configuration.items()
         if key
@@ -147,17 +160,12 @@ def persist_training_contract(
             "evaluation_reference_dir",
             "evaluation_data_path",
             "evaluation_scope",
+            "continuation_source_run_dir",
+            "continuation_source_state_dir",
+            "continuation_parent_wandb_run",
+            "continuation_lr_schedule",
         }
     }
-    contract["training_recipe_digest"] = content_digest(recipe)
-    previous = directory / "contract.json"
-    if previous.exists() and json.loads(previous.read_text()) != contract:
-        raise ValueError(
-            "Publication split manifests changed on resume; use a new output root."
-        )
-    write_json(previous, contract)
-    write_json(directory / "effective_config.json", configuration)
-    return directory
 
 
 class PublicationReporter:

@@ -34,6 +34,8 @@ def rewrite_metric_key_for_stage(key: str, stage_name: str) -> str:
     """Map trainer metric keys to stage-scoped logging categories."""
     if key == "epoch":
         return key
+    if key.startswith("selected_val_"):
+        return f"selected/val/{key.removeprefix('selected_val_')}"
     if key.startswith("holdout_full_"):
         return f"holdout/full/{key.removeprefix('holdout_full_')}"
     if key.startswith("holdout_sample_"):

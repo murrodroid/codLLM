@@ -183,6 +183,25 @@ def run_training_stage(
         publication_reporter = PublicationReporter(cfg, publication_reference)
 
     callbacks: list[TrainerCallback] = []
+    seq2seq_trainer_class = StageScopedSeq2SeqTrainer
+    classifier_trainer_class = StageScopedTrainer
+    early_stopping_class = EarlyStoppingCallback
+    sigterm_class = SigtermSaveCallback
+    continuation_manifest = None
+    if cfg.continuation_source_run_dir:
+        from codllm.training.continuation import validate_continuation
+        from codllm.training.continuation_trainer import (
+            ContinuationSeq2SeqTrainer,
+            ContinuationSigtermSaveCallback,
+            ContinuationTrainer,
+            ResumableEarlyStoppingCallback,
+        )
+
+        continuation_manifest = validate_continuation(cfg)
+        seq2seq_trainer_class = ContinuationSeq2SeqTrainer
+        classifier_trainer_class = ContinuationTrainer
+        early_stopping_class = ResumableEarlyStoppingCallback
+        sigterm_class = ContinuationSigtermSaveCallback
     eval_strategy_value = (
         args.eval_strategy.value
         if hasattr(args.eval_strategy, "value")
@@ -207,7 +226,7 @@ def run_training_stage(
     early_stopping_patience = resolved_stage_early_stopping_patience(cfg, stage)
     if early_stopping_patience > 0 and processed_eval_ds is not None:
         callbacks.append(
-            EarlyStoppingCallback(
+            early_stopping_class(
                 early_stopping_patience=early_stopping_patience,
                 early_stopping_threshold=cfg.early_stopping_threshold,
             )
@@ -224,10 +243,10 @@ def run_training_stage(
             )
         )
 
-    callbacks.append(SigtermSaveCallback())
+    callbacks.append(sigterm_class())
 
     if cfg.model_task == "sequence_classification":
-        trainer = StageScopedTrainer(
+        trainer = classifier_trainer_class(
             model=model,
             args=args,
             train_dataset=processed_train_ds,
@@ -258,7 +277,7 @@ def run_training_stage(
             ),
         )
     else:
-        trainer = StageScopedSeq2SeqTrainer(
+        trainer = seq2seq_trainer_class(
             model=model,
             args=args,
             train_dataset=processed_train_ds,
@@ -289,6 +308,8 @@ def run_training_stage(
     if holdout_callback is not None:
         holdout_callback.attach_trainer(trainer)
     trainer.publication_reporter = publication_reporter
+    if continuation_manifest is not None:
+        trainer.continuation_manifest = continuation_manifest
     if publication_reporter is not None:
         publication_reporter.trainer = trainer
 

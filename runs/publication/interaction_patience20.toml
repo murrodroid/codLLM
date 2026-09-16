@@ -1,0 +1,105 @@
+name = "publication_v1_interaction_patience20"
+command = "train"
+base = "protocol_v1.toml"
+description = """
+Explicit continuation of all eight interaction cells: patience 20, original
+120-epoch ceiling and LR schedule. New output roots and W&B identities;
+completed parents required.
+"""
+force_reprocess = false
+
+[env]
+CODLLM_EARLY_STOPPING_PATIENCE = 20
+CODLLM_NUM_TRAIN_EPOCHS = 120
+CODLLM_CONTINUATION_LR_SCHEDULE = "original"
+CODLLM_AUTO_RESUME = true
+CODLLM_FINAL_TEST_EVAL_ENABLED = false
+WANDB_RUN_GROUP = "publication_v1_interaction_patience20"
+
+[[variants]]
+name = "floor-0_synthetic-0.3_pretrain-4"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-0_synthetic-0.3_pretrain-4/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-0_synthetic-0.3_pretrain-4/run-29343382_1"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-1"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/cvbcfp8q"
+
+[[variants]]
+name = "floor-0_synthetic-0.3_pretrain-48"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-0_synthetic-0.3_pretrain-48/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-0_synthetic-0.3_pretrain-48/run-29343382_2"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-2"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/cfezy52r"
+
+[[variants]]
+name = "floor-0_synthetic-0.6_pretrain-4"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-0_synthetic-0.6_pretrain-4/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-0_synthetic-0.6_pretrain-4/run-29343382_3"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-3"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/ytasoth7"
+
+[[variants]]
+name = "floor-0_synthetic-0.6_pretrain-48"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-0_synthetic-0.6_pretrain-48/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-0_synthetic-0.6_pretrain-48/run-29343382_4"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-4"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/49wttgfv"
+
+[[variants]]
+name = "floor-450_synthetic-0.3_pretrain-4"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-450_synthetic-0.3_pretrain-4/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-450_synthetic-0.3_pretrain-4/run-29343382_5"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-5"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/4d28c62y"
+
+[[variants]]
+name = "floor-450_synthetic-0.3_pretrain-48"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-450_synthetic-0.3_pretrain-48/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-450_synthetic-0.3_pretrain-48/run-29343382_6"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-6"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/xjwaxnye"
+
+[[variants]]
+name = "floor-450_synthetic-0.6_pretrain-4"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-450_synthetic-0.6_pretrain-4/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-450_synthetic-0.6_pretrain-4/run-29343382_7"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-7"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/wgfhan5j"
+
+[[variants]]
+name = "floor-450_synthetic-0.6_pretrain-48"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/interaction-patience20/floor-450_synthetic-0.6_pretrain-48/run-0001"
+CODLLM_CONTINUATION_SOURCE_RUN_DIR = "checkpoints/publication-v1/screen/floor-450_synthetic-0.6_pretrain-48/run-29343382_8"
+CODLLM_CONTINUATION_SOURCE_STATE_DIR = "jobs/generated/publication_v1_interaction_confirmation-20260906-210238-211265/state/run-8"
+CODLLM_CONTINUATION_PARENT_WANDB_RUN = "codllmdev/codllm/gtqoizxs"

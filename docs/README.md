@@ -1,6 +1,7 @@
 # Documentation
 
 - [Project guide](guide.md): setup, datasets, training, HPC, maintenance, and inference.
+- [HPC connection](hpc_connection.md): open or check the shared SSH connection from your laptop.
 - [Publication plan](publication/publication_plan.md): study design and selection criteria.
 - [Publication runs](publication/publication_runs.md): data preparation and job submission commands.
 - [Publication progress](publication/publication_progress.md): training results and brief interpretations by submission step.

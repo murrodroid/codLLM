@@ -73,6 +73,11 @@ def approve_stage(stage: str, path: str, note: str) -> dict[str, Any]:
 
 def validate_publication_config(cfg: Config) -> None:
     """Reject leakage-prone settings or unreviewed later-stage recipes before allocating work."""
+    continuation_fields = (
+        cfg.continuation_source_run_dir, cfg.continuation_source_state_dir, cfg.continuation_parent_wandb_run
+    )
+    if any(continuation_fields) and (not all(continuation_fields) or not cfg.publication_eval_enabled):
+        raise ValueError("Continuation requires complete parent identity and publication evaluation.")
     if not cfg.publication_eval_enabled:
         return
     if cfg.hold_out_dataset and cfg.hold_out_evaluate_per is not None:

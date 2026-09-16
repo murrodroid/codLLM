@@ -17,6 +17,7 @@ from codllm.experiments.specs import load_experiment_spec
     [
         ("smoke", 1),
         ("interaction_confirmation", 8),
+        ("interaction_patience20", 8),
         ("screening_controls", 2),
         ("source_transfer_pilot", 4),
         ("source_transfer_validation", 6),

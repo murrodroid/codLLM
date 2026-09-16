@@ -21,6 +21,7 @@ export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$RUN_STORAGE_DIR/cache/hf_dataset
 export TORCH_HOME="${TORCH_HOME:-$RUN_STORAGE_DIR/cache/torch}"
 export WANDB_DIR="${WANDB_DIR:-$RUN_STORAGE_DIR/cache/wandb}"
 export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-$WANDB_DIR/cache}"
+export WANDB_DATA_DIR="${WANDB_DATA_DIR:-$WANDB_DIR/staging}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_STORAGE_DIR/cache/xdg}"
 
 # Reduce CUDA allocator fragmentation. flan-t5-xl sits near the 80 GB H100
@@ -40,6 +41,7 @@ mkdir -p \
   "$TORCH_HOME" \
   "$WANDB_DIR" \
   "$WANDB_CACHE_DIR" \
+  "$WANDB_DATA_DIR" \
   "$XDG_CACHE_HOME"
 
 mkdir -p "$(dirname "$UV_PROJECT_ENVIRONMENT")"

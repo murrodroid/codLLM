@@ -72,6 +72,9 @@ transfer support before Phase 1a. `review_required` means integrity checks passe
 
 ## Phase 1a. Joint recipe screening — 8 runs
 
+Original patience-10 campaign: already launched. Commands below are retained for provenance;
+do not resubmit it to change patience. Use Phase 1a continuation below.
+
 Smoke execution has been verified and Phase 0c is complete. Before this full wave, review the
 [split-audit decisions](publication_split_audit_review.md#decisions-for-lucas): retain the split,
 decide on equal-description sensitivity, and agree how sparse transfer slices may be used.
@@ -84,6 +87,50 @@ Floor 0/450 × synthesis 0.30/0.60 × pretraining 4/48.
 uv run --no-sync invoke hpc.build --config runs/publication/interaction_confirmation.toml --profile h100 --lucas
 uv run --no-sync invoke hpc.submit --config runs/publication/interaction_confirmation.toml --profile h100 --lucas --duration 1w
 ```
+
+## Phase 1a continuation. Patience 20 — 8 runs, ceiling still 120
+
+Wait until **all eight original runs have completed**. Do not cancel the two remaining originals.
+Same data, seeds, pretraining, selection metric, and original learning-rate schedule. Only patience changes.
+New checkpoints and new W&B runs preserve the originals. [Safeguards and interpretation](publication_continuation.md).
+
+### Check parents and storage — no copying or submission
+
+```shell
+uv run --no-sync invoke maintenance.status --lucas
+uv run --no-sync invoke publication.prepare-continuation --config runs/publication/interaction_patience20.toml --profile h100 --lucas
+```
+
+Initial checkpoint copies need approximately 24 GB. Reserve about 75 GB additional headroom for copies,
+retained best/latest checkpoints, and concurrent checkpoint writes, plus manifests or regenerated data caches.
+Check **user quota**, not shared capacity.
+
+### Prepare isolated checkpoint copies
+
+```shell
+uv run --no-sync invoke publication.prepare-continuation --config runs/publication/interaction_patience20.toml --profile h100 --lucas --yes
+```
+
+### Prepare data
+
+```shell
+uv run --no-sync invoke hpc.build --config runs/publication/interaction_patience20.toml --profile h100 --lucas
+```
+
+### Preview submission
+
+```shell
+uv run --no-sync invoke hpc.submit --config runs/publication/interaction_patience20.toml --profile h100 --lucas --duration 1w --dry-run
+```
+
+### Submit continuation only
+
+```shell
+uv run --no-sync invoke hpc.submit --config runs/publication/interaction_patience20.toml --profile h100 --lucas --duration 1w
+```
+
+Original and continuation histories are separate; do not combine replayed epochs as additional independent observations.
+Later-phase TOMLs remain unchanged. Review their stopping policy before launching matched comparisons.
 
 ## Phase 1b. Screening controls — 2 runs
 

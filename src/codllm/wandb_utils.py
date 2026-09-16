@@ -888,6 +888,18 @@ def log_wandb_run_metadata(
         return
 
     initialized_here = getattr(wandb, "run", None) is None
+    if cfg.continuation_source_run_dir:
+        from codllm.training.continuation import validate_continuation
+
+        lineage = validate_continuation(cfg)
+        if not initialized_here and wandb.run.id != lineage["wandb_run_id"]:
+            raise ValueError("Continuation cannot attach to a different active W&B run.")
+        metadata = dict(metadata) | {"continuation": {
+            key: lineage[key] for key in (
+                "parent_wandb_run", "anchor_epoch", "anchor_step", "original_epochs",
+                "target_epochs", "original_patience", "target_patience", "lr_schedule", "fingerprint",
+            )
+        }}
     if initialized_here:
         init_kwargs: dict[str, Any] = {
             "project": os.getenv("WANDB_PROJECT", cfg.wandb.project),
@@ -918,6 +930,8 @@ def log_wandb_run_metadata(
     wandb.define_metric("train/*", step_metric="epoch")
     wandb.define_metric("eval/*", step_metric="epoch")
     wandb.define_metric("val/*", step_metric="epoch")
+    if cfg.continuation_source_run_dir:
+        wandb.define_metric("selected/val/*", step_metric="epoch")
     wandb.define_metric("test/*", step_metric="epoch")
     wandb.define_metric("holdout/*", step_metric="epoch")
     wandb.define_metric("holdout/full/*", step_metric="epoch")

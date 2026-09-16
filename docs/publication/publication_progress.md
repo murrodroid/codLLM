@@ -1,6 +1,6 @@
 # Publication progress
 
-Updated: 2026-09-06. Launch steps: [publication_runs.md](publication_runs.md).
+Updated: 2026-09-16. Launch steps: [publication_runs.md](publication_runs.md).
 
 Validation results, seed 777; test evaluation disabled. Each row uses the same peak-macro-F1 evaluation.
 Floor and dose curves use provisional W&B history peaks; synthesis uses recovered selected-checkpoint metrics.
@@ -62,7 +62,9 @@ Floor 0 / synthesis .30 with 48 versus 4 pretraining epochs is provisional, not 
 | Launch phase | Status | Brief interpretation |
 |---|---|---|
 | 0b: HPC smoke | [Complete](https://wandb.ai/codllmdev/codllm/runs/9bhbzqz8) | 1 pretraining + 1 fine-tuning epoch; 138 validation rows. Accuracy/micro F1/macro F1 = 0; exports and metrics verified. Execution check, not performance evidence; resumption not exercised. |
-| 1a–b: joint screening + controls | Not started | Test the combined curve settings. |
+| 1a: interaction screening | 6/8 complete; 2 running | Completed cells stopped after 10 epochs without a new best validation macro F1. See below. |
+| 1a continuation: patience 20 | Setup prepared; not launched | Same 120-epoch ceiling/LR schedule. Wait for all parents; preserve original results and report child runs separately. |
+| 1b: controls | Not verified in this update | Keep separate from the eight interaction cells. |
 | 2a–b: paired five-source panel | Not started | Determines the transfer-supported recipe. |
 | 3a–f: row comparison, source ablations, baselines | Not started | Awaiting candidate selection. |
 | 4a: 25%/40% cohort calibration | Not started | Choose feasible seed-study fraction. |
@@ -70,3 +72,31 @@ Floor 0 / synthesis .30 with 48 versus 4 pretraining epochs is provisional, not 
 | Optional 3g–h: metadata / perturbation | Not started | Conditional mechanism checks. |
 | Optional 5a–c: larger models + source confirmation | Not started | Conditional on benefit and compute. |
 | 6: frozen internal/external assessment | Not started | Awaiting final model and curated external data. |
+
+### Phase 1a: completed interaction cells
+
+Verified 2026-09-16 against HPC completion markers, retained checkpoint trainer states, generated
+job settings, and complete W&B validation histories. Ceiling: 120 fine-tuning epochs; stopping metric:
+`val/macro_f1`; patience: 10. All scores below belong to the retained best-macro-F1 checkpoint.
+
+| Floor | Synthesis | Pretrain epochs | Best epoch | Stopped at epoch | Macro F1 | Micro F1 | Block micro F1 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| [0](https://wandb.ai/codllmdev/codllm/runs/cvbcfp8q) | .30 | 4 | 70 | 80 | 0.593941 | 0.910057 | 0.945571 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/cfezy52r) | .30 | 48 | 65 | 75 | 0.593832 | 0.896024 | 0.937179 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/ytasoth7) | .60 | 4 | 46 | 56 | 0.585455 | 0.892143 | 0.928218 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/49wttgfv) | .60 | 48 | 57 | 67 | 0.592092 | 0.895769 | 0.935972 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/4d28c62y) | .30 | 4 | 49 | 59 | 0.578496 | 0.900891 | 0.934892 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/xjwaxnye) | .30 | 48 | 36 | 46 | 0.569893 | 0.825357 | 0.935400 |
+
+Floor 450 / synthesis .60 / pretraining [4](https://wandb.ai/codllmdev/codllm/runs/wgfhan5j)
+and [48](https://wandb.ai/codllmdev/codllm/runs/gtqoizxs) remain running, at approximately epochs
+51.7 and 45.3 when checked at 13:38 CEST. Do not rank the full interaction yet.
+
+The final W&B validation point re-scores the restored best checkpoint at the stopping epoch. For the
+epoch-80 run, the actual epoch-80 macro F1 was 0.590198; the final point repeats epoch 70's 0.593941.
+Exclude restored-checkpoint reevaluations from the planned ten-epoch stability summaries.
+
+Provisional interpretation: floor 0 / synthesis .30 leads completed cells in macro F1, with nearly tied
+pretraining doses. The floor-450/.30/48 selected checkpoint's low micro F1 illustrates the selection
+tradeoff; assess sustained performance and other metrics before choosing a recipe. Ten-epoch summaries
+remain to be computed after the interaction completes.

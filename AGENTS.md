@@ -9,6 +9,10 @@
   * To run other commands related to Python, prefix them with `uv run `, e.g., `uv run <command>`.
   * To run training locally, use `uv run python -m codllm.training`.
   * To run inference locally, use `uv run python -m codllm.inference`.
+  * From the laptop repository root, `uv run connect --lucas` opens the shared HPC SSH connection;
+    `--status` checks remote responsiveness without authenticating, and `--disconnect` explicitly closes it.
+    Profiles live in `hpc/ssh_profiles.toml`; see `docs/hpc_connection.md`. This uses existing keys and leaves
+    password/passphrase prompts to SSH. Never collect credentials or silently delete stale sockets.
 * The project uses `pytest` for testing. To run tests, use `uv run pytest tests/`.
 * The project uses `ruff` for linting and formatting:
     * To format code, use `uv run ruff format .`.
@@ -71,6 +75,21 @@ recovers selected-checkpoint scalars; `publication.bootstrap --first <parquet> -
 aligned predictions. Do not approve scientific phase gates without the user's actual review/decision.
 Candidate/language/reduced-protocol edits invalidate recorded approvals. Never silently overwrite a
 completed recipe's output root to rerun different settings.
+The explicit interaction continuation spec is `runs/publication/interaction_patience20.toml`: patience
+20, original 120-epoch ceiling and LR schedule (160 was explicitly rejected). All eight parents must
+finish before `invoke publication.prepare-continuation --config <path> --profile h100 --lucas` passes.
+Preparation is dry-run unless `--yes`; it independently copies and hashes parent best checkpoints,
+freezes lineage in child `continuation.json`, and allocates fresh W&B IDs without submitting jobs.
+Run the documented `hpc.build` and `hpc.submit` steps afterward. Never overwrite parent contracts,
+predictions, completion markers, or W&B history, and never use hardlinks for mutable checkpoint copies.
+Only patience may differ from the frozen parent recipe. New continuation Config/env fields identify
+the source run/state/W&B path and original schedule; they are operational and excluded from legacy
+recipe digests, while the fingerprinted lineage guards them separately. Continuation runtime locks
+prevent duplicate writers; its early-stopping counter survives allocation resumptions, and paused
+allocations retain latest plus best checkpoints. Final restored-model metrics use `selected/val/*`,
+separate from `val/*` training curves. The original campaign and later-phase TOMLs remain unchanged.
+Continuation scheduler logs and W&B staging live on work3. `hpc/env.sh`, generated jobs, and task
+runtime defaults set `WANDB_DATA_DIR` under the managed W&B cache to avoid home-quota staging failures.
 Reviewed aggregate audit snapshots may be tracked under `docs/publication/`; `data_audit.json` is the
 2026-09-06 HPC snapshot and `publication_data_audit.md` records its findings and unresolved choices.
 Do not mix data-audit observations into the training-results-only `publication_progress.md`, or treat

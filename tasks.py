@@ -413,6 +413,12 @@ def hpc_submit(
     spec = load_experiment_spec(config)
     lsf_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
     env_overrides = _resume_env_overrides(lsf_profile, duration)
+    continuation_runs = [run for run in spec.expanded_runs() if run.env.get("CODLLM_CONTINUATION_SOURCE_RUN_DIR")]
+    if continuation_runs:
+        if len(continuation_runs) != len(spec.expanded_runs()):
+            raise Exit("Do not mix fresh and continuation runs in one submission.", code=2)
+        storage = _hpc_runtime_env_defaults(lsf_profile)["RUN_STORAGE_DIR"]
+        lsf_profile = replace(lsf_profile, log_dir=str(Path(storage) / "logs/publication-continuation"))
     if spec.command in {"publication-evaluate", "publication-baseline"}:
         for name in (
             "CODLLM_EVALUATION_CHECKPOINT",
@@ -425,9 +431,13 @@ def hpc_submit(
         from codllm.evaluation.workflow import validate_publication_config
 
         for run in spec.expanded_runs():
-            with _temporary_environ(run.env):
+            with _temporary_environ(_hpc_runtime_env_defaults(lsf_profile) | run.env):
                 cfg = config_from_env()
                 validate_publication_config(cfg)
+                if cfg.continuation_source_run_dir:
+                    from codllm.training.continuation import validate_continuation
+
+                    validate_continuation(cfg)
                 if run.command == "publication-evaluate":
                     from codllm.evaluation.cli import validate_evaluation_inputs
 
@@ -609,6 +619,10 @@ def _build_run_dependencies(
         from codllm.evaluation.workflow import validate_publication_config
 
         validate_publication_config(cfg)
+        if cfg.continuation_source_run_dir:
+            from codllm.training.continuation import validate_continuation
+
+            validate_continuation(cfg)
         if run.command == "publication-evaluate":
             from codllm.evaluation.cli import validate_evaluation_inputs
 
@@ -753,6 +767,7 @@ def _hpc_runtime_env_defaults(profile: LsfProfile) -> dict[str, str]:
         "TORCH_HOME": str(Path(run_storage_dir) / "cache/torch"),
         "WANDB_DIR": str(Path(run_storage_dir) / "cache/wandb"),
         "WANDB_CACHE_DIR": str(Path(run_storage_dir) / "cache/wandb/cache"),
+        "WANDB_DATA_DIR": str(Path(run_storage_dir) / "cache/wandb/staging"),
         "XDG_CACHE_HOME": str(Path(run_storage_dir) / "cache/xdg"),
         "UV_CACHE_DIR": str(Path(run_storage_dir) / "cache/uv"),
         "UV_PROJECT_ENVIRONMENT": str(Path(run_storage_dir) / ".venv"),
@@ -1065,6 +1080,44 @@ def publication_approve(
     print(f"Recorded '{stage}' decision in {decisions}.")
 
 
+@task(name="prepare-continuation")
+def publication_prepare_continuation(
+    ctx: Context,
+    config: str = "runs/publication/interaction_patience20.toml",
+    profile: str = "h100",
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+    yes: bool = False,
+) -> None:
+    """Validate every parent first, then optionally copy checkpoints into isolated continuation runs."""
+    del ctx
+    from codllm.training.continuation import inspect_parent, prepare_continuation
+
+    spec = load_experiment_spec(config)
+    selected_profile = _resolve_lsf_profile(profile, profiles, user, lucas, elias)
+    configs = []
+    runtime_env = _hpc_runtime_env_defaults(selected_profile)
+    with _temporary_environ(runtime_env):
+        for run in spec.expanded_runs():
+            with _temporary_environ(run.env_with_runtime_metadata(spec)):
+                cfg = config_from_env()
+                info = inspect_parent(cfg)
+                configs.append(cfg)
+                print(f"{run.name}: parent epoch {info['anchor_epoch']:g}; "
+                      f"patience {info['original_patience']} -> {info['target_patience']}; "
+                      f"ceiling {info['target_epochs']}; original LR schedule; new W&B run.")
+        if len({cfg.output_dir for cfg in configs}) != len(configs):
+            raise Exit("Continuation destinations must be unique.", code=2)
+        if not yes:
+            print("Dry run: all parents checked; no checkpoints copied. Add --yes to prepare.")
+            return
+        for cfg in configs:
+            info = prepare_continuation(cfg)
+            print(f"Prepared {info['destination']} (W&B id {info['wandb_run_id']}).")
+
+
 @task(name="report")
 def publication_report(
     ctx: Context, root: str, output: str = "logs/publication/selected_results.csv"
@@ -1107,6 +1160,7 @@ publication.add_task(publication_audit_splits)
 publication.add_task(publication_approve)
 publication.add_task(publication_report)
 publication.add_task(publication_bootstrap)
+publication.add_task(publication_prepare_continuation)
 namespace.add_collection(publication)
 
 hpc = Collection("hpc")

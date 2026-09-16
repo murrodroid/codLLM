@@ -28,7 +28,12 @@ proportions or label stratification. Audit resulting source/label coverage.
 Original rows are partitioned before synthesis, balancing, perturbation, or masterlist injection.
 Source folds retain the full held-out archive; during-training holdout monitoring is disabled.
 Tuning saves the best internal-validation legacy `macro_f1` checkpoint and suppresses final test evaluation.
-The 120-epoch ceiling/patience 10 remain unchanged; ceiling-limited improving runs need review.
+The original v1 campaign uses a 120-epoch ceiling/patience 10; ceiling-limited improving runs need review.
+The explicit `interaction_patience20.toml` continuation keeps the 120-epoch ceiling and LR schedule,
+raises only patience to 20, and preserves every parent under a new child output/W&B identity.
+Run `publication.prepare-continuation` (dry-run by default, `--yes` to copy) before its data build/submission.
+All eight parents must be complete. See [continuation safeguards](../../docs/publication/publication_continuation.md).
+Other phase TOMLs remain unchanged; review stopping policy before subsequent matched comparisons.
 
 ## Launchable steps
 
@@ -36,6 +41,7 @@ The 120-epoch ceiling/patience 10 remain unchanged; ceiling-limited improving ru
 |---|---|---:|
 | 0 | `smoke.toml` | 1 small smoke |
 | 1 | `interaction_confirmation.toml` | 8 |
+| 1 continuation | `interaction_patience20.toml` | 8 linked branches, no new seeds |
 | 1 | `screening_controls.toml` | 2 |
 | 2 | `source_transfer_pilot.toml` | 4 |
 | 2 | `source_transfer_validation.toml` | 6 |

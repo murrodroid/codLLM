@@ -116,6 +116,10 @@ class Config:
     publication_audit_top_groups: int = 10
     publication_gate: str | None = None
     publication_decisions_path: str = "runs/publication/decisions.json"
+    continuation_source_run_dir: str | None = None
+    continuation_source_state_dir: str | None = None
+    continuation_parent_wandb_run: str | None = None
+    continuation_lr_schedule: str = "original"
     evaluation_checkpoint: str | None = None
     evaluation_reference_dir: str | None = None
     evaluation_data_path: str | None = None

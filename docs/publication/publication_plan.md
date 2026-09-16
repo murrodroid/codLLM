@@ -1,6 +1,6 @@
 # codLLM publication plan: training for historical generalization
 
-Updated: 2026-09-06. Agreed direction: a broader engineering/generalization study, without a deadline-driven scope.
+Updated: 2026-09-16. Agreed direction: a broader engineering/generalization study, without a deadline-driven scope.
 
 ## 1. Central question and contribution
 
@@ -298,6 +298,50 @@ rule; the counts do not establish adequate support for a tie-break or predict th
 Do not collapse all metrics into an arbitrary weighted score or change the primary outcome after seeing
 which one a favorite configuration wins.
 
+### 4.5 Late-stage checkpoint stability
+
+Alongside selected-checkpoint performance, report whether a recipe sustains its performance or depends
+on an isolated peak. This is an agreed secondary analysis, introduced after viewing Phase 1a curves;
+label that campaign's analysis exploratory. It does not replace the macro-F1 checkpoint-selection rule
+or automatically promote a smoother curve over a better independently evaluated checkpoint.
+
+For every completed run, use the final **10 completed fine-tuning epochs**, E-9 through E inclusive,
+where E is the last completed training epoch. Use each epoch's original unsmoothed validation metrics,
+not the ten best epochs, pretraining evaluations, or the final reevaluation of the reloaded best model.
+The current logger assigns that final reevaluation the stopping epoch even when the restored model
+comes from an earlier epoch; its final chart point is not another newly trained checkpoint.
+Resolve resumed/duplicate records against trainer state and global step; flag conflicting or missing
+epochs rather than filling gaps or substituting earlier epochs. Report the actual window and support;
+if ten consecutive epoch evaluations are unavailable, mark the ten-epoch analysis unavailable.
+
+For validation macro F1, micro F1, block micro F1, exact match, sample F1, and validation loss, report:
+
+- the selected-checkpoint value and its epoch, separately from the last training epoch;
+- the ten-epoch mean and median;
+- descriptive checkpoint-to-checkpoint variance (divisor 10), standard deviation, interquartile range,
+  and minimum/maximum; these describe metric fluctuations, not variation in model weights;
+- best-in-window minus median for higher-is-better metrics, and median minus minimum for loss;
+- the full-training best value and epoch as a diagnostic only, not a replacement for the selected model.
+
+Include reference-supported macro F1, per-source scores, natural multi-COD, rare-code, and unseen-COD
+metrics where the same supported slices were logged each epoch. Retain support counts; do not silently
+compare changing slices or treat sparse transfer fluctuations as reliable evidence. Add a final-five-epoch
+sensitivity summary, without choosing whichever window makes a preferred recipe win.
+
+Record the configured ceiling, stopping metric/patience, best-metric epoch, last training epoch, and
+verified stopping reason. A wall-time pause or crashed allocation is not a completed training run.
+Check consistent validation examples, decoding settings, and resume logging before attributing large
+dips to optimization. Endpoint windows describe each recipe under its stopping policy, not equal
+computation: floor and synthesis change training-set size. Compare unfinished trajectories only over
+a shared observed interval. Any separate compute-efficiency analysis must align optimizer work or
+active GPU time, include pretraining when comparing full recipes, and exclude queue/resumption downtime.
+
+Epochs are correlated: these variances are not confidence intervals or estimates of seed variability.
+Keep paired COD-cluster prediction bootstraps and the reduced-data seed study as separate uncertainty
+analyses. Averaging epoch scores does not produce an ensemble or establish the deployed checkpoint's
+performance. Implement this as post-processing of retained histories; no extra training or automatic
+change to submitted jobs is implied by this plan addition.
+
 ## 5. Experiment sequence and gates
 
 The phases below replace the previous numbered training sequence. Counts are training cells, not
@@ -351,7 +395,14 @@ it as a pure class-weighting experiment.
 Floor 450 is the strongest observed positive-floor alternative; floor 300 remains a legacy anchor,
 not the assumed optimum. Revisit intermediate floors only if the new positive-floor comparison helps.
 
-Keep the 120-epoch ceiling and patience 10. If a run ends at the ceiling while still improving, mark it
+The original interaction campaign uses a 120-epoch ceiling and patience 10. On 2026-09-16, Lucas approved
+an explicit all-eight-cell continuation study with **patience 20 and the same 120-epoch ceiling and
+learning-rate schedule**. The proposed 160-epoch extension was withdrawn. Preserve the originals and
+fork their retained best checkpoints into new output roots and linked W&B runs only after all parents
+complete; see [the continuation protocol](publication_continuation.md). Replayed epochs are separate
+trajectories, not additional seeds or replacements for earlier reports. Assess all eight continuations
+together before using them to revise recipe selection; future phase stopping policies remain to be reviewed.
+If a run ends at the ceiling while still improving, mark it
 budget-censored and extend the relevant comparison consistently before claiming peak performance.
 Retain full ICD10h pretraining targets, target-per-label 12, pretraining synthetic ratio .30, and
 declared pretraining doses without early stopping/best-checkpoint substitution.
@@ -368,6 +419,9 @@ Estimate conditional effects and pairwise interactions descriptively; one seed d
 precise population-level interaction claims. A saturation point from the old .002 rule remains
 provisional, and a positive-floor benefit under transfer would justify a targeted additional floor,
 not an automatic repetition of all seven levels.
+
+Include the ten-epoch checkpoint-stability report from Section 4.5 with the completed interaction
+comparison, keeping sustained performance, selected-checkpoint quality, and seed variability distinct.
 
 Gate: select a promising floor/synthesis pair, retaining both its matched 4- and 48-epoch recipes.
 Use performance averaged across the two doses to screen structural settings; retain a materially
