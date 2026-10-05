@@ -1,0 +1,83 @@
+name = "publication_v1_interaction_metadata"
+command = "train"
+description = "Matched age+sex counterparts to the original COD-only interaction grid; patience 10, COD-only grouping."
+force_reprocess = false
+
+[env]
+CODLLM_TRAINING_INPUT = "cod,age,sex"
+CODLLM_EVALUATION_PROTOCOL = "cod"
+CODLLM_EARLY_STOPPING_PATIENCE = 10
+CODLLM_NUM_TRAIN_EPOCHS = 120
+CODLLM_PROCESSED_FILENAME = "publication-v1-metadata.parquet"
+
+[[variants]]
+name = "floor-0_synthetic-0.3_pretrain-4"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-0_synthetic-0.3_pretrain-4"
+
+[[variants]]
+name = "floor-0_synthetic-0.3_pretrain-48"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-0_synthetic-0.3_pretrain-48"
+
+[[variants]]
+name = "floor-0_synthetic-0.6_pretrain-4"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-0_synthetic-0.6_pretrain-4"
+
+[[variants]]
+name = "floor-0_synthetic-0.6_pretrain-48"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-0_synthetic-0.6_pretrain-48"
+
+[[variants]]
+name = "floor-450_synthetic-0.3_pretrain-4"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-450_synthetic-0.3_pretrain-4"
+
+[[variants]]
+name = "floor-450_synthetic-0.3_pretrain-48"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.3
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-450_synthetic-0.3_pretrain-48"
+
+[[variants]]
+name = "floor-450_synthetic-0.6_pretrain-4"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 4
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-450_synthetic-0.6_pretrain-4"
+
+[[variants]]
+name = "floor-450_synthetic-0.6_pretrain-48"
+base = "protocol_v1.toml"
+[variants.env]
+CODLLM_BALANCE_FLOOR = 450
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0.6
+CODLLM_PRETRAIN_NUM_TRAIN_EPOCHS = 48
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/screen-metadata/floor-450_synthetic-0.6_pretrain-48"
