@@ -1,6 +1,7 @@
 """CPU-only tests for the publication evaluation contract."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -107,6 +108,47 @@ def test_global_group_split_and_linked_records(tmp_path: Path) -> None:
     cfg.data_seed = 101
     changed = DataHandler(cfg).split_dataframe(data)
     assert set(changed.train["row_uid"]) != set(splits.train["row_uid"])
+
+
+@pytest.mark.parametrize("floor", [0, 450])
+@pytest.mark.parametrize("ratio", [0.3, 0.6])
+def test_metadata_preserves_original_and_augmented_cod_rows(tmp_path: Path, floor: int, ratio: float) -> None:
+    """Metadata changes formatted inputs, not partitions, synthesis parents, labels, or COD perturbations."""
+    cfg = replace(
+        config(tmp_path),
+        balance_floor=floor,
+        balance_strategy="floor",
+        multicod_synthetic_ratio=ratio,
+        base_perturbation_rate=0.5,
+    )
+    metadata_cfg = replace(cfg, training_input=["cod", "age", "sex"])
+    original = frame(cfg)
+    excluded = original.iloc[[0]].assign(
+        source_id="historic_strings_en_2024", record_id="reference", row_uid="excluded-fixture"
+    )
+    original = pd.concat([original, excluded], ignore_index=True)
+    metadata = original.copy()
+    metadata["text"] = [
+        f"{metadata_cfg.input_field_prefix('cod')}{text}{cfg.text_field_separator}"
+        f"{metadata_cfg.input_field_prefix('age')}{'unknown' if i % 3 == 0 else i}"
+        f"{cfg.text_field_separator}{metadata_cfg.input_field_prefix('sex')}{'f' if i % 2 else 'm'}"
+        for i, text in enumerate(original["text"])
+    ]
+    first = DataHandler(cfg)._prepare_splits_from_processed(original)
+    second = DataHandler(metadata_cfg)._prepare_splits_from_processed(metadata)
+    for name in ("original_train", "train", "val", "test"):
+        left, right = getattr(first, name), getattr(second, name)
+        for column in ("row_uid", "label", "cod_key", "synthetic_parent_uids"):
+            if column in left:
+                assert left[column].fillna("").tolist() == right[column].fillna("").tolist()
+        assert left["text"].tolist() == right["text"].map(
+            lambda value: value.split(cfg.text_field_separator)[0].removeprefix(metadata_cfg.input_field_prefix("cod"))
+        ).tolist()
+    anchors = metadata.set_index("row_uid")["text"].to_dict()
+    synthetic = second.train.loc[second.train["source_id"].str.startswith("synthetic_multicod:")]
+    for row in synthetic.itertuples():
+        anchor = anchors[json.loads(row.synthetic_parent_uids)[0]]
+        assert row.text.split(cfg.text_field_separator)[1:] == anchor.split(cfg.text_field_separator)[1:]
 
 
 def test_flemish_is_same_language_transfer_and_masterlist_exposure(

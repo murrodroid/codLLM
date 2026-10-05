@@ -76,7 +76,17 @@ aligned predictions. Do not approve scientific phase gates without the user's ac
 Candidate/language/reduced-protocol edits invalidate recorded approvals. Never silently overwrite a
 completed recipe's output root to rerun different settings.
 The explicit interaction continuation spec is `runs/publication/interaction_patience20.toml`: patience
-20, original 120-epoch ceiling and LR schedule (160 was explicitly rejected). All eight parents must
+20, original 120-epoch ceiling and LR schedule (160 was explicitly rejected).
+The separate `interaction_metadata.toml` grid uses fresh COD+age+sex runs, original patience 10, COD-only
+grouping, and isolated `publication-v1-metadata.parquet` / `screen-metadata/` paths. Before submitting,
+run `invoke publication.audit-metadata-pairing --reference <original-run/publication> --profile h100 --lucas`;
+require `matched` against checksum-verified original manifests. This manual preflight exits 2 on partition
+mismatch; it does not certify augmented datasets or grant scientific approval. Preserve the existing
+first-constituent age/sex inheritance for synthetic records in this comparison. Never resume a finished
+COD-only checkpoint with metadata input or silently migrate this grid to patience 20.
+Metadata COD augmentation preserves edge whitespace between passes to match COD-only perturbations;
+`metadata_cod_perturbation_version` invalidates older metadata prepared caches without changing COD-only keys.
+For the explicit COD-only continuation, all eight parents must
 finish before `invoke publication.prepare-continuation --config <path> --profile h100 --lucas` passes.
 Preparation is dry-run unless `--yes`; it independently copies and hashes parent best checkpoints,
 freezes lineage in child `continuation.json`, and allocates fresh W&B IDs without submitting jobs.
@@ -292,6 +302,15 @@ unexpected dependency downloads.
   Keep substantial unresolved research ideas in `docs/publication/publication_thoughts.md`; update existing entries
   rather than duplicating them, and keep agreed study design in `publication_plan.md`.
 * The revised publication plan separates row, grouped-COD, source-held-out, and external evaluation.
+  Selected-checkpoint consistency reporting uses ten completed epochs B-9 through B, anchored to the
+  actual macro-F1-selected checkpoint for every metric, not the last ten epochs before stopping.
+  Follow publication_plan.md Section 4.5: exclude restored-best reevaluations, label inherited parent
+  windows, never splice replayed trajectories, and report missing histories rather than filling them.
+  This exploratory diagnostic does not change selection rules or estimate seed uncertainty.
+  Reproduce the reviewed aggregate ledger with `uv run --no-sync python -m experiments.checkpoint_consistency
+  --input docs/publication/checkpoint_consistency_input.json --output-json logs/publication/checkpoint_consistency.json
+  --output-md logs/publication/checkpoint_consistency.md`; CPU tests are `tests/test_checkpoint_consistency.py`.
+  This calculator is offline and consumes curated scalar histories, not private row-level predictions.
   Treat existing publication TOMLs as the previous campaign until explicitly migrated; documentation of a planned
   protocol or metric does not establish runtime support. Preserve legacy metric semantics and curve provenance.
   Existing `source_transfer_label_*` metrics index sources, not languages; do not describe them as verified

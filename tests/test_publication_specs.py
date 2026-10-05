@@ -17,6 +17,7 @@ from codllm.experiments.specs import load_experiment_spec
     [
         ("smoke", 1),
         ("interaction_confirmation", 8),
+        ("interaction_metadata", 8),
         ("interaction_patience20", 8),
         ("screening_controls", 2),
         ("source_transfer_pilot", 4),
@@ -81,6 +82,28 @@ def test_publication_launch_cells(
     assert submission.bsub_command()
 
 
+def test_metadata_interaction_matches_original_recipe() -> None:
+    """Only input fields and isolated storage differ from the original patience-10 grid."""
+    original = load_experiment_spec("runs/publication/interaction_confirmation.toml")
+    metadata = load_experiment_spec("runs/publication/interaction_metadata.toml")
+    allowed = {"CODLLM_TRAINING_INPUT", "CODLLM_OUTPUT_DIR", "CODLLM_PROCESSED_FILENAME"}
+    for first, second in zip(original.expanded_runs(), metadata.expanded_runs(), strict=True):
+        differences = {key for key in first.env.keys() | second.env.keys() if first.env.get(key) != second.env.get(key)}
+        assert differences == allowed
+        assert second.env["CODLLM_TRAINING_INPUT"] == "cod,age,sex"
+        assert second.env["CODLLM_EVALUATION_PROTOCOL"] == "cod"
+        assert second.env["CODLLM_EARLY_STOPPING_PATIENCE"] == "10"
+        assert second.env["CODLLM_NUM_TRAIN_EPOCHS"] == "120"
+        assert second.env["CODLLM_SEED"] == second.env["CODLLM_DATA_SEED"] == "777"
+        assert second.env["CODLLM_OUTPUT_DIR"] == first.env["CODLLM_OUTPUT_DIR"].replace(
+            "/screen/", "/screen-metadata/"
+        )
+        assert first.command == second.command and first.force_reprocess == second.force_reprocess
+        runtime = second.env_with_runtime_metadata(metadata)
+        assert runtime["WANDB_RUN_GROUP"] == "publication_v1_interaction_metadata"
+        assert "WANDB_RUN_ID" not in runtime
+
+
 def test_launch_guide_shell_blocks_parse() -> None:
     """Copyable bash commands contain no invisible separators or malformed quoting."""
     guide = Path("docs/publication/publication_runs.md").read_text()
@@ -90,7 +113,7 @@ def test_launch_guide_shell_blocks_parse() -> None:
         subprocess.run(
             ["bash", "-n"], input=block, text=True, check=True, capture_output=True
         )
-        for line in block.splitlines():
+        for line in block.replace(chr(92) + "\n", " ").splitlines():
             if "--config" in line:
                 tokens = shlex.split(line)
                 assert Path(tokens[tokens.index("--config") + 1]).is_file()

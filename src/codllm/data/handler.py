@@ -254,6 +254,11 @@ class DataHandler:
                 "text_field_separator": self.cfg.text_field_separator,
                 "training_input": list(self.cfg.training_input),
                 "input_field_prefixes": dict(self.cfg.input_field_prefixes),
+                **(
+                    {"metadata_cod_perturbation_version": 2}
+                    if list(self.cfg.training_input) != ["cod"]
+                    else {}
+                ),
                 "multicod_shuffle_labels": self.cfg.multicod_shuffle_labels,
                 "multicod_synthetic_ratio": self.cfg.multicod_synthetic_ratio,
                 "multicod_synthetic_source_scope": (

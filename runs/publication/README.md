@@ -42,6 +42,7 @@ Other phase TOMLs remain unchanged; review stopping policy before subsequent mat
 | 0 | `smoke.toml` | 1 small smoke |
 | 1 | `interaction_confirmation.toml` | 8 |
 | 1 continuation | `interaction_patience20.toml` | 8 linked branches, no new seeds |
+| 1 metadata | `interaction_metadata.toml` | 8 fresh COD+age+sex runs, patience 10 |
 | 1 | `screening_controls.toml` | 2 |
 | 2 | `source_transfer_pilot.toml` | 4 |
 | 2 | `source_transfer_validation.toml` | 6 |
@@ -64,6 +65,14 @@ Training cells may span multiple scheduler allocations. Baseline and frozen-eval
 single-allocation jobs without automatic training resumption; do not attach a duration campaign.
 
 ## Candidate and phase decisions
+
+`interaction_metadata.toml` repeats the eight original interaction cells with `cod,age,sex` input while
+retaining COD-only grouping and patience 10. Scientific environment values otherwise match the original;
+separate processed/output roots protect the COD-only campaign. Run the frozen-manifest pairing preflight
+in the launch guide before building/submitting. Synthetic rows retain their first constituent's metadata;
+that existing rule is unchanged, not a claim of joint demographic plausibility. This is separate from
+the later candidate-only `metadata_confirmation.toml`; reuse a matching completed grouped cell rather
+than unnecessarily retraining it when the later recipe/stopping policy matches.
 
 `candidate_winner.toml` currently holds floor 0, fine-tuning synthesis .30, and 48 full-code pretraining
 epochs; `candidate_runner_up.toml` is the matched 4-epoch alternative. Both are provisional.

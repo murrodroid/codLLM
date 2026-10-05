@@ -117,7 +117,7 @@ def _perturb_cod_segment(
     if cod_idx is None:
         return text
 
-    cod_value = parts[cod_idx].strip()[len(cod_prefix) :]
+    cod_value = parts[cod_idx].lstrip()[len(cod_prefix) :]
     if perturbations_per_sample is not None:
         perturbation_count = perturbations_per_sample
     else:

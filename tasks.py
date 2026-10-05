@@ -1066,6 +1066,33 @@ def publication_audit_splits(
         raise Exit("Integrity checks failed; review the saved audit before Phase 1a.", code=2)
 
 
+@task(name="audit-metadata-pairing")
+def publication_audit_metadata_pairing(
+    ctx: Context,
+    reference: str,
+    config: str = "runs/publication/interaction_metadata.toml",
+    output: str = "logs/publication/metadata_pairing.json",
+    profile: str = "h100",
+    user: str | None = None,
+    lucas: bool = False,
+    elias: bool = False,
+    profiles: str = str(DEFAULT_PROFILE_PATH),
+) -> None:
+    """Require identical original partitions against a frozen COD-only publication directory."""
+    from codllm.evaluation.metadata_pairing import audit_metadata_pairing
+
+    spec = load_experiment_spec(config)
+    runtime_env = _maintenance_runtime_env(profile, profiles, user, lucas, elias)
+    configs = []
+    for run in spec.expanded_runs():
+        with _temporary_environ(runtime_env | run.env_with_runtime_metadata(spec)):
+            configs.append(config_from_env())
+    report = audit_metadata_pairing(configs, Path(reference), Path(output))
+    print(f"Wrote {output}; original partition comparison: {report['status']}.")
+    if report["status"] != "matched":
+        raise Exit("Metadata partitions differ from the frozen COD-only parent; do not submit.", code=2)
+
+
 @task(name="approve")
 def publication_approve(
     ctx: Context,
@@ -1157,6 +1184,7 @@ namespace.add_collection(experiments)
 publication = Collection("publication")
 publication.add_task(publication_audit)
 publication.add_task(publication_audit_splits)
+publication.add_task(publication_audit_metadata_pairing)
 publication.add_task(publication_approve)
 publication.add_task(publication_report)
 publication.add_task(publication_bootstrap)
