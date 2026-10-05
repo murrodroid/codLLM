@@ -1,6 +1,6 @@
 # codLLM publication plan: training for historical generalization
 
-Updated: 2026-09-16. Agreed direction: a broader engineering/generalization study, without a deadline-driven scope.
+Updated: 2026-10-05. Agreed direction: a broader engineering/generalization study, without a deadline-driven scope.
 
 ## 1. Central question and contribution
 
@@ -298,49 +298,137 @@ rule; the counts do not establish adequate support for a tie-break or predict th
 Do not collapse all metrics into an arbitrary weighted score or change the primary outcome after seeing
 which one a favorite configuration wins.
 
-### 4.5 Late-stage checkpoint stability
+### 4.5 Selected-checkpoint consistency: best epoch minus nine through best epoch
 
-Alongside selected-checkpoint performance, report whether a recipe sustains its performance or depends
-on an isolated peak. This is an agreed secondary analysis, introduced after viewing Phase 1a curves;
-label that campaign's analysis exploratory. It does not replace the macro-F1 checkpoint-selection rule
-or automatically promote a smoother curve over a better independently evaluated checkpoint.
+Decision updated 2026-10-05: use **B-9 through B inclusive**, where B is the epoch of the checkpoint
+actually selected by validation `macro_f1`. This is ten evaluations, not ten preceding epochs plus B.
+It replaces the earlier final-ten-epoch proposal; no final-ten or final-five report is required.
+Question: was the selected checkpoint preceded by sustained strong performance, or does it stand out
+from its immediate training history? The window does not establish persistence after selection.
 
-For every completed run, use the final **10 completed fine-tuning epochs**, E-9 through E inclusive,
-where E is the last completed training epoch. Use each epoch's original unsmoothed validation metrics,
-not the ten best epochs, pretraining evaluations, or the final reevaluation of the reloaded best model.
-The current logger assigns that final reevaluation the stopping epoch even when the restored model
-comes from an earlier epoch; its final chart point is not another newly trained checkpoint.
-Resolve resumed/duplicate records against trainer state and global step; flag conflicting or missing
-epochs rather than filling gaps or substituting earlier epochs. Report the actual window and support;
-if ten consecutive epoch evaluations are unavailable, mark the ten-epoch analysis unavailable.
+This complements Phase 1a's selected-checkpoint recipe comparison. It is exploratory and
+selection-conditioned because the analysis was agreed after inspecting these curves and the window
+ends at a performance-selected checkpoint. It does not change checkpoint selection, recipe-screening
+priorities, or scientific approvals. Freeze this specification before computing the new summaries.
 
-For validation macro F1, micro F1, block micro F1, exact match, sample F1, and validation loss, report:
+#### Window and provenance
 
-- the selected-checkpoint value and its epoch, separately from the last training epoch;
-- the ten-epoch mean and median;
-- descriptive checkpoint-to-checkpoint variance (divisor 10), standard deviation, interquartile range,
-  and minimum/maximum; these describe metric fluctuations, not variation in model weights;
-- best-in-window minus median for higher-is-better metrics, and median minus minimum for loss;
-- the full-training best value and epoch as a diagnostic only, not a replacement for the selected model.
+- Anchor B to the retained checkpoint's trainer state and selection record, not a W&B summary maximum
+  or the stopping epoch. If tied scores occurred, use the checkpoint actually retained by training.
+- Use original, unsmoothed, completed fine-tuning epoch evaluations on the same validation population
+  with the same decoding settings. All metrics share the macro-F1-selected window; do not recenter each
+  metric on its own optimum.
+- Exclude pretraining, partial-epoch wall-time evaluations, and final restored-best reevaluations.
+  Legacy runs may label restored-best reevaluation with the stopping epoch; continuation `selected/val/*`
+  contains the separate restored-model report. Neither is an extra training-epoch observation.
+- Resolve resumed/duplicate records with run identity, epoch, optimizer step, and allocation lineage.
+  Identical duplicate evaluations can be deduplicated. Unresolved conflicting values are not averaged
+  or resolved by choosing the better score.
+- Keep original and continuation reports separate. When a child retains the parent's selected checkpoint,
+  use the verified parent window and label it `inherited_parent`; it supplies no new independent evidence.
+  For a newly selected child checkpoint, use its actual child trajectory. Do not splice replayed parent
+  and child epochs to fill gaps. Mark a window crossing the fork unavailable under this reporting rule.
+- Require ten consecutive completed epochs and ten valid observations for each reported metric. Mark
+  missing/conflicting histories, B < 10, or changing slice definitions unavailable with a reason. Do not
+  interpolate, backfill from earlier epochs, or rerun training to manufacture a complete window.
 
-Include reference-supported macro F1, per-source scores, natural multi-COD, rare-code, and unseen-COD
-metrics where the same supported slices were logged each epoch. Retain support counts; do not silently
-compare changing slices or treat sparse transfer fluctuations as reliable evidence. Add a final-five-epoch
-sensitivity summary, without choosing whichever window makes a preferred recipe win.
+Expected continuation windows from verified checkpoints:
 
-Record the configured ceiling, stopping metric/patience, best-metric epoch, last training epoch, and
-verified stopping reason. A wall-time pause or crashed allocation is not a completed training run.
-Check consistent validation examples, decoding settings, and resume logging before attributing large
-dips to optimization. Endpoint windows describe each recipe under its stopping policy, not equal
-computation: floor and synthesis change training-set size. Compare unfinished trajectories only over
-a shared observed interval. Any separate compute-efficiency analysis must align optimizer work or
-active GPU time, include pretraining when comparing full recipes, and exclude queue/resumption downtime.
+| Floor | Synthesis | Pretrain epochs | Window | History source |
+|---:|---:|---:|---|---|
+| 0 | .30 | 4 | 61–70 | Inherited parent |
+| 0 | .30 | 48 | 80–89 | Child |
+| 0 | .60 | 4 | 74–83 | Child |
+| 0 | .60 | 48 | 48–57 | Inherited parent |
+| 450 | .30 | 4 | 51–60 | Child |
+| 450 | .30 | 48 | 69–78 | Child |
+| 450 | .60 | 4 | 70–79 | Child |
+| 450 | .60 | 48 | 67–76 | Child |
 
-Epochs are correlated: these variances are not confidence intervals or estimates of seed variability.
-Keep paired COD-cluster prediction bootstraps and the reduced-data seed study as separate uncertainty
-analyses. Averaging epoch scores does not produce an ensemble or establish the deployed checkpoint's
-performance. Implement this as post-processing of retained histories; no extra training or automatic
-change to submitted jobs is implied by this plan addition.
+These are planned ranges, not certification that every required historical metric is recoverable.
+
+#### Measurements
+
+For metric values x at epochs B-9,...,B, report:
+
+- **Selected score and epoch:** restored-best report alongside the original epoch-B value; flag an
+  unexplained discrepancy rather than replacing history with the restored score.
+- **Mean and median:** sustained and typical performance across all ten epochs.
+- **Population variance and standard deviation:** variance = sum((x - mean)^2) / 10. These describe
+  metric fluctuations across observed checkpoints, not model-weight variance or sampling uncertainty.
+- **Minimum and maximum:** observed range; minimum is the adverse extreme for scores, maximum for loss.
+- **Endpoint uplift:** x[B] - median(x[B-9],...,x[B-1]) for higher-is-better metrics. For loss use
+  median(previous nine) - x[B]. Keep signed values: a macro-selected checkpoint may be worse on another metric.
+- **Trend:** descriptive ordinary-least-squares slope against epoch index 0,...,9, with no p-value or
+  confidence interval. A positive score slope with dispersion can reflect learning rather than oscillation;
+  inspect the raw trajectory before attributing a large uplift to an isolated peak.
+
+Store raw scores on their native scale; display F1/accuracy scores as percentages and SD, uplift, and
+slope in percentage points (slope per epoch). Label variance in squared native-score units and loss in
+native loss units. Do not label mean ± SD as a confidence interval or introduce a mean-minus-SD ranking.
+
+Headline metrics: equal-source reference macro F1 (`pub_v1_source_mean_macro_f1_ref`), pooled macro F1,
+micro F1, block micro F1, and exact-match accuracy. Sample F1 and validation loss belong in the detailed
+report. Per-source, rare-code, natural multi-COD, unseen-COD, and demographic slices are supplementary
+only where fixed definitions, support counts, and per-epoch histories exist. Report missing metrics
+individually; do not substitute pooled macro F1 for an unavailable equal-source history.
+
+#### How this complements the Phase 1a takeaway
+
+1. Lead with the existing selected-checkpoint findings, with original patience-10 and continuation
+   results kept distinct. Among continuations, floor 0 has higher pooled macro F1 in all four matched
+   floor contrasts, but the leading recipe differs by metric: 0/.30/48 for pooled macro F1,
+   0/.30/4 for micro F1, and 0/.60/48 for equal-source reference macro F1. These are single-seed,
+   grouped-COD findings, not a universal winner or source-held-out result.
+2. Add the consistency panel immediately afterward, in the same eight-cell order. For each headline
+   metric, show one compact table: recipe, B/window, history source, selected score, mean, median, SD,
+   worst value, endpoint uplift, and slope. Put full-precision variance/range and detailed metrics in
+   the companion machine-readable report, not a very wide combined table.
+3. Compare matched floor, synthesis, and pretraining contrasts using differences in ten-epoch means
+   and medians alongside the existing selected-checkpoint differences. Ask whether the direction
+   agrees, weakens, or reverses. Do not treat the ten correlated epochs as replicated experiments
+   or fit inferential interaction tests using them as independent observations.
+4. Summarize whether the headline conclusions are also visible in typical nearby checkpoints, and
+   identify contenders whose selected score is less representative of their preceding history.
+   Different windows end at different selected epochs and are not equal-compute comparisons.
+   No numerical threshold automatically declares a run stable, unstable, or superior.
+5. If rankings disagree, retain the ambiguity for the source-held-out and seed studies; do not switch
+   the primary outcome to whichever statistic favors a preferred recipe. Recipe screening remains
+   equal-source reference macro F1 at the macro-selected checkpoint, with the existing paired-dose gate.
+
+Keep raw curves available with B and its window identified. A consistent high plateau, an improving
+trajectory, and an isolated endpoint jump should not receive the same interpretation merely because
+they share a similar standard deviation. There is no claim of statistical significance from this panel.
+
+#### Implementation and delivery
+
+Completed for the eight patience-20 selections on 2026-10-05:
+[report and reproduction commands](publication_checkpoint_consistency.md). The offline calculator
+`experiments/checkpoint_consistency.py` consumes a curated aggregate ledger, validates the windows, and
+reproduces the numerical reports. Remote history harvesting was a read-only extraction for this campaign,
+not a new automatic W&B/HPC integration. The following workflow remains the specification for later campaigns.
+
+1. Recover an epoch-level ledger from retained HPC history and W&B, checking trainer states and
+   continuation lineage. Retained best-checkpoint histories may be incomplete after a fork; validate
+   coverage rather than assuming a complete history. Record source run/step for every observation.
+2. Build a read-only postprocessor that validates each window and computes the definitions above.
+   Preserve raw observations, metric availability/reasons, checkpoint/run identifiers, source lineage,
+   stopping policy, validation support, and a versioned analysis specification with each result.
+3. Test on synthetic CPU fixtures: exact ten-epoch boundaries, flat/rising/spiking curves, divisor-10
+   variance, signed loss/score uplift, shared metric anchors, duplicate/resumed records, restored-best
+   exclusions, inherited parent windows, fork crossings, missing epochs, and conflicting observations.
+4. Generate aggregate `logs/publication/checkpoint_consistency.json` and `.md` locally; these are planned
+   output paths, not an existing command. Verify a window manually against raw history, including a
+   retained-parent case and a resumed-child case, before accepting the report.
+5. Add a concise Phase 1a consistency takeaway and a link to the reviewed aggregate detail in
+   `publication_progress.md`. Keep detailed tables in `docs/publication/publication_checkpoint_consistency.md`
+   once computed and reviewed; do not insert placeholder statistics or private prediction contents.
+
+No extra training, test/external evaluation, W&B writes, or checkpoint-selection changes are required.
+Epochs are correlated and windows are selected: these statistics are neither confidence intervals nor
+seed-variance estimates, and averaging scores does not create an ensemble. Keep COD-cluster prediction
+bootstraps and the reduced-data seed study as separate uncertainty analyses. Summary performance here
+does not establish how well the chosen checkpoint generalizes beyond the validation data.
 
 ## 5. Experiment sequence and gates
 
@@ -389,7 +477,7 @@ This is eight converged training runs. Add two controls at floor 0:
 - no masterlist pretraining, fine-tuning synthesis .30;
 - 48-epoch masterlist pretraining, no fine-tuning synthesis.
 
-Total: 10 runs. Keep base perturbation and pretraining synthesis fixed so each control isolates its
+COD-only total: 10 runs. Keep base perturbation and pretraining synthesis fixed so each control isolates its
 declared factor. A floor contrast includes the pipeline's upsample-copy perturbations; do not describe
 it as a pure class-weighting experiment.
 Floor 450 is the strongest observed positive-floor alternative; floor 300 remains a legacy anchor,
@@ -420,12 +508,43 @@ precise population-level interaction claims. A saturation point from the old .00
 provisional, and a positive-floor benefit under transfer would justify a targeted additional floor,
 not an automatic repetition of all seven levels.
 
-Include the ten-epoch checkpoint-stability report from Section 4.5 with the completed interaction
-comparison, keeping sustained performance, selected-checkpoint quality, and seed variability distinct.
+Include the B-9 through B selected-checkpoint consistency report from Section 4.5 with the completed
+interaction comparison. It complements the primary recipe findings without replacing them; keep
+nearby-checkpoint performance, selected-checkpoint quality, and seed variability distinct.
 
 Gate: select a promising floor/synthesis pair, retaining both its matched 4- and 48-epoch recipes.
 Use performance averaged across the two doses to screen structural settings; retain a materially
 better differently configured contender for the optional challenge below.
+
+#### Phase 1a metadata extension — approved setup, not yet submitted
+
+Decision 2026-10-05: repeat all eight grid cells with COD+age+sex, using the original patience-10
+procedure and 120-epoch schedule. Specification: `runs/publication/interaction_metadata.toml`.
+This adds eight fresh training cells before narrowing candidates for source evaluation. Historical rows,
+targets, seed 777, COD-only group identities, preprocessing/augmentation settings, pretraining doses,
+optimization, and selection remain fixed. No metadata-only dropping or new age/sex imputation is introduced.
+
+Use isolated processed and output paths. Run `publication.audit-metadata-pairing` against the frozen
+COD-only publication manifests before submission; require exact original-partition agreement, not merely
+matching counts. CPU regression tests cover identical original and augmented COD/label/constituent sequences
+under the two input formats. The real-data preflight certifies original partitions only, not augmented rows.
+The metadata augmentation parser now preserves COD edge whitespace between perturbation passes, matching
+the unchanged COD-only path. Metadata prepared caches are versioned to avoid reusing the older stripping behavior;
+COD-only cache identity is unchanged.
+
+Synthetic multi-COD records keep the first constituent's age/sex, following the existing implementation.
+Do not silently introduce demographic-compatible synthesis: that would change a second experimental factor.
+Document the possibility of demographic inconsistency among constituents. Pretraining uses the same
+masterlist records/doses and existing metadata formatting (unknown age/sex where unavailable), not an
+already fine-tuned COD-only checkpoint. Thus the comparison measures the complete input-format regime,
+not an isolated fine-tuning-only metadata intervention or age and sex's separate contributions.
+
+Compare each metadata cell with its original patience-10 counterpart and compute the same B-9 through B
+consistency summaries. Report metadata-minus-COD-only differences and changes in conditional factor effects;
+do not relabel these as independent seed replications. Preserve all eight rather than selecting only COD-only
+winners. Patience-20 metadata continuations are not authorized or created by this setup; those would require
+the same separately documented fork procedure before direct comparison to current patience-20 children.
+The optional later candidate/source metadata study remains distinct; reuse matching grouped runs when valid.
 
 ### Phase 2 — early, paired new-archive evaluation
 

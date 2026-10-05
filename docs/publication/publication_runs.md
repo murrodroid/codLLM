@@ -72,8 +72,8 @@ transfer support before Phase 1a. `review_required` means integrity checks passe
 
 ## Phase 1a. Joint recipe screening — 8 runs
 
-Original patience-10 campaign: already launched. Commands below are retained for provenance;
-do not resubmit it to change patience. Use Phase 1a continuation below.
+Original patience-10 campaign: **8/8 complete**. Commands below are retained for provenance;
+do not resubmit. The patience-20 continuation below is also complete.
 
 Smoke execution has been verified and Phase 0c is complete. Before this full wave, review the
 [split-audit decisions](publication_split_audit_review.md#decisions-for-lucas): retain the split,
@@ -90,7 +90,10 @@ uv run --no-sync invoke hpc.submit --config runs/publication/interaction_confirm
 
 ## Phase 1a continuation. Patience 20 — 8 runs, ceiling still 120
 
-Wait until **all eight original runs have completed**. Do not cancel the two remaining originals.
+**Complete: 8/8; verified 2026-10-05.** Submitted 22 September as H100 array `29456470[1–8]`;
+last completion 28 September at 22:03 CEST. All stopped through patience 20, before the 120-epoch ceiling.
+Do not resubmit this completed campaign. [Results](publication_progress.md#phase-1a-continuation-patience-20).
+The commands below document the preparation and launch already performed.
 Same data, seeds, pretraining, selection metric, and original learning-rate schedule. Only patience changes.
 New checkpoints and new W&B runs preserve the originals. [Safeguards and interpretation](publication_continuation.md).
 
@@ -132,6 +135,46 @@ uv run --no-sync invoke hpc.submit --config runs/publication/interaction_patienc
 Original and continuation histories are separate; do not combine replayed epochs as additional independent observations.
 Later-phase TOMLs remain unchanged. Review their stopping policy before launching matched comparisons.
 
+## Phase 1a metadata. COD + age + sex interaction grid — 8 runs, patience 10
+
+New independent runs, paired with the **original patience-10** COD-only grid, not its patience-20 children.
+Only input fields, processed-cache filename, and output/W&B identities differ. Same seed 777, full dataset,
+COD-only grouping, augmentation, optimizer, pretraining doses, and 120-epoch ceiling. Do not resume COD-only
+checkpoints into these jobs. Pretraining runs normally from the same pretrained base-model initialization.
+
+Use the updated repository revision and the HPC setup above. Before data preparation/submission, compare
+the new original partitions against the frozen COD-only manifests (CPU/RAM; no GPU or training):
+
+```shell
+uv run --no-sync invoke publication.audit-metadata-pairing \
+  --config runs/publication/interaction_metadata.toml \
+  --reference "$RUN_STORAGE_DIR/checkpoints/publication-v1/screen/floor-0_synthetic-0.3_pretrain-4/run-29343382_1/publication" \
+  --profile h100 --lucas
+```
+
+**Proceed only if the result is `matched`.** This verifies exact ordered original train/val/test identities,
+COD descriptions, labels (ignoring label order), language provenance, and model-input COD segments against
+checksum-verified parent manifests. Counts alone do not pass. A mismatch exits with code 2: stop and review;
+do not change the seed/split to make the results fit. This audit is a manual preflight, not a submission gate.
+It may build the isolated metadata processed cache; it does not generate augmented training datasets.
+The updated code preserves COD whitespace between metadata augmentation passes to match COD-only augmentation;
+old metadata prepared caches are invalidated, while COD-only behavior/cache identity is unchanged.
+
+Prepare the metadata caches, then submit this eight-cell stage:
+
+```shell
+uv run --no-sync invoke hpc.build --config runs/publication/interaction_metadata.toml --profile h100 --lucas
+uv run --no-sync invoke hpc.submit --config runs/publication/interaction_metadata.toml --profile h100 --lucas --duration 1w
+```
+
+Outputs: `checkpoints/publication-v1/screen-metadata/<cell>/`; processed data: `publication-v1-metadata.parquet`;
+W&B group: `publication_v1_interaction_metadata`. Keep `metadata_pairing.json` from `logs/publication/`.
+The inherited synthesis rule retains age/sex from the first constituent; missing values use existing unknown
+tokens. No metadata-based filtering, synthesis matching, or demographic imputation is introduced. Masterlist
+pretraining uses the same records/doses but the metadata input format, including unknown fields where absent.
+The formatted inputs are intentionally different; this is not a byte-identical tokenization experiment.
+Preserve completed outputs. A later patience-20 metadata continuation requires separate preparation and approval.
+
 ## Phase 1b. Screening controls — 2 runs
 
 No pretraining; no fine-tuning synthesis.
@@ -142,6 +185,17 @@ uv run --no-sync invoke hpc.submit --config runs/publication/screening_controls.
 ```
 
 ## Review 1. Choose the paired recipes
+
+The [patience-20 consistency report](publication_checkpoint_consistency.md) is complete. Its B-9 through B
+summaries complement selected-checkpoint scores; they do not replace the existing selection rule.
+To reproduce the aggregate tables locally (no HPC submission or training):
+
+```shell
+uv run --no-sync python -m experiments.checkpoint_consistency \
+  --input docs/publication/checkpoint_consistency_input.json \
+  --output-json logs/publication/checkpoint_consistency.json \
+  --output-md logs/publication/checkpoint_consistency.md
+```
 
 Confirm the pilot sources and update `candidate_winner.toml` and `candidate_runner_up.toml` with the selected shared floor/synthesis settings. Keep the matched 48- and 4-epoch doses. They currently contain provisional floor 0 / synthesis 0.30.
 
