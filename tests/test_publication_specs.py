@@ -18,6 +18,7 @@ from codllm.experiments.specs import load_experiment_spec
         ("smoke", 1),
         ("interaction_confirmation", 8),
         ("interaction_metadata", 8),
+        ("interaction_metadata_patience20", 8),
         ("interaction_patience20", 8),
         ("screening_controls", 2),
         ("source_transfer_pilot", 4),
@@ -102,6 +103,42 @@ def test_metadata_interaction_matches_original_recipe() -> None:
         runtime = second.env_with_runtime_metadata(metadata)
         assert runtime["WANDB_RUN_GROUP"] == "publication_v1_interaction_metadata"
         assert "WANDB_RUN_ID" not in runtime
+
+
+def test_metadata_continuation_changes_only_patience(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Metadata branches retain their parent recipe and use isolated continuation identities."""
+    from dataclasses import asdict
+
+    from codllm.evaluation.artifacts import training_recipe
+
+    parent = load_experiment_spec("runs/publication/interaction_metadata.toml")
+    child = load_experiment_spec("runs/publication/interaction_metadata_patience20.toml")
+    parent_ids = set()
+    for index, (first, second) in enumerate(zip(parent.expanded_runs(), child.expanded_runs(), strict=True), 1):
+        recipes = []
+        for run in (first, second):
+            with monkeypatch.context() as context:
+                for key, value in run.env.items():
+                    context.setenv(key, value)
+                recipes.append(training_recipe(asdict(config_from_env())))
+        differences = {
+            key for key in recipes[0].keys() | recipes[1].keys()
+            if recipes[0].get(key) != recipes[1].get(key)
+        }
+        assert differences == {"early_stopping_patience"}
+        assert recipes[0]["early_stopping_patience"] == 10
+        assert recipes[1]["early_stopping_patience"] == 20
+        assert second.env["CODLLM_CONTINUATION_SOURCE_RUN_DIR"] == (
+            f"{first.env['CODLLM_OUTPUT_DIR']}/run-29599429_{index}"
+        )
+        assert second.env["CODLLM_CONTINUATION_SOURCE_STATE_DIR"].endswith(f"/state/run-{index}")
+        assert "/interaction-metadata-patience20/" in second.env["CODLLM_OUTPUT_DIR"]
+        assert second.env["CODLLM_CONTINUATION_LR_SCHEDULE"] == "original"
+        parent_ids.add(second.env["CODLLM_CONTINUATION_PARENT_WANDB_RUN"])
+        runtime = second.env_with_runtime_metadata(child)
+        assert runtime["WANDB_RUN_GROUP"] == "publication_v1_interaction_metadata_patience20"
+        assert "WANDB_RUN_ID" not in runtime
+    assert len(parent_ids) == 8
 
 
 def test_launch_guide_shell_blocks_parse() -> None:

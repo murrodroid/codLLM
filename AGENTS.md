@@ -86,6 +86,11 @@ first-constituent age/sex inheritance for synthetic records in this comparison. 
 COD-only checkpoint with metadata input or silently migrate this grid to patience 20.
 Metadata COD augmentation preserves edge whitespace between passes to match COD-only perturbations;
 `metadata_cod_perturbation_version` invalidates older metadata prepared caches without changing COD-only keys.
+The separately requested metadata continuation is `runs/publication/interaction_metadata_patience20.toml`
+(2026-10-13): all eight completed COD+age+sex parents from `29599429`, patience 20, unchanged 120-epoch
+ceiling and original LR schedule. Use the same prepare-continuation/build/submit workflow and safeguards
+as the COD-only continuation, with isolated `interaction-metadata-patience20/` children and fresh W&B IDs.
+Keep `interaction_metadata.toml` at patience 10 and preserve both completed COD-only campaigns.
 For the explicit COD-only continuation, all eight parents must
 finish before `invoke publication.prepare-continuation --config <path> --profile h100 --lucas` passes.
 Preparation is dry-run unless `--yes`; it independently copies and hashes parent best checkpoints,

@@ -173,7 +173,62 @@ The inherited synthesis rule retains age/sex from the first constituent; missing
 tokens. No metadata-based filtering, synthesis matching, or demographic imputation is introduced. Masterlist
 pretraining uses the same records/doses but the metadata input format, including unknown fields where absent.
 The formatted inputs are intentionally different; this is not a byte-identical tokenization experiment.
-Preserve completed outputs. A later patience-20 metadata continuation requires separate preparation and approval.
+All eight runs completed; verified 2026-10-13. Preserve these outputs. The explicitly requested
+patience-20 metadata continuation is separate below.
+
+## Phase 1a metadata continuation. Patience 20 — 8 runs, ceiling still 120
+
+Requested 2026-10-13. `interaction_metadata_patience20.toml` branches from the completed **metadata**
+parents in LSF `29599429[1-8]`, keeping COD+age+sex inputs, original partitions, augmentation,
+pretraining doses, seed, and original cosine schedule. Only fine-tuning patience changes from 10 to 20.
+Each branch resumes its parent's retained best checkpoint; pretraining is not repeated.
+These are same-seed continuations, not independent replicates or scientific recipe approval.
+
+From the HPC repository after sourcing `hpc/env.sh`, validate every parent before copying:
+
+```shell
+uv run --no-sync invoke publication.prepare-continuation --config runs/publication/interaction_metadata_patience20.toml --profile h100 --lucas
+uv run --no-sync invoke publication.prepare-continuation --config runs/publication/interaction_metadata_patience20.toml --profile h100 --lucas --yes
+uv run --no-sync invoke hpc.build --config runs/publication/interaction_metadata_patience20.toml --profile h100 --lucas
+uv run --no-sync invoke hpc.submit --config runs/publication/interaction_metadata_patience20.toml --profile h100 --lucas --duration 1w --dry-run
+```
+
+Launch when ready:
+
+```shell
+uv run --no-sync invoke hpc.submit --config runs/publication/interaction_metadata_patience20.toml --profile h100 --lucas --duration 1w
+```
+
+Children use `checkpoints/publication-v1/interaction-metadata-patience20/<cell>/run-0001/`
+and W&B group `publication_v1_interaction_metadata_patience20`. The processed filename stays
+`publication-v1-metadata.parquet`. All [continuation safeguards](publication_continuation.md#safety-and-provenance)
+apply, including independent checksum-verified copies, frozen lineage, and fresh W&B IDs.
+Keep original and child histories separate; final child reevaluation uses `selected/val/*`.
+
+Preparation record, 2026-10-13: all eight parent checks and independent checkpoint copies/checksums
+passed on HPC revision `d31d84738f48030b8ab8f8814c35b064ae10dec3` with the new specification staged.
+Local and HPC specification SHA256 agree:
+`e1e5dde073aa596be1cc3c32bd285c812fd2a7482d626afcd4708becc074f89a`.
+The generated dry-run submission is
+`jobs/generated/publication_v1_interaction_metadata_patience20-20261013-233748-347595/`.
+Its H100 array contains eight cells, 24-hour allocations, and the one-week auto-resume policy;
+the shell syntax check passed. No training was submitted during preparation.
+`hpc.build` passed for all eight cells, reusing the four existing metadata split caches.
+Its private HPC log is `logs/publication/metadata_patience20_build_20261013.log`.
+
+| Cell index | Restart epoch | Prepared child W&B ID |
+|---:|---:|---|
+| 1 | 41 | `71f254d6dc3b41c48edde22997c3e0a6` |
+| 2 | 46 | `057bc431939b4fc3b00d198ea28248ef` |
+| 3 | 52 | `93e827e228964114bc68e397f87c481d` |
+| 4 | 61 | `fb162d347fa54aeeb8a97870bc28b0c5` |
+| 5 | 41 | `1cf920de8bd046b491880b6d287fef69` |
+| 6 | 52 | `37b977ac5a7d4ddcbf3e21ae33540b3b` |
+| 7 | 54 | `309672e55ac54afd8cf60ab4b40b918a` |
+| 8 | 34 | `fe3073f8875848739f8b473cdb605214` |
+
+W&B runs are created when training starts; these are reserved child identities. The cell order is
+the specification order, identical to the metadata parent array. Private frozen manifests remain on HPC.
 
 ## Phase 1b. Screening controls — 2 runs
 

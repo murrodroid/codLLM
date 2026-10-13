@@ -43,6 +43,7 @@ Other phase TOMLs remain unchanged; review stopping policy before subsequent mat
 | 1 | `interaction_confirmation.toml` | 8 |
 | 1 continuation | `interaction_patience20.toml` | 8 linked branches, no new seeds |
 | 1 metadata | `interaction_metadata.toml` | 8 fresh COD+age+sex runs, patience 10 |
+| 1 metadata continuation | `interaction_metadata_patience20.toml` | 8 linked COD+age+sex branches, patience 20 |
 | 1 | `screening_controls.toml` | 2 |
 | 2 | `source_transfer_pilot.toml` | 4 |
 | 2 | `source_transfer_validation.toml` | 6 |

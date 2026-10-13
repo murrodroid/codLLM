@@ -66,7 +66,8 @@ the completed interaction results below do not automatically approve a recipe.
 | 0b: HPC smoke | [Complete](https://wandb.ai/codllmdev/codllm/runs/9bhbzqz8) | 1 pretraining + 1 fine-tuning epoch; 138 validation rows. Accuracy/micro F1/macro F1 = 0; exports and metrics verified. Execution check, not performance evidence; resumption not exercised. |
 | 1a: interaction screening | 8/8 complete | Final two cells finished on 17 September. Original patience 10; results below remain separate from continuations. |
 | 1a continuation: patience 20 | 8/8 complete; verified 5 October | Last finished 28 September. All exhausted patience 20 before the 120-epoch ceiling; six improved macro F1. |
-| 1a metadata: COD+age+sex | 8 cells prepared; not submitted | Matched original patience-10 grid; frozen historical-partition preflight required. No results yet. |
+| 1a metadata: COD+age+sex | 8/8 complete; verified 13 October | Last finished 12 October, 16:40 CEST. Patience 10, COD-only grouping; selected results below. |
+| 1a metadata continuation: patience 20 | 8/8 prepared 13 October; ready to submit | Verified independent best-checkpoint copies and data dependencies; ceiling 120 and original LR schedule. |
 | 1b: controls | Not verified in this update | Keep separate from the eight interaction cells. |
 | 2a–b: paired five-source panel | Not started | Determines the transfer-supported recipe. |
 | 3a–f: row comparison, source ablations, baselines | Not started | Awaiting candidate selection. |
@@ -167,3 +168,26 @@ the main comparison, not prove superiority or change candidate approval.
 
 [Full consistency report](publication_checkpoint_consistency.md): all windows, medians, variance/SD,
 extremes, endpoint uplift, trends, block metrics, matched contrasts, and reproducible aggregate inputs.
+
+### Phase 1a metadata: completed COD+age+sex cells
+
+**Complete: 8/8 runs. Verified 2026-10-13 on HPC.** All parents have training/final-evaluation
+completion markers, no resume request, retained best checkpoints, and validation prediction exports.
+Last completion: 2026-10-12 16:40 CEST. Scores below come from private selected-checkpoint scalar
+reports and agree with the retained checkpoint's macro F1; W&B status was not independently queried.
+These are the original patience-10 metadata runs, separate from the requested patience-20 branches.
+
+| Floor | Synthesis | Pretrain epochs | Best epoch | Macro F1 | Micro F1 | Equal-source reference macro F1 |
+|---:|---:|---:|---:|---:|---:|---:|
+| [0](https://wandb.ai/codllmdev/codllm/runs/9srm65sx) | .30 | 4 | 41 | 0.583858 | 0.896024 | 0.696067 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/3attafr5) | .30 | 48 | 46 | 0.594859 | 0.892826 | 0.708416 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/4e720vb8) | .60 | 4 | 52 | 0.579446 | 0.892862 | 0.698041 |
+| [0](https://wandb.ai/codllmdev/codllm/runs/1151ssnw) | .60 | 48 | 61 | 0.591692 | 0.868511 | 0.716040 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/mmd27wa0) | .30 | 4 | 41 | 0.570964 | 0.884850 | 0.690118 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/pgbhio8z) | .30 | 48 | 52 | 0.574810 | 0.883142 | 0.702997 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/qs7jjax3) | .60 | 4 | 54 | 0.576963 | 0.885845 | 0.706766 |
+| [450](https://wandb.ai/codllmdev/codllm/runs/w0khafw6) | .60 | 48 | 34 | 0.576410 | 0.890184 | 0.708062 |
+
+Provisional interpretation: pooled macro F1 favors 0/.30/48; equal-source reference macro F1 favors
+0/.60/48. These selected-checkpoint scores alone do not establish an overall age/sex benefit or approve
+a recipe. The requested continuation increases patience to 20 while retaining the same eight recipes.
