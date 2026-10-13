@@ -1,5 +1,5 @@
 # Laptop-side SSH connection settings. Never put passwords or private keys here.
 [users.lucas]
 account = "s234805"
-identity = "~/.ssh/codex-dtu-hpc"
+identity = "~/.ssh/codex-dtu-hpc-20261013"
 socket = "/tmp/codex-dtu-hpc.sock"
