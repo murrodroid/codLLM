@@ -67,7 +67,7 @@ the completed interaction results below do not automatically approve a recipe.
 | 1a: interaction screening | 8/8 complete | Final two cells finished on 17 September. Original patience 10; results below remain separate from continuations. |
 | 1a continuation: patience 20 | 8/8 complete; verified 5 October | Last finished 28 September. All exhausted patience 20 before the 120-epoch ceiling; six improved macro F1. |
 | 1a metadata: COD+age+sex | 8/8 complete; verified 13 October | Last finished 12 October, 16:40 CEST. Patience 10, COD-only grouping; selected results below. |
-| 1a metadata continuation: patience 20 | 8/8 prepared 13 October; ready to submit | Verified independent best-checkpoint copies and data dependencies; ceiling 120 and original LR schedule. |
+| 1a metadata continuation: patience 20 | 8/8 submitted 13 October; LSF `29712380[1-8]` | At launch verification: 3 running, 5 queued. Ceiling 120 and original LR schedule; no child results yet. |
 | 1b: controls | Not verified in this update | Keep separate from the eight interaction cells. |
 | 2a–b: paired five-source panel | Not started | Determines the transfer-supported recipe. |
 | 3a–f: row comparison, source ablations, baselines | Not started | Awaiting candidate selection. |

@@ -230,6 +230,15 @@ Its private HPC log is `logs/publication/metadata_patience20_build_20261013.log`
 W&B runs are created when training starts; these are reserved child identities. The cell order is
 the specification order, identical to the metadata parent array. Private frozen manifests remain on HPC.
 
+Submitted **2026-10-13 at 23:47 CEST** after pushing `deploy` and fast-forwarding HPC to
+`c1167e9005f25e28739ecf133b765f2d497cc628`. LSF H100 array: **`29712380[1-8]`**.
+Submission directory:
+`jobs/generated/publication_v1_interaction_metadata_patience20-20261013-234746-705629/`.
+Launch verification: cells 1, 3, and 4 running; cells 2 and 5–8 pending. Cell 2 initially exited during
+concurrent `uv sync --frozen --no-dev` package removal, before creating training state; it was requeued
+with `brequeue -e "29712380[2]"` and confirmed pending under the same identity. Parent runs are untouched.
+Do not submit the full array again; inspect the existing jobs and state directories first.
+
 ## Phase 1b. Screening controls — 2 runs
 
 No pretraining; no fine-tuning synthesis.
