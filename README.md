@@ -1,8 +1,11 @@
 # codLLM: Coding historical causes of death with language models
 
-![python](https://img.shields.io/badge/python-3.13-blue) ![license](https://img.shields.io/badge/license-MIT-green)
+![python](https://img.shields.io/badge/python-3.13-blue) [![code license](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE) [![content license](https://img.shields.io/badge/content-CC_BY_4.0-green)](LICENSES/CC-BY-4.0.txt)
 
 **Thesis:** [codLLM_Thesis.pdf](codLLM_Thesis.pdf)
+
+Please credit Lucas E. B. Mortensen and Elias Dahl Lunøe when using codLLM and cite the thesis in research publications.
+See [CITATION.cff](CITATION.cff) and [license scope](docs/licensing.md).
 
 ## Abstract
 
@@ -802,7 +805,10 @@ The GitHub Actions test workflow runs `uv sync --frozen --all-groups` and `uv ru
 
 ## License
 
-This repository is licensed under the MIT License.
+The software, configuration, and code examples use [Apache-2.0](LICENSE). Project-authored documentation, the authors'
+thesis contributions, and codLLM model contributions use [CC BY 4.0](LICENSES/CC-BY-4.0.txt), with upstream terms retained.
+See [Licensing and citation](docs/licensing.md) for the complete scope, prior-release terms, and third-party exclusions.
+The research citation request adds no conditions to these standard licenses.
 
 The historical datasets used for training and evaluation are not public and require separate agreements with the data
 providers.

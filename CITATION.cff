@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: >-
+  Please credit Lucas E. B. Mortensen and Elias Dahl Lunøe when using
+  codLLM, and cite the thesis below in research publications. Also report
+  the model name and revision used. This is a citation request, not an
+  additional license condition.
+title: codLLM
+type: software
+authors:
+  - family-names: Mortensen
+    given-names: Lucas E. B.
+  - family-names: Lunøe
+    given-names: Elias Dahl
+repository-code: https://github.com/murrodroid/codllm
+url: https://huggingface.co/codllm
+preferred-citation:
+  type: thesis
+  authors:
+    - family-names: Mortensen
+      given-names: Lucas E. B.
+    - family-names: Lunøe
+      given-names: Elias Dahl
+  title: Automated Historical Cause-of-Death Coding Using Fine-Tuned Language Models
+  year: 2026
+  month: 6
+  institution:
+    name: Technical University of Denmark
+  thesis-type: Bachelor's thesis
+  url: https://huggingface.co/spaces/codllm/README/resolve/main/codLLM_Thesis.pdf

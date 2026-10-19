@@ -1,0 +1,23 @@
+codLLM
+Copyright (c) 2026 Elias Dahl Lunøe & Lucas E. Bülow Mortensen
+
+Project: https://github.com/murrodroid/codllm
+Models: https://huggingface.co/codllm
+
+codLLM software is licensed under Apache-2.0. Project-authored prose,
+documentation, the bachelor's thesis, and codLLM model contributions are
+licensed under CC BY 4.0, as scoped in docs/licensing.md. Third-party
+materials retain their own terms.
+
+The deployment model modifies Google's google/flan-t5-base through
+codLLM training. FLAN-T5-base is distributed under Apache-2.0:
+https://huggingface.co/google/flan-t5-base
+The upstream Apache license and applicable notices must be retained.
+
+Earlier codLLM software was distributed under MIT; its original notice
+is preserved in LICENSES/MIT-legacy.txt. Earlier model revisions retain
+their original license grants. This update does not revoke those grants.
+
+Please credit Lucas E. B. Mortensen and Elias Dahl Lunøe and cite the
+thesis when using codLLM in research. CITATION.cff provides the preferred
+citation. This request does not add conditions to the standard licenses.
