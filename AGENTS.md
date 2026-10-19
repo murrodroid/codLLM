@@ -301,6 +301,14 @@ unexpected dependency downloads.
 
 # Documentation
 
+* Licensing is scoped in `docs/licensing.md`: software/configuration/code examples use Apache-2.0 (`LICENSE`),
+  while project-authored prose, thesis contributions, and released model contributions use CC BY 4.0
+  (`LICENSES/CC-BY-4.0.txt`). Preserve `NOTICE`, legacy MIT notices, and all upstream model/data terms.
+  Never apply the project licenses to third-party archival data or masterlists. Keep `CITATION.cff`, package metadata,
+  repository documentation, and Hugging Face cards/notices consistent when changing release terms. A research citation
+  is requested, not an additional license condition; do not describe standard licenses as requiring citation for all use
+  or claim that newer terms revoke prior MIT/Apache grants. Model releases must include their upstream license notices.
+
 * Project documentation lives under `docs/`, with publication plans, submission commands, and results under
   `docs/publication/`. Keep the root `README.md` as a short navigation entrypoint and retain `AGENTS.md` at the
   repository root for agent discovery. Run and experiment directory READMEs stay beside the files they describe.
