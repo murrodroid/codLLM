@@ -68,7 +68,8 @@
     `uv run pre-commit run --all-files`. For more information, refer to the `.pre-commit-config.yaml` file.
 
 Publication v1 uses `runs/publication/protocol_v1.toml`; preserve the completed curve specs and legacy
-`base.toml`. Exact per-stage prep/submission commands live in `docs/publication/publication_runs.md`.
+`base.toml`. Stage specifications and shared build/submission commands live in
+`docs/publication/reference/commands.md`.
 `invoke publication.audit` writes a score-blind inventory; `publication.approve --stage
 <source_pair|recipe|reduced|final> --note "..."` records reviewed decisions; `publication.report --root <path>`
 recovers selected-checkpoint scalars; `publication.bootstrap --first <parquet> --second <parquet>` compares
@@ -105,12 +106,13 @@ allocations retain latest plus best checkpoints. Final restored-model metrics us
 separate from `val/*` training curves. The original campaign and later-phase TOMLs remain unchanged.
 Continuation scheduler logs and W&B staging live on work3. `hpc/env.sh`, generated jobs, and task
 runtime defaults set `WANDB_DATA_DIR` under the managed W&B cache to avoid home-quota staging failures.
-Reviewed aggregate audit snapshots may be tracked under `docs/publication/`; `data_audit.json` is the
-2026-09-06 HPC snapshot and `publication_data_audit.md` records its findings and unresolved choices.
+Reviewed aggregate audit snapshots live under `docs/publication/reference/`; `data_audit.json` is the
+2026-09-06 HPC snapshot and `audits.md` records factual counts. Unresolved choices belong in
+`docs/publication/publication_decisions.md`.
 Do not mix data-audit observations into the training-results-only `publication_progress.md`, or treat
 aggregate source counts as evidence of actual split coverage or cross-lingual eligibility.
-The completed Phase 0c snapshots are `docs/publication/split_audit.json` and `split_audit.md`;
-preserve their bytes. `publication_split_audit_review.md` records interpretation and unresolved decisions.
+The completed Phase 0c snapshots are `docs/publication/reference/split_audit.json` and `split_audit.md`;
+preserve their bytes. `reference/audits.md` summarizes the evidence without adding recommendations.
 Passing original-split integrity does not certify adequate transfer support or that augmented caches exist.
 Before Phase 1a, `uv run --no-sync invoke publication.audit-splits --config
 runs/publication/interaction_confirmation.toml --profile h100 --lucas` audits its shared original
@@ -302,18 +304,22 @@ unexpected dependency downloads.
 * Project documentation lives under `docs/`, with publication plans, submission commands, and results under
   `docs/publication/`. Keep the root `README.md` as a short navigation entrypoint and retain `AGENTS.md` at the
   repository root for agent discovery. Run and experiment directory READMEs stay beside the files they describe.
-* Keep `docs/publication/publication_progress.md` concise: training results and status in the order of
-  `publication_runs.md`, with brief provisional interpretations. Exclude cleanup, quota, and operational logs.
-  Keep substantial unresolved research ideas in `docs/publication/publication_thoughts.md`; update existing entries
-  rather than duplicating them, and keep agreed study design in `publication_plan.md`.
+* Keep `docs/publication/` to its index, `publication_plan.md`, `publication_progress.md`, and
+  `publication_decisions.md`. Put detailed result tables, immutable audit snapshots, aggregate scalar inputs,
+  and commands under `reference/`. Update these existing documents instead of creating a narrative per campaign.
+  Progress records factual status and scores; the plan records agreed study design; decisions distinguish
+  confirmed choices from pending ones. Do not add speculative interpretations, recommendations, or research
+  ideas unless Lucas supplies or explicitly requests them. Avoid duplicated prose, old launch walkthroughs,
+  and cleanup/quota logs. Preserve numerical evidence and original audit bytes when reorganizing.
 * The revised publication plan separates row, grouped-COD, source-held-out, and external evaluation.
   Selected-checkpoint consistency reporting uses ten completed epochs B-9 through B, anchored to the
   actual macro-F1-selected checkpoint for every metric, not the last ten epochs before stopping.
-  Follow publication_plan.md Section 4.5: exclude restored-best reevaluations, label inherited parent
+  Follow publication_plan.md's Checkpoint consistency section: exclude restored-best reevaluations, label inherited parent
   windows, never splice replayed trajectories, and report missing histories rather than filling them.
   This exploratory diagnostic does not change selection rules or estimate seed uncertainty.
   Reproduce the reviewed aggregate ledger with `uv run --no-sync python -m experiments.checkpoint_consistency
-  --input docs/publication/checkpoint_consistency_input.json --output-json logs/publication/checkpoint_consistency.json
+  --input docs/publication/reference/checkpoint_consistency_input.json
+  --output-json logs/publication/checkpoint_consistency.json
   --output-md logs/publication/checkpoint_consistency.md`; CPU tests are `tests/test_checkpoint_consistency.py`.
   This calculator is offline and consumes curated scalar histories, not private row-level predictions.
   Treat existing publication TOMLs as the previous campaign until explicitly migrated; documentation of a planned

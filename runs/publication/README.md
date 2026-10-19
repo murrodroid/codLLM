@@ -1,16 +1,11 @@
 # Publication experiments
 
-Design: [publication_plan.md](../../docs/publication/publication_plan.md).
-Exact preparation/submission commands: [publication_runs.md](../../docs/publication/publication_runs.md).
-Results: [publication_progress.md](../../docs/publication/publication_progress.md).
-Open ideas: [publication_thoughts.md](../../docs/publication/publication_thoughts.md).
-Completed Phase 0a: [audit findings and decisions](../../docs/publication/publication_data_audit.md).
+[Plan, progress, and decisions](../../docs/publication/README.md).
+[Build/submission commands](../../docs/publication/reference/commands.md).
+[Completed data audits](../../docs/publication/reference/audits.md).
 
-Both aggregate and full-size split audits are complete. Phase 0c passed 14 integrity checks;
-[its review](../../docs/publication/publication_split_audit_review.md) quantifies concentrated description
-groups and sparse cross-language support. Decisions remain with Lucas before full screening.
-The source TOMLs and candidate levels are unchanged. The audit did not build the four augmented split
-caches; keep the normal `hpc.build` step. Exact audit rerun and submission commands are in the launch guide.
+Phase 1 is complete. Confirm the candidate pair, source pilots, input fields, and stopping policy
+before Phase 2. Updating documentation does not change the TOMLs.
 
 ## Legacy versus v1
 
@@ -32,7 +27,7 @@ The original v1 campaign uses a 120-epoch ceiling/patience 10; ceiling-limited i
 The explicit `interaction_patience20.toml` continuation keeps the 120-epoch ceiling and LR schedule,
 raises only patience to 20, and preserves every parent under a new child output/W&B identity.
 Run `publication.prepare-continuation` (dry-run by default, `--yes` to copy) before its data build/submission.
-All eight parents must be complete. See [continuation safeguards](../../docs/publication/publication_continuation.md).
+All eight parents must be complete. See [continuation safeguards](../../docs/publication/reference/commands.md#audits-and-continuations).
 Other phase TOMLs remain unchanged; review stopping policy before subsequent matched comparisons.
 
 ## Launchable steps
@@ -77,9 +72,7 @@ than unnecessarily retraining it when the later recipe/stopping policy matches.
 
 `candidate_winner.toml` currently holds floor 0, fine-tuning synthesis .30, and 48 full-code pretraining
 epochs; `candidate_runner_up.toml` is the matched 4-epoch alternative. Both are provisional.
-Completed conditional curves motivate these levels but do not establish their joint optimality.
-Keep both doses through the paired source panel; the longer dose is a product preference in a supported
-near-tie, not an observed generalization improvement.
+Keep both doses through the paired source panel; final recipe selection is recorded separately.
 
 The source pilots are Copenhagen and Belgium; the remaining panel covers Amsterdam, Madrid, and Ipswich.
 Choose structural settings after Phase 1, then freeze winner/runner-up after all five paired source folds.

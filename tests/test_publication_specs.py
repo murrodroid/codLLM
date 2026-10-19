@@ -69,9 +69,10 @@ def test_publication_launch_cells(
                 )
             if name not in {"final_model", "baselines_final"}:
                 assert not cfg.final_test_eval_enabled
-    guide = Path("docs/publication/publication_runs.md").read_text()
-    assert f"hpc.build --config {path}" in guide
-    assert f"hpc.submit --config {path}" in guide
+    guide = Path("docs/publication/reference/commands.md").read_text()
+    assert f"`{path.name}`" in guide
+    assert 'hpc.build --config "$PUBLICATION_SPEC"' in guide
+    assert 'hpc.submit --config "$PUBLICATION_SPEC"' in guide
     profile = load_lsf_profile("h100")
     submission = prepare_lsf_submission(
         spec, profile, project_dir=Path.cwd(), output_root=tmp_path
@@ -143,7 +144,7 @@ def test_metadata_continuation_changes_only_patience(monkeypatch: pytest.MonkeyP
 
 def test_launch_guide_shell_blocks_parse() -> None:
     """Copyable bash commands contain no invisible separators or malformed quoting."""
-    guide = Path("docs/publication/publication_runs.md").read_text()
+    guide = Path("docs/publication/reference/commands.md").read_text()
     assert "\u2028" not in guide and "\u2029" not in guide
     blocks = re.findall(r"```shell\n(.*?)```", guide, re.DOTALL)
     for block in blocks:
@@ -153,4 +154,9 @@ def test_launch_guide_shell_blocks_parse() -> None:
         for line in block.replace(chr(92) + "\n", " ").splitlines():
             if "--config" in line:
                 tokens = shlex.split(line)
-                assert Path(tokens[tokens.index("--config") + 1]).is_file()
+                config = tokens[tokens.index("--config") + 1]
+                if config.startswith("$"):
+                    assignment = re.search(rf"^{re.escape(config[1:])}=(.+)$", block, re.MULTILINE)
+                    assert assignment is not None
+                    config = shlex.split(assignment.group(1))[0]
+                assert Path(config).is_file()
