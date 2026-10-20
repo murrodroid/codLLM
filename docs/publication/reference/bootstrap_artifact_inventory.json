@@ -1,0 +1,36 @@
+{
+  "legacy": [
+    {
+      "campaign": "balance-floor",
+      "frozen_contracts": 0,
+      "parquet_files": 0,
+      "recorded_runs": 7,
+      "root": "/work3/s234805/codllm/checkpoints/publication/balance-floor",
+      "root_exists": false,
+      "selected_exports": 0,
+      "status": "interval_unavailable_without_original_paired_predictions_and_partitions"
+    },
+    {
+      "campaign": "multicod-synthetic",
+      "frozen_contracts": 0,
+      "parquet_files": 0,
+      "recorded_runs": 7,
+      "root": "/work3/s234805/codllm/checkpoints/publication/multicod-synthetic",
+      "root_exists": true,
+      "selected_exports": 0,
+      "status": "interval_unavailable_without_original_paired_predictions_and_partitions"
+    },
+    {
+      "campaign": "pretraining-dose",
+      "frozen_contracts": 0,
+      "parquet_files": 0,
+      "recorded_runs": 6,
+      "root": "/work3/s234805/codllm/checkpoints/publication/pretraining-dose",
+      "root_exists": true,
+      "selected_exports": 0,
+      "status": "interval_unavailable_without_original_paired_predictions_and_partitions"
+    }
+  ],
+  "phase1_models": 32,
+  "phase1_pairs": 144
+}

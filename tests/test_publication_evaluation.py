@@ -432,7 +432,7 @@ def test_phase_gate_tracks_candidate_edits(
     from codllm.evaluation.workflow import approve_stage, validate_publication_config
 
     root = tmp_path / "runs"
-    shutil.copytree("runs", root)
+    shutil.copytree("runs", root, ignore=shutil.ignore_patterns("decisions.json"))
     cfg = config(tmp_path)
     cfg.publication_gate = "source_pair"
     cfg.publication_decisions_path = str(root / "publication" / "decisions.json")

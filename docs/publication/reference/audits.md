@@ -38,6 +38,40 @@ This audit covers original partitions and planned resource exposure. It does not
 lexical overlap, source-held-out folds, or reduced cohorts. No model scores were inspected.
 Current study choices are recorded in [decisions](../publication_decisions.md).
 
+## Frozen training-label coverage — 2026-10-20
+
+Verified on an interactive HPC A100 node against checksum-verified original manifests and the frozen
+training exposure inventory. COD-only and metadata train/validation/test row, source, record, COD and
+label identities match; formatted metadata text is excluded from this identity comparison.
+Historical training contains **3,321 distinct full ICD10h labels**. Coverage below means present
+anywhere in original historical training, before balancing/synthesis; it is not prediction accuracy.
+
+| Partition | Distinct labels seen / total | Distinct-label coverage | Label occurrences seen / total | Occurrence coverage | Rows with any unseen label |
+|---|---:|---:|---:|---:|---:|
+| Validation | 1,421 / 1,493 | 95.177% | 88,032 / 88,159 | 99.856% | 127 / 75,536 |
+| Test | 1,262 / 1,297 | 97.301% | 84,371 / 84,414 | 99.949% | 43 / 76,929 |
+
+All labels are historically seen in 76,886 test rows (99.944%). Of the remaining 43 rows, 21 have no
+historically seen labels and 22 mix seen/unseen labels. The 35 distinct historically unseen test labels
+and 72 unseen validation labels all occur in the recorded masterlist inventory. Masterlist exposure
+is separate from historical training coverage and does not establish model knowledge or accuracy.
+Every validation/test COD remains absent from original historical training.
+
+| Test archive | Labels present anywhere in historical training / total | Distinct-label coverage | Occurrence coverage | Rows with any unseen label |
+|---|---:|---:|---:|---:|
+| Amsterdam | 856 / 878 | 97.494% | 99.921% | 27 |
+| Belgium | 260 / 261 | 99.617% | 99.964% | 1 |
+| Copenhagen | 76 / 76 | 100.000% | 100.000% | 0 |
+| Ipswich | 358 / 361 | 99.169% | 99.834% | 3 |
+| Madrid | 511 / 522 | 97.893% | 99.949% | 12 |
+
+Distinct-label counts overlap between archives and should not be added. These are the original
+grouped-COD partitions, not the Phase 2 leave-one-archive-out folds.
+[Aggregate counts and manifest fingerprints](label_coverage.json) retain both input regimes and
+per-source validation/test coverage, including same-source label occurrences.
+
+![Frozen historical training-label coverage](figures/label_coverage.png)
+
 ## Snapshot checksums
 
 | File | SHA256 |

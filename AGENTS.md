@@ -13,6 +13,13 @@
     `--status` checks remote responsiveness without authenticating, and `--disconnect` explicitly closes it.
     Profiles live in `hpc/ssh_profiles.toml`; see `docs/hpc_connection.md`. This uses existing keys and leaves
     password/passphrase prompts to SSH. Never collect credentials or silently delete stale sockets.
+  * For interactive HPC analysis/debugging, open an SSH terminal through the existing shared connection and type
+    `a100sh` on the login node. This requests an interactive `gpua100i` allocation and opens an A100-node shell;
+    wait for dispatch and record the job ID. On that node, `cd ~/codLLM` and source `hpc/env.sh` before any `uv`
+    command; prefer `uv run --no-sync`. These are shared nodes: respect assigned devices and use them only while
+    actively working. Always `exit` the A100 shell after use, verify that your interactive job ended, then close
+    your SSH client. Never leave a floating interactive allocation or background analysis process. The shared SSH
+    master is separate; do not disconnect it while other clients may be using it. See `docs/hpc_connection.md`.
 * The project uses `pytest` for testing. To run tests, use `uv run pytest tests/`.
 * The project uses `ruff` for linting and formatting:
     * To format code, use `uv run ruff format .`.
@@ -74,6 +81,19 @@ Publication v1 uses `runs/publication/protocol_v1.toml`; preserve the completed 
 <source_pair|recipe|reduced|final> --note "..."` records reviewed decisions; `publication.report --root <path>`
 recovers selected-checkpoint scalars; `publication.bootstrap --first <parquet> --second <parquet>` compares
 aligned predictions. Do not approve scientific phase gates without the user's actual review/decision.
+`publication.analyze --root <publication-v1-root> --output <analysis-directory>` verifies frozen original
+label coverage and analyzes all 32 completed Phase 1 models (144 paired comparisons). Analysis defaults
+live in the offline `evaluation.bootstrap.Config` / `evaluation.campaign_analysis.Config`, not training
+recipe settings. Both analyze/bootstrap accept `--replicates`, `--seed`, and
+`--weighting bayesian|multinomial` (default: 10,000 draws, seed 777, Bayesian). Bayesian weights are shared
+Dirichlet(1,...,1) weights on connected global COD/source-record groups; report 95% Bayesian intervals
+explicitly, not training-seed confidence intervals. Ordinary multinomial resampling is retained as a
+sensitivity analysis; recompute the published metrics and report fixed-label-support sensitivity separately.
+Rare labels can disappear from ordinary draws. Neither method corrects validation selection or estimates
+future-archive/seed variation. Preserve existing metric semantics and original audit snapshots.
+Keep raw predictions, manifests, and cached bootstrap draws on HPC; only aggregate ledgers/tables/figures
+belong under `docs/publication/reference/`. Reject unpaired rows/record links and changed artifact checksums.
+Do not reconstruct legacy splits or invent intervals when original prediction/partition artifacts are absent.
 Candidate/language/reduced-protocol edits invalidate recorded approvals. Never silently overwrite a
 completed recipe's output root to rerun different settings.
 Phase 2 (2026-10-19) is plain fine-tuning versus a Phase 1-selected enhanced recipe, not the previous

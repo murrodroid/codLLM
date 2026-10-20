@@ -19,6 +19,7 @@ Updated: 2026-10-20. Dates marked “recorded” refer to the existing documenta
 | 2026-10-19 | Phase 2 compares plain fine-tuning against a Phase 1-selected enhanced recipe on held-out archives. This supersedes short-versus-long pretraining as the primary Phase 2 contrast; it does not choose the enhanced recipe or approve submission. |
 | 2026-10-19 | Keep publication documentation focused on the plan, factual progress, and decisions. Remove unsolicited speculative interpretation and duplicate narratives. |
 | 2026-10-20 | Lucas requested launch of the four Copenhagen/Belgium pilots and confirmed the displayed recipe with patience 20 instead of 10: enhanced floor 0 / synthesis .30 / pretraining 48; both arms COD-only, seed 777, max 120 and original cosine schedule. Plain arm disables the declared enhancements. This approves the pilot recipe, not a claim that it is the overall Phase 1 winner or permission to submit the remaining six jobs. |
+| 2026-10-20 | Lucas requested frozen training-label coverage, paired bootstrap intervals for existing comparisons and plots, and execution through an interactive A100 node with explicit disconnection. This authorizes analysis of existing artifacts, not additional training, test-based recipe selection, or scientific phase-gate approval. |
 
 ## Decisions pending
 

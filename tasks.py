@@ -1162,13 +1162,39 @@ def publication_bootstrap(
     first: str,
     second: str,
     output: str = "logs/publication/bootstrap.json",
-    replicates: int = 2000,
-    seed: int = 777,
+    replicates: int | None = None,
+    seed: int | None = None,
+    weighting: str | None = None,
 ) -> None:
-    """Compute a paired COD-cluster bootstrap from aligned prediction artifacts."""
+    """Compute paired metric intervals from aligned prediction artifacts."""
     from codllm.evaluation.analysis import paired_bootstrap
+    from codllm.evaluation.bootstrap import Config
 
-    print(paired_bootstrap(first, second, output, replicates, seed))
+    print(
+        paired_bootstrap(
+            first, second, output,
+            Config.replicates if replicates is None else int(replicates),
+            Config.seed if seed is None else int(seed),
+            Config.weighting if weighting is None else weighting,
+        )
+    )
+
+
+@task(name="analyze")
+def publication_analyze(
+    ctx: Context, root: str, output: str, replicates: int | None = None, seed: int | None = None,
+    weighting: str | None = None,
+) -> None:
+    """Audit frozen label coverage and bootstrap all completed Phase 1 comparisons."""
+    from codllm.evaluation.bootstrap import Config as BootstrapConfig
+    from codllm.evaluation.campaign_analysis import Config, analyze_publication
+
+    bootstrap = BootstrapConfig(
+        replicates=BootstrapConfig.replicates if replicates is None else int(replicates),
+        seed=BootstrapConfig.seed if seed is None else int(seed),
+        weighting=BootstrapConfig.weighting if weighting is None else weighting,
+    )
+    analyze_publication(Path(root), Path(output), Config(bootstrap=bootstrap))
 
 
 namespace = Collection()
@@ -1188,6 +1214,7 @@ publication.add_task(publication_audit_metadata_pairing)
 publication.add_task(publication_approve)
 publication.add_task(publication_report)
 publication.add_task(publication_bootstrap)
+publication.add_task(publication_analyze)
 publication.add_task(publication_prepare_continuation)
 namespace.add_collection(publication)
 

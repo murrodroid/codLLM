@@ -11,6 +11,7 @@ Updated: 2026-10-20. **Phase 1 complete**, confirmed by Lucas.
 | Phase 1: COD+age+sex, patience 10 | 8/8 complete; last finished 12 October. |
 | Phase 1: COD+age+sex, patience 20 | 8/8 complete; last finished 17 October, 19:53 CEST. |
 | Checkpoint consistency | All eight continuation windows recovered for each input setting. |
+| Paired prediction uncertainty | Completed 20 October on interactive A100 job `29760834`: 32 selected models, 144 paired comparisons, 10,000 Bayesian and 10,000 ordinary group-bootstrap draws per model; six reported metrics plus macro-support sensitivity. |
 | Phase 2a: Copenhagen/Belgium pilots | Submitted 20 October as LSF `29760677[1-4]`, patience 20 / max 120. Three running, one queued at the post-submission check. No results recorded. |
 | Phase 2b: remaining source folds | Six runs configured with the same recipe; not submitted. |
 | Phase 3 onward | No results recorded. |
@@ -65,3 +66,12 @@ no resume requests remain. W&B status was not independently queried.
 
 [Earlier results, completion times, and consistency summaries](reference/results.md).
 The [decision log](publication_decisions.md) records selection separately from run completion.
+
+## Paired comparison intervals
+
+[Interval tables and methods](reference/paired_intervals.md) retain the full comparison inventory;
+[updated plots](publication_results.md#paired-uncertainty) show Bayesian and ordinary-bootstrap
+intervals. All 32 selected point scores were reproduced from checksum-verified validation predictions.
+Six continuations retained identical parent predictions and have exactly zero paired differences.
+The analysis does not include training-seed uncertainty, validation-selection correction, or
+multiplicity adjustment. The legacy row-split curves lack the original paired artifacts needed for intervals.

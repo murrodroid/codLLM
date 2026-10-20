@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from codllm.evaluation.artifacts import write_json
-from codllm.evaluation.scoring import reference_macro_f1
-from codllm.evaluation.splitting import linked_groups
+from codllm.evaluation.bootstrap import (
+    Config,
+    align_predictions,
+    bootstrap_scores,
+    intervals,
+)
 
 
 def summarize_runs(root: str, output: str) -> pd.DataFrame:
@@ -29,72 +32,34 @@ def summarize_runs(root: str, output: str) -> pd.DataFrame:
 
 
 def paired_bootstrap(
-    first: str, second: str, output: str, replicates: int = 2000, seed: int = 777
+    first: str,
+    second: str,
+    output: str,
+    replicates: int = Config.replicates,
+    seed: int = Config.seed,
+    weighting: str = Config.weighting,
 ) -> dict:
-    """Bootstrap paired macro-F1 differences using shared global COD groups, conditional on the models."""
-    if replicates < 2:
-        raise ValueError("At least two bootstrap replicates are required.")
-    a, b = pd.read_parquet(first), pd.read_parquet(second)
-    if a["row_uid"].duplicated().any() or b["row_uid"].duplicated().any():
-        raise ValueError("Paired artifacts must contain unique row identities.")
-    if set(a["row_uid"]) != set(b["row_uid"]):
-        raise ValueError("Bootstrap requires predictions on exactly the same rows.")
-    b = b.set_index("row_uid").loc[a["row_uid"]].reset_index()
-    targets = [set(value) for value in a["labels"]]
-    if (
-        targets != [set(value) for value in b["labels"]]
-        or a["cod_hash"].tolist() != b["cod_hash"].tolist()
-        or a["source_id"].tolist() != b["source_id"].tolist()
-    ):
-        raise ValueError("Paired row labels, sources, or COD identities differ.")
-    p = [set(value) for value in a["predictions"]]
-    q = [set(value) for value in b["predictions"]]
-    if "record_id" not in a:
-        a["record_id"] = ""
-    group_ids = linked_groups(a.rename(columns={"cod_hash": "cod_key"}), by_cod=True)
-    grouped = list(
-        pd.Series(np.arange(len(a))).groupby(group_ids, sort=True).apply(np.asarray)
+    """Bootstrap paired metric differences with fixed macro support and support sensitivity."""
+    config = Config(replicates=replicates, seed=seed, weighting=weighting)
+    a = align_predictions(pd.read_parquet(first))
+    b = align_predictions(pd.read_parquet(second), a)
+    first_point, first_samples, diagnostics = bootstrap_scores(a, config)
+    second_point, second_samples, _ = bootstrap_scores(b, config)
+    metrics = intervals(
+        first_point - second_point, first_samples - second_samples, config
     )
-    if len(grouped) < 2:
-        raise ValueError("At least two independent COD groups are required.")
-    source_values = a["source_id"].to_numpy()
-    sources = sorted(set(source_values))
-    rng = np.random.default_rng(seed)
-
-    def difference(indices: np.ndarray) -> float:
-        """Recompute equal-archive macro F1 within a group-resampled panel."""
-        values = []
-        for source in sources:
-            selected = indices[source_values[indices] == source]
-            if not len(selected):
-                continue
-            labels = [targets[i] for i in selected]
-            values.append(
-                reference_macro_f1([p[i] for i in selected], labels)
-                - reference_macro_f1([q[i] for i in selected], labels)
-            )
-        return float(np.mean(values))
-
-    samples = [
-        difference(
-            np.concatenate(
-                [
-                    grouped[index]
-                    for index in rng.integers(len(grouped), size=len(grouped))
-                ]
-            )
-        )
-        for _ in range(replicates)
-    ]
+    primary = metrics["source_mean_macro_f1_ref"]
     payload = {
-        "difference_first_minus_second": difference(np.arange(len(a))),
-        "ci95": np.quantile(samples, [0.025, 0.975]).tolist(),
-        "groups": len(grouped),
-        "rows": len(a),
+        "difference_first_minus_second": primary["estimate"],
+        "ci95": primary["ci95"],
+        **diagnostics,
         "replicates": replicates,
         "seed": seed,
         "cluster_unit": "Connected COD and source-record groups",
         "estimand": "Conditional equal-source reference-supported macro F1; not training-seed or future-archive variance.",
+        "weighting": weighting,
+        "macro_support": "Published metric support; positive Bayesian weights preserve all observed labels.",
+        "metrics": metrics,
     }
     write_json(Path(output), payload)
     return payload

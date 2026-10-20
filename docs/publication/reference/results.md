@@ -159,6 +159,13 @@ paths, checksums, selected scores, and final scheduler evidence.
 - [COD-only consistency](checkpoint_consistency_input.json): eight windows; recovered 5 October.
 - [Metadata consistency and completion evidence](metadata_checkpoint_consistency_input.json):
   eight windows and all 16 parent/child completion records; recovered 19 October.
+- [Paired Bayesian intervals](paired_bootstrap.json) and
+  [ordinary-bootstrap sensitivity](paired_bootstrap_multinomial.json): all 32 Phase 1 selected models,
+  144 comparisons, 10,000 draws per method, recovered on HPC on 20 October.
+- [Complete paired interval tables and methods](paired_intervals.md), with
+  [Bayesian CSV](paired_intervals.csv) and [ordinary-bootstrap CSV](paired_intervals_multinomial.csv).
+- [Frozen label coverage](label_coverage.json): historical-training label overlap, separately from
+  masterlist/adaptation exposure; summarized in [audits](audits.md#frozen-training-label-coverage--2026-10-20).
 
 Both ledgers contain scalar histories and provenance. Private row-level predictions and text-bearing
 manifests remain in each HPC run's `publication/` directory.
@@ -170,11 +177,15 @@ Examples for choosing the paper's presentation, not a recipe-selection decision.
 The grouped-COD figures use both completed patience-20 campaigns, seed 777, and the same recipe order.
 All metrics refer to the macro-F1-selected checkpoint. Equal-source reference macro F1 is a validation
 screening metric, not held-out-source performance. Zoomed axes show small differences explicitly;
-no seed confidence intervals or significance claims are implied.
+the new intervals are conditional on the selected models and observed archive panel, not seed intervals.
+They do not correct validation selection or multiple comparisons.
 
 ### Selected scores
 
 Each line joins COD-only and COD+age+sex scores for the same recipe. Use this for the performance overview.
+Whiskers are 95% Bayesian cluster-bootstrap score intervals. Points retain the original selected scores;
+nonlinear F1 can make the bootstrap distribution asymmetric or shifted, so a percentile interval need
+not contain the original point. Use paired differences, rather than overlap of score intervals, for comparisons.
 
 ![Selected validation scores](figures/selected.png)
 
@@ -183,8 +194,22 @@ Each line joins COD-only and COD+age+sex scores for the same recipe. Use this fo
 Change one factor while holding the other two fixed. Positive values favor the named change;
 the four recipe backgrounds are not independent seed replicates. The floor change includes
 upsample-copy perturbations. The input comparison concerns age and sex together, not their separate effects.
+Solid intervals are paired 95% Bayesian intervals; dashed intervals show ordinary multinomial-bootstrap
+sensitivity. Both methods share each draw's connected-COD/linked-record weights between models.
 
 ![Matched recipe differences](figures/differences.png)
+
+![Matched patience-10 recipe differences](figures/differences_p10.png)
+
+### Input and patience comparisons
+
+Metadata minus COD-only is paired within the same recipe and patience policy. Patience 20 minus 10
+compares each continuation against its own completed parent. Identical retained checkpoints have zero
+paired differences. Positive values favor adding metadata or the continuation, respectively.
+
+![Matched input differences](figures/metadata_differences.png)
+
+![Parent versus continuation](figures/patience_differences.png)
 
 ### Checkpoint context
 
@@ -200,5 +225,8 @@ Use this as supporting detail; it does not replace selected-checkpoint reporting
 Keep the legacy row-split curves separate. Lines connect tested settings without fitting a curve.
 Floor and pretraining-dose scores retain provisional history-peak provenance and need selected-checkpoint
 verification before final publication.
+The retained legacy HPC roots contain no paired prediction exports or frozen partition manifests.
+Their uncertainty is explicitly unavailable; no fresh split was reconstructed and no interval was invented.
+[Artifact inventory](bootstrap_artifact_inventory.json).
 
 ![Legacy response curves](figures/legacy.png)

@@ -144,7 +144,46 @@ and prediction exports before updating [progress](../publication_progress.md).
 Private predictions and text-bearing manifests stay under the run's `publication/` directory.
 
 For aligned prediction files, `publication.bootstrap --first <parquet> --second <parquet>` computes
-paired COD/linked-record bootstrap intervals; it does not estimate training-seed variance.
+paired COD/linked-record bootstrap intervals for pooled macro F1, micro F1, equal-source reference macro
+F1, exact match, sample F1, and block micro F1. Defaults: 10,000 Bayesian draws, seed 777.
+Use `--weighting multinomial` for ordinary resampling. Bayesian output is a 95% equal-tail Bayesian
+interval; multinomial output is a nominal percentile confidence interval. Neither includes training-seed
+variance, validation-selection bias, or uncertainty over new archives.
+
+### Coverage and all Phase 1 comparisons
+
+Use an [interactive A100 shell](../../hpc_connection.md#interactive-a100-analysis) for the following analysis,
+with `hpc/env.sh` sourced. This reads frozen original manifests and saved selected validation predictions;
+it performs no training or test-set model evaluation.
+
+```shell
+uv run --no-sync invoke publication.analyze \
+  --root "$RUN_STORAGE_DIR/checkpoints/publication-v1" \
+  --output "$RUN_STORAGE_DIR/analysis/publication-20261020/bayesian" \
+  --weighting bayesian
+uv run --no-sync invoke publication.analyze \
+  --root "$RUN_STORAGE_DIR/checkpoints/publication-v1" \
+  --output "$RUN_STORAGE_DIR/analysis/publication-20261020/multinomial" \
+  --weighting multinomial
+```
+
+The campaign comprises 112 within-campaign recipe pairs, 16 matched metadata comparisons, and 16
+patience comparisons. Run outputs include `coverage.json`, `bootstrap.json`, `paired_intervals.csv`,
+`paired_intervals.md`, and private cached `draws/`. Draw caches are keyed by prediction checksum,
+settings, and implementation checksum; a different implementation requires a fresh output directory.
+The 2026-10-20 execution used an isolated source copy under the analysis root to preserve unrelated
+changes in the active HPC checkout.
+To reuse that copy, set `PYTHONPATH="$RUN_STORAGE_DIR/analysis/publication-20261020/source/src"` and
+add `--search-root "$RUN_STORAGE_DIR/analysis/publication-20261020/source"` immediately after `invoke`.
+
+Retain original archives and predictions on HPC. The publication reference contains aggregate-only
+copies: `label_coverage.json`, `paired_bootstrap.json`, `paired_bootstrap_multinomial.json`,
+and the corresponding paired interval tables. The Bayesian weights retain observed rare-label support;
+ordinary resamples can omit rare codes. Both reports include fixed-support macro sensitivity metrics.
+See [paired methods and intervals](paired_intervals.md) and
+[ordinary-bootstrap sensitivity](paired_intervals_multinomial.md). These are exploratory, individual
+intervals without multiplicity adjustment. Exit the A100 shell
+after the analysis and verify that the interactive LSF job ended.
 
 ## Checkpoint consistency
 
@@ -169,8 +208,10 @@ Regenerate the [figure examples](results.md#figure-examples) locally:
 uv run --no-sync python docs/publication/reference/figures/create.py
 ```
 
-This writes four PNG previews and editable SVGs beside the script. It reads the two reviewed
-checkpoint ledgers and the legacy tables in `results.md`; no HPC access or training is needed.
+This writes eight PNG previews and editable SVGs beside the script. It reads the two reviewed
+checkpoint ledgers, aggregate bootstrap/coverage ledgers, and legacy tables in `results.md`;
+no HPC access or training is needed. Checkpoint-context dots remain descriptive.
+Legacy curves explicitly mark intervals unavailable where paired prediction/partition artifacts are absent.
 
 ## Audits and continuations
 
