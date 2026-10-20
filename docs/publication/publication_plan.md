@@ -1,6 +1,6 @@
 # Publication plan
 
-Updated: 2026-10-19. Phase 1 is complete.
+Updated: 2026-10-20. Phase 1 is complete; the Phase 2 pilot recipe is approved.
 [Progress](publication_progress.md) · [Decisions](publication_decisions.md) · [Commands](reference/commands.md)
 
 Study how training choices affect historical cause-of-death coding on new descriptions and new archives.
@@ -45,7 +45,7 @@ The five archives are Amsterdam, Copenhagen, Madrid, Belgium, and Ipswich. Revie
 
 | Phase | Work | Planned size |
 |---|---|---:|
-| 2 | Matched 4-/48-epoch pretraining recipes on five held-out archives. Confirm Copenhagen/Belgium pilots, then Amsterdam/Madrid/Ipswich. | 4 pilot + 6 remaining runs |
+| 2 | Plain fine-tuning versus a Phase 1-selected enhanced recipe on five held-out archives. Copenhagen/Belgium pilots, then Amsterdam/Madrid/Ipswich. | 4 pilot + 6 remaining runs |
 | 3 | Selected recipe under the matched row split; no-pretraining and no-synthesis controls on two confirmed source folds. | 1 + 4 runs |
 | 3 | Normalized-COD lookup, character-linear multilabel, and masterlist-retrieval baselines on grouped COD, row, and two source folds. | 12 fits |
 | 4 | Both recipes at 25% and 40% of the historical cohort, trained to convergence. | 4 runs |
@@ -58,14 +58,59 @@ Existing optional specifications cover metadata portability and removal of base 
 (grouped COD and two source folds, three runs each). They require a separate decision; reuse a completed
 grouped run when its recipe and stopping policy match. Bayesian search is outside the current sequence.
 
-### Phase 2
+### Phase 2: does the enhanced recipe generalize better than plain fine-tuning?
 
-Choose a shared floor/synthesis pair and retain both pretraining doses. The candidate TOMLs still use
-provisional floor 0 / synthesis .30 with 4 and 48 pretraining epochs. Confirm input fields and stopping
-policy before submission; the Phase 1 continuation policy has not been applied to later TOMLs.
+Compare two fresh training arms on each held-out archive:
 
-All five source folds use internal validation from the training archives for checkpoint selection.
-Freeze winner and runner-up after the complete paired panel. Development folds remain development evidence.
+| Arm | Training recipe |
+|---|---|
+| Plain ("nothing") | Same pretrained FLAN-T5-base, directly fine-tuned on natural historical training rows. No additional masterlist pretraining, floor upsampling, synthetic multi-COD generation, base character perturbation, or masterlist injection. |
+| Selected | Enhanced recipe chosen from Phase 1 before viewing Phase 2 outcomes. Retain its pretraining, balancing, synthesis, and perturbation settings as a package. |
+
+"Nothing" does not mean random initialization or removal of real multi-COD rows. Both arms retain the
+same cleaning, label harmonization/standardization, label-order handling, decoding, input fields,
+original historical partitions, model/data seeds 777, optimizer, and fine-tuning stopping policy.
+Original grouped-COD splits precede augmentation. Confirm identical original manifest membership
+within each archive pair before interpreting scores; augmented training sets intentionally differ.
+
+Freeze the recipe once for all five folds. Phase 2a submits Copenhagen and Belgium (four runs);
+Phase 2b submits Amsterdam, Madrid, and Ipswich (six runs), without retuning after pilot scores.
+The pilots check execution and coverage, not which recipe to send to the remaining folds.
+Use `source_transfer_pilot.toml` and `source_transfer_validation.toml`; fresh outputs live under
+`checkpoints/publication-v1/source-comparison/`. These replace the planned 4-/48-epoch primary contrast,
+not the completed Phase 1 evidence. Both doses remain available for a separately reviewed follow-up.
+
+`source_comparison_selected.toml` inherits `candidate_winner.toml`; the plain arm inherits the same
+shared settings and disables only the declared enhancements. Lucas approved the pilot recipe on
+2026-10-20: floor 0 / synthesis .30 / pretraining 48, COD-only, patience 20, and the original
+120-epoch cosine schedule. This selects the pilot recipe, not an overall Phase 1 winner.
+Set shared Phase 2 overrides in `source_comparison_selected.toml`;
+do not edit completed Phase 1 specs or silently change downstream candidate recipes.
+
+Select each checkpoint using only internal grouped-COD validation `macro_f1` on the remaining archives.
+Disable per-epoch held-out evaluation and internal final test evaluation; evaluate the full natural
+held-out archive with the selected checkpoint. Archive holdout does not guarantee every description is
+unseen elsewhere: report seen/unseen-COD slices separately.
+
+Report both arm scores and selected-minus-plain differences for each archive, and the unweighted mean
+of the five `pub_v1_macro_f1_ref` scores as the primary aggregate. Include micro F1, exact match, sample
+F1, block metrics, rare-code frequency strata, natural multi-COD, and supported demographic/transfer
+slices with counts. Use the common original-history reference for paired comparisons. Strict
+all-adaptation cross-lingual eligibility can differ because only one arm receives masterlist exposure;
+report those support differences, not a paired gain on unequal subsets. Demographic gaps are descriptive
+and may reflect different label/source composition, not solely model bias.
+
+Use aligned predictions for within-archive paired COD/linked-record bootstrap intervals; these are
+conditional on the trained models, not training-seed confidence intervals. Show all five archive deltas,
+not just the pooled score. Report actual pretraining/fine-tuning steps and GPU-hours: equal epoch limits
+are not equal compute when training sets and pretraining differ. Retain B-9 through B consistency as a
+secondary diagnostic, not a substitute for held-out performance.
+
+This estimates the benefit of the complete recipe, not the causal effect of each enhancement.
+Small differences do not establish equivalence; define any practical near-tie margin before launch.
+The five-source panel remains development evidence if used for recipe selection; reserve external
+assessment. After the panel, review the winning recipe and comparator and explicitly migrate later-phase
+TOMLs: their existing winner/runner-up inheritance still represents the old candidate pair.
 
 ### Phase 3
 

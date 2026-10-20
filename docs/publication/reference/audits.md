@@ -45,3 +45,20 @@ Current study choices are recorded in [decisions](../publication_decisions.md).
 | Inventory JSON | `87d67dcae7fb618f0fa31ee4a7ce9a600bbff13fe00a29e1881d958212d15746` |
 | Split JSON | `01d8c035ab78da0e31ef8ed4f6fafbb85021a321c168521d825fe726dbea0aba` |
 | Split Markdown | `10f49d482009fd8e51e416c199af0797a39cb687762925b4aacbe51388095952` |
+
+## Phase 2 pilot preparation — 2026-10-20
+
+All four HPC data builds completed. A read-only comparison of the prepared Parquet files matched
+original train, validation, test, and full holdout records between the selected/plain arms, including
+row IDs, source IDs, normalized COD, text, and unordered label sets. Row IDs were unique within each
+partition; normalized-COD overlap between internal train/validation/test partitions was zero.
+Held-out sources and `historic_strings_en_2024` were absent from internal partitions.
+
+| Held-out archive | Original train | Validation | Test | Full holdout | Selected / plain cache keys |
+|---|---:|---:|---:|---:|---|
+| Copenhagen | 919,849 | 50,505 | 52,503 | 501,855 | `4cca25d527d85122` / `3705c196dfbf8ab7` |
+| Belgium | 1,334,441 | 74,117 | 74,117 | 42,037 | `dd8243ce160b3909` / `766a9f04a7b4306c` |
+
+Caches are under `/work3/s234805/codllm/data/processed/publication-v1.splits/`.
+This check establishes original-partition pairing, not absence of augmented lexical overlap or
+adequate transfer-slice support. It does not replace the immutable Phase 0c snapshots above.

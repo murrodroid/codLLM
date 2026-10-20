@@ -106,6 +106,106 @@ def test_metadata_interaction_matches_original_recipe() -> None:
         assert "WANDB_RUN_ID" not in runtime
 
 
+def test_source_comparison_pairs_are_matched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Five plain/selected pairs differ only in declared enhancements and isolated outputs."""
+    allowed = {
+        "CODLLM_PRETRAIN_ENABLED",
+        "CODLLM_BALANCE_STRATEGY",
+        "CODLLM_BALANCE_FLOOR",
+        "CODLLM_MULTICOD_SYNTHETIC_RATIO",
+        "CODLLM_BASE_PERTURBATION_RATE",
+        "CODLLM_MASTERLIST_INJECT_ENABLED",
+        "CODLLM_OUTPUT_DIR",
+    }
+    sources = set()
+    outputs = set()
+    for stage in ("pilot", "validation"):
+        spec = load_experiment_spec(f"runs/publication/source_transfer_{stage}.toml")
+        runs = spec.expanded_runs()
+        for selected, plain in zip(runs[::2], runs[1::2], strict=True):
+            differences = {
+                key for key in selected.env.keys() | plain.env.keys()
+                if selected.env.get(key) != plain.env.get(key)
+            }
+            assert differences <= allowed
+            assert {"CODLLM_PRETRAIN_ENABLED", "CODLLM_OUTPUT_DIR"} <= differences
+            assert "variant-selected-" in selected.name and "variant-plain-" in plain.name
+            source = selected.env["CODLLM_HOLD_OUT_DATASET"]
+            assert source == plain.env["CODLLM_HOLD_OUT_DATASET"] and source not in sources
+            sources.add(source)
+            for run, arm in ((selected, "selected"), (plain, "plain")):
+                output = run.env["CODLLM_OUTPUT_DIR"]
+                assert f"/source-comparison/{arm}/" in output and output not in outputs
+                outputs.add(output)
+                assert run.env["CODLLM_PUBLICATION_GATE"] == "source_pair"
+                assert run.env["CODLLM_EVALUATION_PROTOCOL"] == "cod"
+                assert run.env["CODLLM_SEED"] == run.env["CODLLM_DATA_SEED"] == "777"
+                assert run.env["CODLLM_NUM_TRAIN_EPOCHS"] == "120"
+                assert run.env["CODLLM_EARLY_STOPPING_PATIENCE"] == "20"
+                assert run.env["CODLLM_SAVE_STRATEGY_BEST_METRIC"] == "macro_f1"
+                runtime = run.env_with_runtime_metadata(spec)
+                assert runtime["WANDB_RUN_GROUP"].startswith("publication_v1_source_comparison_")
+                assert "WANDB_RUN_ID" not in runtime
+                with monkeypatch.context() as context:
+                    for key, value in run.env.items():
+                        context.setenv(key, value)
+                    cfg = config_from_env()
+                    assert not cfg.continuation_source_run_dir
+                    assert cfg.hold_out_evaluate_per is None and not cfg.final_test_eval_enabled
+                    assert cfg.label_harmonization_enabled and cfg.label_standardization_enabled
+                    if arm == "plain":
+                        assert not cfg.pretrain_enabled and not cfg.masterlist_inject_enabled
+                        assert cfg.balance_strategy == "none" and cfg.balance_floor == 0
+                        assert cfg.multicod_synthetic_ratio == 0 and cfg.base_perturbation_rate == 0
+    assert sources == {
+        "copenhagen_may2025", "belgium_1920_1930", "amsterdam_1854_1926",
+        "madrid_1905_1927", "ipswich_1871_1911",
+    }
+    assert len(outputs) == 10
+
+
+def test_source_comparison_original_partitions_match(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Actual Phase 2 configs retain identical natural partitions on a synthetic CPU fixture."""
+    import pandas as pd
+
+    from codllm.data import DataHandler
+    from codllm.evaluation.splitting import validate_group_integrity
+
+    sources = [
+        "copenhagen_may2025", "belgium_1920_1930", "amsterdam_1854_1926",
+        "madrid_1905_1927", "ipswich_1871_1911", "historic_strings_en_2024",
+    ]
+    data = pd.DataFrame({
+        "source_id": [sources[i % len(sources)] for i in range(360)],
+        "record_id": [str(i) for i in range(360)],
+        "text": [f"description {i // 3}" for i in range(360)],
+        "label": ["A00.000" if (i // len(sources)) % 2 else "B00.000" for i in range(360)],
+    })
+    for stage in ("pilot", "validation"):
+        runs = load_experiment_spec(f"runs/publication/source_transfer_{stage}.toml").expanded_runs()
+        for selected, plain in zip(runs[::2], runs[1::2], strict=True):
+            partitions = []
+            for run in (selected, plain):
+                with monkeypatch.context() as context:
+                    for key, value in run.env.items():
+                        context.setenv(key, value)
+                    cfg = config_from_env()
+                cfg.data_processed_dir = str(tmp_path / "processed")
+                cfg.output_dir = str(tmp_path / run.name)
+                splits, _ = DataHandler(cfg).prepare_original_splits(data)
+                validate_group_integrity(splits, cfg)
+                assert set(splits.holdout["source_id"]) == {cfg.hold_out_dataset}
+                assert len(splits.holdout) == 60
+                for part in (splits.original_train, splits.val, splits.test):
+                    assert not part.empty
+                    assert not set(part["source_id"]) & {cfg.hold_out_dataset, "historic_strings_en_2024"}
+                partitions.append(splits)
+            for scope in ("original_train", "val", "test", "holdout"):
+                pd.testing.assert_frame_equal(getattr(partitions[0], scope), getattr(partitions[1], scope))
+
+
 def test_metadata_continuation_changes_only_patience(monkeypatch: pytest.MonkeyPatch) -> None:
     """Metadata branches retain their parent recipe and use isolated continuation identities."""
     from dataclasses import asdict

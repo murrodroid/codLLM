@@ -410,7 +410,22 @@ def test_baselines_use_original_partitions(
     assert (Path(cfg.output_dir) / "publication" / "baseline.joblib").exists()
 
 
-def test_phase_gate_tracks_candidate_edits(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("filename", "original", "replacement"),
+    [
+        ("candidate_winner.toml", "CODLLM_BALANCE_FLOOR = 0", "CODLLM_BALANCE_FLOOR = 450"),
+        ("source_comparison_plain.toml", "CODLLM_BASE_PERTURBATION_RATE = 0", "CODLLM_BASE_PERTURBATION_RATE = 0.1"),
+        ("source_comparison_selected.toml", "CODLLM_EARLY_STOPPING_PATIENCE = 20",
+         "CODLLM_EARLY_STOPPING_PATIENCE = 10"),
+        ("source_transfer_pilot.toml", 'CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"',
+         'CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"'),
+        ("source_transfer_validation.toml", 'CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"',
+         'CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"'),
+    ],
+)
+def test_phase_gate_tracks_candidate_edits(
+    tmp_path: Path, filename: str, original: str, replacement: str
+) -> None:
     """Later stages cannot run with absent approvals or edited candidate settings."""
     import shutil
 
@@ -425,12 +440,9 @@ def test_phase_gate_tracks_candidate_edits(tmp_path: Path) -> None:
         validate_publication_config(cfg)
     approve_stage("source_pair", cfg.publication_decisions_path, "Fixture review")
     validate_publication_config(cfg)
-    candidate = root / "publication" / "candidate_winner.toml"
-    candidate.write_text(
-        candidate.read_text().replace(
-            "CODLLM_BALANCE_FLOOR = 0", "CODLLM_BALANCE_FLOOR = 450"
-        )
-    )
+    candidate = root / "publication" / filename
+    assert original in candidate.read_text()
+    candidate.write_text(candidate.read_text().replace(original, replacement))
     with pytest.raises(ValueError, match="stale"):
         validate_publication_config(cfg)
 

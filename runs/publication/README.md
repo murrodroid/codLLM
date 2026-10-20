@@ -4,8 +4,9 @@
 [Build/submission commands](../../docs/publication/reference/commands.md).
 [Completed data audits](../../docs/publication/reference/audits.md).
 
-Phase 1 is complete. Confirm the candidate pair, source pilots, input fields, and stopping policy
-before Phase 2. Updating documentation does not change the TOMLs.
+Phase 1 is complete. Phase 2 now compares plain fine-tuning with a selected enhanced recipe across
+five held-out archives. Lucas approved the four Copenhagen/Belgium pilots on 2026-10-20 with patience 20.
+Only the Phase 2 source specs have been migrated to this contrast.
 
 ## Legacy versus v1
 
@@ -40,8 +41,8 @@ Other phase TOMLs remain unchanged; review stopping policy before subsequent mat
 | 1 metadata | `interaction_metadata.toml` | 8 fresh COD+age+sex runs, patience 10 |
 | 1 metadata continuation | `interaction_metadata_patience20.toml` | 8 linked COD+age+sex branches, patience 20 |
 | 1 | `screening_controls.toml` | 2 |
-| 2 | `source_transfer_pilot.toml` | 4 |
-| 2 | `source_transfer_validation.toml` | 6 |
+| 2a plain / selected | `source_transfer_pilot.toml` | 4 |
+| 2b plain / selected | `source_transfer_validation.toml` | 6 |
 | 3 | `row_split_confirmation.toml` | 1 |
 | 3 | `source_ablation_controls.toml` | 4 |
 | 3 | `baselines_grouped.toml`, `baselines_row.toml` | 3 each |
@@ -71,18 +72,27 @@ the later candidate-only `metadata_confirmation.toml`; reuse a matching complete
 than unnecessarily retraining it when the later recipe/stopping policy matches.
 
 `candidate_winner.toml` currently holds floor 0, fine-tuning synthesis .30, and 48 full-code pretraining
-epochs; `candidate_runner_up.toml` is the matched 4-epoch alternative. Both are provisional.
-Keep both doses through the paired source panel; final recipe selection is recorded separately.
+epochs; `candidate_runner_up.toml` is the matched 4-epoch alternative. Both remain provisional;
+later-phase TOMLs still inherit this previous pair and require review after Phase 2.
+
+Phase 2 uses `source_comparison_selected.toml` (inherits the candidate selected for the pilots) and
+`source_comparison_plain.toml` (inherits the selected arm, disables task pretraining, floor balancing,
+synthesis, base perturbation, and masterlist injection). Keep the pretrained backbone, real multi-COD
+rows, cleaning, label-order handling, input fields, optimizer, and internal grouped-COD partitions matched.
+Put shared Phase 2 overrides in `source_comparison_selected.toml`; current values are COD-only,
+patience 20, max 120, explicitly approved on 2026-10-20. The original cosine schedule is unchanged.
 
 The source pilots are Copenhagen and Belgium; the remaining panel covers Amsterdam, Madrid, and Ipswich.
-Choose structural settings after Phase 1, then freeze winner/runner-up after all five paired source folds.
-Update candidate files centrally; downstream specs inherit them. Do not submit the candidate files as
-extra runs when the required cell already exists in the screening grid.
+Freeze the Phase 1-selected enhanced recipe before pilots and keep it unchanged across all five folds.
+New output roots use `source-comparison/{selected,plain}/<archive>/` with fresh training/W&B identities.
+The two recipe definition files are not extra jobs; launch only the pilot and remaining-fold specs.
+Checkpoint selection uses internal validation only. Report the whole-recipe difference, not individual
+component effects; see the [Phase 2 design](../../docs/publication/publication_plan.md#phase-2-does-the-enhanced-recipe-generalize-better-than-plain-fine-tuning).
 
 `invoke publication.approve --stage <source_pair|recipe|reduced|final> --note "..."` records a reviewed
 decision in `decisions.json`. Submission and runtime verify fingerprints of inherited candidate settings,
-language curation, and the reduced protocol. Edits invalidate older approvals. These checks do not
-inspect results or choose winners: review the evidence before recording approval.
+both Phase 2 launch recipes, their language curation, and the reduced protocol. Edits invalidate older
+approvals. These checks do not inspect results or choose winners: review the evidence before recording approval.
 Use new output roots if changing a previously executed recipe; training-contract guards reject
 incompatible resume attempts.
 

@@ -14,12 +14,49 @@ uv sync
 Sync after dependency changes; otherwise use `uv run --no-sync`. From the laptop,
 `uv run connect --lucas` opens the shared connection; `--status` checks it.
 
-## Build and submit one stage
+## Phase 2: plain versus selected
+
+Ten fresh training runs, split into two submissions. Lucas approved the four pilots on 2026-10-20:
+`source_comparison_selected.toml` uses floor 0, synthesis .30, pretraining 48, COD-only, patience 20,
+max 120 and the original cosine schedule. The remaining six jobs require a separate launch request.
+`source_comparison_plain.toml` disables the enhancements while inheriting the same shared policy.
+These are recipe definitions, not two extra jobs. Recipe edits require renewed review and approval.
+
+### Phase 2a: Copenhagen and Belgium — four jobs
+
+Submitted on 2026-10-20 as `29760677[1-4]`. The commands below record the launch procedure;
+do not submit another copy while these jobs are active.
+
+```shell
+uv run --no-sync invoke experiments.plan --config runs/publication/source_transfer_pilot.toml
+uv run --no-sync invoke hpc.build --config runs/publication/source_transfer_pilot.toml --profile h100 --lucas
+uv run --no-sync invoke hpc.submit --config runs/publication/source_transfer_pilot.toml --profile h100 --lucas --duration 1w --dry-run
+uv run --no-sync invoke hpc.submit --config runs/publication/source_transfer_pilot.toml --profile h100 --lucas --duration 1w
+```
+
+### Phase 2b: Amsterdam, Madrid, and Ipswich — six jobs
+
+After checking pilot execution and original-partition pairing, keep the recipes unchanged.
+Do not select or retune them using pilot holdout scores.
+
+```shell
+uv run --no-sync invoke experiments.plan --config runs/publication/source_transfer_validation.toml
+uv run --no-sync invoke hpc.build --config runs/publication/source_transfer_validation.toml --profile h100 --lucas
+uv run --no-sync invoke hpc.submit --config runs/publication/source_transfer_validation.toml --profile h100 --lucas --duration 1w --dry-run
+uv run --no-sync invoke hpc.submit --config runs/publication/source_transfer_validation.toml --profile h100 --lucas --duration 1w
+```
+
+W&B groups: `publication_v1_source_comparison_pilot` and `publication_v1_source_comparison_remaining`.
+Each archive has `selected-<archive>` and `plain-<archive>` variants. Outputs use the new
+`$RUN_STORAGE_DIR/checkpoints/publication-v1/source-comparison/{selected,plain}/<archive>/` roots.
+Neither arm resumes Phase 1 weights. Preserve original manifests and selected holdout prediction exports.
+
+## Build and submit another stage
 
 After the required decision and approval, choose one specification from the table:
 
 ```shell
-PUBLICATION_SPEC=runs/publication/source_transfer_pilot.toml
+PUBLICATION_SPEC=runs/publication/row_split_confirmation.toml
 uv run --no-sync invoke hpc.build --config "$PUBLICATION_SPEC" --profile h100 --lucas
 uv run --no-sync invoke hpc.submit --config "$PUBLICATION_SPEC" --profile h100 --lucas --duration 1w --dry-run
 uv run --no-sync invoke hpc.submit --config "$PUBLICATION_SPEC" --profile h100 --lucas --duration 1w
@@ -33,8 +70,8 @@ All specification paths below are relative to `runs/publication/`.
 
 | Phase | Specification | Cells | Approval |
 |---|---|---:|---|
-| 2 pilots | `source_transfer_pilot.toml` | 4 | `source_pair` |
-| 2 remaining folds | `source_transfer_validation.toml` | 6 | `source_pair` |
+| 2a plain / selected pilots | `source_transfer_pilot.toml` | 4 | `source_pair` |
+| 2b plain / selected remaining folds | `source_transfer_validation.toml` | 6 | `source_pair` |
 | 3 row comparison | `row_split_confirmation.toml` | 1 | `recipe` |
 | 3 source ablations | `source_ablation_controls.toml` | 4 | `recipe` |
 | 3 baselines | `baselines_grouped.toml`, `baselines_row.toml`, `baselines_copenhagen.toml`, `baselines_belgium.toml` | 3 each | `recipe` |
@@ -52,7 +89,9 @@ Completed specifications: `smoke.toml`, `interaction_confirmation.toml`, `intera
 `interaction_metadata.toml`, and `interaction_metadata_patience20.toml`. Preserve their outputs; do not resubmit.
 `screening_controls.toml` defines two Phase 1 controls; no separate completion record is in the current ledger.
 
-Candidate settings belong in `candidate_winner.toml` and `candidate_runner_up.toml`.
+Later-phase candidate settings belong in `candidate_winner.toml` and `candidate_runner_up.toml`.
+These still encode the previous pair; review/migrate later phases after the new Phase 2 comparison.
+Phase 2 shared overrides belong in `source_comparison_selected.toml`; the plain recipe inherits them.
 The reduced fraction belongs in `reduced_protocol.toml`; sample seed stays 777.
 Scale source confirmation defaults to large. Selecting XL requires matching profile, accumulation,
 and new output roots. Later stopping/input policies require review before submission.
@@ -67,8 +106,9 @@ uv run --no-sync invoke publication.approve --stage source_pair --note "$PUBLICA
 ```
 
 Use `source_pair` before Phase 2, `recipe` after the paired source panel, `reduced` after cohort calibration,
-and `final` after freezing assessment. Candidate, language-curation, or reduced-protocol edits invalidate
-affected approvals. Mirror the actual choice in [decisions](../publication_decisions.md).
+and `final` after freezing assessment. Candidate, Phase 2 comparison/launch recipe, language-curation,
+or reduced-protocol edits invalidate affected approvals. Mirror the actual choice in
+[decisions](../publication_decisions.md).
 
 ## Frozen evaluation
 
@@ -120,6 +160,17 @@ uv run --no-sync python -m experiments.checkpoint_consistency \
   --output-json logs/publication/metadata_checkpoint_consistency.json \
   --output-md logs/publication/metadata_checkpoint_consistency.md
 ```
+
+## Figures
+
+Regenerate the [figure examples](results.md#figure-examples) locally:
+
+```shell
+uv run --no-sync python docs/publication/reference/figures/create.py
+```
+
+This writes four PNG previews and editable SVGs beside the script. It reads the two reviewed
+checkpoint ledgers and the legacy tables in `results.md`; no HPC access or training is needed.
 
 ## Audits and continuations
 

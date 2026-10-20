@@ -17,7 +17,7 @@ from codllm.experiments.specs import load_experiment_spec
 
 
 def candidate_fingerprint(root: Path) -> str:
-    """Hash the fully inherited paired candidate recipes, including language curation."""
+    """Hash inherited candidates, source-comparison launch recipes, and language curation."""
     payload = {
         name: [
             run.env
@@ -27,21 +27,26 @@ def candidate_fingerprint(root: Path) -> str:
         ]
         for name in ("winner", "runner_up")
     }
+    for name in ("source_transfer_pilot", "source_transfer_validation"):
+        path = root / f"{name}.toml"
+        if path.exists():
+            payload[name] = [run.env for run in load_experiment_spec(path).expanded_runs()]
     defaults = Config()
     payload["languages"] = {
-        name: provenance_signature(
+        f"{name}:{index}": provenance_signature(
             Config(
-                evaluation_language_metadata_path=runs[0].get(
+                evaluation_language_metadata_path=env.get(
                     "CODLLM_EVALUATION_LANGUAGE_METADATA_PATH",
                     defaults.evaluation_language_metadata_path,
                 ),
-                evaluation_language_overrides_path=runs[0].get(
+                evaluation_language_overrides_path=env.get(
                     "CODLLM_EVALUATION_LANGUAGE_OVERRIDES_PATH"
                 )
                 or None,
             )
         )
         for name, runs in payload.items()
+        for index, env in enumerate(runs)
     }
     reduced = root / "reduced_protocol.toml"
     if reduced.exists():

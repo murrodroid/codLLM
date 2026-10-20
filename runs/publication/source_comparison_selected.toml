@@ -1,0 +1,11 @@
+name = "publication_v1_source_comparison_selected"
+command = "train"
+description = "Phase 2 enhanced arm approved by Lucas on 2026-10-20; matched patience 20, original 120-epoch schedule."
+base = "candidate_winner.toml"
+force_reprocess = false
+
+[env]
+CODLLM_PUBLICATION_GATE = "source_pair"
+CODLLM_EARLY_STOPPING_PATIENCE = 20
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected"
+

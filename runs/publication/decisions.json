@@ -1,0 +1,9 @@
+{
+  "stages": {
+    "source_pair": {
+      "candidate_fingerprint": "cf2ef3a1399968ebf9b002549d86bdf3fea44c74dfd94ba301b5654cefccf145",
+      "note": "2026-10-20: Lucas requested the four Copenhagen/Belgium pilots and confirmed patience 20 instead of 10. Enhanced: floor 0, synthesis 0.30, masterlist pretraining 48; both arms COD-only, seed 777, original 120-epoch cosine schedule. Plain disables task pretraining, floor, synthesis, base perturbation and injection. Authorizes the four pilots only, not the remaining six or an overall winner claim."
+    }
+  },
+  "version": 1
+}

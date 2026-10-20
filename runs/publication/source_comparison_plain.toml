@@ -1,0 +1,15 @@
+name = "publication_v1_source_comparison_plain"
+command = "train"
+description = "Phase 2 plain fine-tuning: same backbone and shared policy, no task pretraining or training augmentation."
+base = "source_comparison_selected.toml"
+force_reprocess = false
+
+[env]
+CODLLM_PRETRAIN_ENABLED = false
+CODLLM_BALANCE_STRATEGY = "none"
+CODLLM_BALANCE_FLOOR = 0
+CODLLM_MULTICOD_SYNTHETIC_RATIO = 0
+CODLLM_BASE_PERTURBATION_RATE = 0
+CODLLM_MASTERLIST_INJECT_ENABLED = false
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain"
+

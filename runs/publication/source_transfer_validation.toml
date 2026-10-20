@@ -1,49 +1,49 @@
-name = "publication_v1_source_remaining"
+name = "publication_v1_source_comparison_remaining"
 command = "train"
-description = "Complete the matched five-archive panel; combines with four pilot runs."
+description = "Phase 2b: unchanged plain/selected recipes on Amsterdam, Madrid, and Ipswich; six fresh runs."
 force_reprocess = false
 
 [env]
 CODLLM_PUBLICATION_GATE = "source_pair"
 
 [[variants]]
-name = "winner-amsterdam"
-base = "candidate_winner.toml"
+name = "selected-amsterdam"
+base = "source_comparison_selected.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "amsterdam_1854_1926"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/amsterdam"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected/amsterdam"
 
 [[variants]]
-name = "runner_up-amsterdam"
-base = "candidate_runner_up.toml"
+name = "plain-amsterdam"
+base = "source_comparison_plain.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "amsterdam_1854_1926"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/amsterdam"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain/amsterdam"
 
 [[variants]]
-name = "winner-madrid"
-base = "candidate_winner.toml"
+name = "selected-madrid"
+base = "source_comparison_selected.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/madrid"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected/madrid"
 
 [[variants]]
-name = "runner_up-madrid"
-base = "candidate_runner_up.toml"
+name = "plain-madrid"
+base = "source_comparison_plain.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "madrid_1905_1927"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/madrid"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain/madrid"
 
 [[variants]]
-name = "winner-ipswich"
-base = "candidate_winner.toml"
+name = "selected-ipswich"
+base = "source_comparison_selected.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "ipswich_1871_1911"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/ipswich"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected/ipswich"
 
 [[variants]]
-name = "runner_up-ipswich"
-base = "candidate_runner_up.toml"
+name = "plain-ipswich"
+base = "source_comparison_plain.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "ipswich_1871_1911"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/ipswich"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain/ipswich"

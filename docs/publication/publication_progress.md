@@ -1,6 +1,6 @@
 # Publication progress
 
-Updated: 2026-10-19. **Phase 1 complete**, confirmed by Lucas.
+Updated: 2026-10-20. **Phase 1 complete**, confirmed by Lucas.
 
 | Work | Status |
 |---|---|
@@ -11,9 +11,17 @@ Updated: 2026-10-19. **Phase 1 complete**, confirmed by Lucas.
 | Phase 1: COD+age+sex, patience 10 | 8/8 complete; last finished 12 October. |
 | Phase 1: COD+age+sex, patience 20 | 8/8 complete; last finished 17 October, 19:53 CEST. |
 | Checkpoint consistency | All eight continuation windows recovered for each input setting. |
-| Phase 2 onward | No results recorded. |
+| Phase 2a: Copenhagen/Belgium pilots | Submitted 20 October as LSF `29760677[1-4]`, patience 20 / max 120. Three running, one queued at the post-submission check. No results recorded. |
+| Phase 2b: remaining source folds | Six runs configured with the same recipe; not submitted. |
+| Phase 3 onward | No results recorded. |
 
-Next: [choose the paired recipes and confirm the source pilots](publication_decisions.md#decisions-pending).
+Next: complete and review the four pilot runs before requesting the remaining six submissions.
+
+Pilot array mapping: [`[1]` selected Copenhagen](https://wandb.ai/codllmdev/codllm/runs/oen5w7vh),
+[`[2]` plain Copenhagen](https://wandb.ai/codllmdev/codllm/runs/ymfxna72), `[3]` selected Belgium (queued),
+[`[4]` plain Belgium](https://wandb.ai/codllmdev/codllm/runs/xq7n4zto).
+Elements `[2]` and `[3]` initially exited before training during concurrent
+shared-environment setup; only these two were requeued under the same IDs. Recipe settings were unchanged.
 
 ## Phase 1 results
 

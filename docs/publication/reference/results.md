@@ -162,3 +162,43 @@ paths, checksums, selected scores, and final scheduler evidence.
 
 Both ledgers contain scalar histories and provenance. Private row-level predictions and text-bearing
 manifests remain in each HPC run's `publication/` directory.
+
+## Figure examples
+
+Examples for choosing the paper's presentation, not a recipe-selection decision.
+[Regenerate all figures](commands.md#figures) with one local command; SVG copies sit beside each PNG.
+The grouped-COD figures use both completed patience-20 campaigns, seed 777, and the same recipe order.
+All metrics refer to the macro-F1-selected checkpoint. Equal-source reference macro F1 is a validation
+screening metric, not held-out-source performance. Zoomed axes show small differences explicitly;
+no seed confidence intervals or significance claims are implied.
+
+### Selected scores
+
+Each line joins COD-only and COD+age+sex scores for the same recipe. Use this for the performance overview.
+
+![Selected validation scores](figures/selected.png)
+
+### Matched differences
+
+Change one factor while holding the other two fixed. Positive values favor the named change;
+the four recipe backgrounds are not independent seed replicates. The floor change includes
+upsample-copy perturbations. The input comparison concerns age and sex together, not their separate effects.
+
+![Matched recipe differences](figures/differences.png)
+
+### Checkpoint context
+
+Grey dots show the ten completed epochs B-9 through B; diamonds show selected scores.
+An asterisk marks an inherited parent window. These correlated, selection-conditioned observations
+describe preceding checkpoint behavior, not uncertainty across seeds or an equal-compute comparison.
+Use this as supporting detail; it does not replace selected-checkpoint reporting.
+
+![Checkpoint context](figures/consistency.png)
+
+### Earlier response curves
+
+Keep the legacy row-split curves separate. Lines connect tested settings without fitting a curve.
+Floor and pretraining-dose scores retain provisional history-peak provenance and need selected-checkpoint
+verification before final publication.
+
+![Legacy response curves](figures/legacy.png)

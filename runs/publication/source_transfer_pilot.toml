@@ -1,35 +1,35 @@
-name = "publication_v1_source_pilot"
+name = "publication_v1_source_comparison_pilot"
 command = "train"
-description = "Pilot contrast: Danish-only Copenhagen and Dutch-overlap Belgium; review source inventory before approval."
+description = "Phase 2a: plain versus selected training on Copenhagen and Belgium; source_pair review required."
 force_reprocess = false
 
 [env]
 CODLLM_PUBLICATION_GATE = "source_pair"
 
 [[variants]]
-name = "winner-copenhagen"
-base = "candidate_winner.toml"
+name = "selected-copenhagen"
+base = "source_comparison_selected.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/copenhagen"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected/copenhagen"
 
 [[variants]]
-name = "runner_up-copenhagen"
-base = "candidate_runner_up.toml"
+name = "plain-copenhagen"
+base = "source_comparison_plain.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "copenhagen_may2025"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/copenhagen"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain/copenhagen"
 
 [[variants]]
-name = "winner-belgium"
-base = "candidate_winner.toml"
+name = "selected-belgium"
+base = "source_comparison_selected.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/winner/belgium"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/selected/belgium"
 
 [[variants]]
-name = "runner_up-belgium"
-base = "candidate_runner_up.toml"
+name = "plain-belgium"
+base = "source_comparison_plain.toml"
 [variants.env]
 CODLLM_HOLD_OUT_DATASET = "belgium_1920_1930"
-CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source/runner_up/belgium"
+CODLLM_OUTPUT_DIR = "checkpoints/publication-v1/source-comparison/plain/belgium"
